@@ -36,7 +36,6 @@ all = [
 
 [tool.pytest.ini_options]
 addopts = [
-   "--import-mode=importlib",
    "--cov=pulsex",
    "--cov-report=html",
    "--cov-report=term-missing",

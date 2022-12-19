@@ -7,3 +7,8 @@ __author__ = meta["Author"]
 __license__ = meta["License"]
 __email__ = meta["Author-email"]
 __program_name__ = meta["Name"]
+
+from . import kinematics
+from . import invariants
+
+__all__ = ["kinematics", "invariants"]
