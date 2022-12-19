@@ -1,0 +1,7 @@
+format: jb-book
+root: REAMDE
+
+parts:
+  - caption: Python API
+    chapters:
+    - file: "docs/api"
