@@ -8,6 +8,7 @@ description = "Next generation cardiac mechanics solver based on FEniCSx"
 authors = [{name = "Henrik Finsberg", email = "henriknf@simula.no"}]
 license = {file = "LICENSE"}
 readme = "README.md"
+requires-python = ">=3.10.0"
 
 [project.scripts]
 pulsex = "pulsex.cli:main"
