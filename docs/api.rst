@@ -43,3 +43,9 @@ active_model
 .. automodule:: pulsex.active_stress
     :members:
     :inherited-members:
+
+compressibility
+---------------
+.. automodule:: pulsex.compressibility
+    :members:
+    :inherited-members:
