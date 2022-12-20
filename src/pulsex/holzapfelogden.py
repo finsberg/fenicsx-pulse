@@ -1,23 +1,3 @@
-r"""
-Orthotropic model by Holzapfel and Ogden
-.. math::
-    \mathcal{W}(I_1, I_{4f_0})
-    = \frac{a}{2 b} \left( e^{ b (I_1 - 3)}  -1 \right)
-    + \frac{a_f}{2 b_f} \left( e^{ b_f (I_{4f_0} - 1)_+^2} -1 \right)
-    + \frac{a_s}{2 b_s} \left( e^{ b_s (I_{4s_0} - 1)_+^2} -1 \right)
-    + \frac{a_fs}{2 b_fs} \left( e^{ b_fs I_{8fs}^2} -1 \right)
-
-where
-
-.. math::
-    (\cdot)_+ = \max\{x,0\}
-.. rubric:: Reference
-    Holzapfel, Gerhard A., and Ray W. Ogden. "Constitutive modelling of
-    passive myocardium: a structurally based framework for material characterization.
-    "Philosophical Transactions of the Royal Society of London A:
-    Mathematical, Physical and Engineering Sciences 367.1902 (2009): 3445-3475.
-
-"""
 import typing
 from dataclasses import dataclass
 from dataclasses import field
@@ -34,6 +14,76 @@ from .material_model import HyperElasticMaterialModel
 
 @dataclass(slots=True)
 class HolzapfelOgden(HyperElasticMaterialModel):
+    r"""
+    Orthotropic model by Holzapfel and Ogden
+
+    Parameters
+    ----------
+    f0: dolfinx.fem.Function | dolfinx.fem.Constant | None
+        Function representing the direction of the fibers
+    s0: dolfinx.fem.Function | dolfinx.fem.Constant | None
+        Function representing the direction of the sheets
+    a: float | dolfinx.fem.Function | dolfinx.fem.Constant
+        Material parameter, by default 0.0
+    b: float | dolfinx.fem.Function | dolfinx.fem.Constant
+        Material parameter, by default 0.0
+    a_f: float | dolfinx.fem.Function | dolfinx.fem.Constant
+        Material parameter, by default 0.0
+    b_f: float | dolfinx.fem.Function | dolfinx.fem.Constant
+        Material parameter, by default 0.0
+    a_s: float | dolfinx.fem.Function | dolfinx.fem.Constant
+        Material parameter, by default 0.0
+    b_s: float | dolfinx.fem.Function | dolfinx.fem.Constant
+        Material parameter, by default 0.0
+    a_fs: float | dolfinx.fem.Function | dolfinx.fem.Constant
+        Material parameter, by default 0.0
+    b_fs: float | dolfinx.fem.Function | dolfinx.fem.Constant
+        Material parameter, by default 0.0
+    use_subplus: bool
+        Use subplus function when computing anisotropic contribution,
+        by default True
+    use_heaviside: bool
+        Use heaviside function when computing anisotropic contribution,
+        by default True
+
+    Notes
+    -----
+    Original model from Holzapfel and Ogden [1]_.
+    The strain energy density function is given by
+
+    .. math::
+        \Psi(I_1, I_{4\mathbf{f}_0}, I_{4\mathbf{s}_0}, I_{8\mathbf{f}_0\mathbf{s}_0})
+        = \frac{a}{2 b} \left( e^{ b (I_1 - 3)}  -1 \right)
+        + \frac{a_f}{2 b_f} \mathcal{H}(I_{4\mathbf{f}_0} - 1)
+        \left( e^{ b_f (I_{4\mathbf{f}_0} - 1)_+^2} -1 \right)
+        + \frac{a_s}{2 b_s} \mathcal{H}(I_{4\mathbf{s}_0} - 1)
+        \left( e^{ b_s (I_{4\mathbf{s}_0} - 1)_+^2} -1 \right)
+        + \frac{a_{fs}}{2 b_{fs}} \left( e^{ b_{fs}
+        I_{8 \mathbf{f}_0 \mathbf{s}_0}^2} -1 \right)
+
+    where
+
+    .. math::
+        (x)_+ = \max\{x,0\}
+
+    and
+
+    .. math::
+        \mathcal{H}(x) = \begin{cases}
+            1, & \text{if $x > 0$} \\
+            0, & \text{if $x \leq 0$}
+        \end{cases}
+
+    is the Heaviside function.
+
+    .. [1] Holzapfel, Gerhard A., and Ray W. Ogden.
+        "Constitutive modelling of passive myocardium:
+        a structurally based framework for material characterization.
+        "Philosophical Transactions of the Royal Society of London A:
+        Mathematical, Physical and Engineering Sciences 367.1902 (2009):
+        3445-3475.
+
+    """
     f0: dolfinx.fem.Function | dolfinx.fem.Constant | None = None
     s0: dolfinx.fem.Function | dolfinx.fem.Constant | None = None
     a: float | dolfinx.fem.Function | dolfinx.fem.Constant = 0.0
@@ -126,7 +176,7 @@ class HolzapfelOgden(HyperElasticMaterialModel):
     def transversely_isotropic_parameters() -> dict[str, float]:
         """
         Material parameters for the Holzapfel Ogden model
-        Taken from Table 1 row 1 in the main paper
+        Taken from Table 1 row 3 in the main paper
         """
 
         return {
@@ -189,7 +239,6 @@ class HolzapfelOgden(HyperElasticMaterialModel):
         return self._W8fs_func(I8fs)
 
     def strain_energy(self, F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
-
         I1 = invariants.I1(F)
         I4f = invariants.I4(F, self.f0)
         I4s = invariants.I4(F, self.s0)
