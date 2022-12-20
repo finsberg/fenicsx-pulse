@@ -11,7 +11,6 @@ def SecondOrderIdentity(F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
 
 def DeformationGradient(
     u: dolfinx.fem.Function,
-    isochoric: bool = False,
 ) -> ufl.core.expr.Expr:
     r"""Return deformation gradient from displacement.
 
