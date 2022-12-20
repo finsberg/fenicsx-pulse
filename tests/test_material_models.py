@@ -8,7 +8,7 @@ import utils
 
 
 @pytest.mark.parametrize("obj_str", ("float", "Constant", "Function"))
-def test_linear_elastic_model(obj_str, mesh, P1, u):
+def test_linear_elastic_model(obj_str, mesh, P1, u) -> None:
     E = 2.0
     _nu = 0.2
     nu = utils.float2object(f=_nu, obj_str=obj_str, mesh=mesh, V=P1)
@@ -26,7 +26,7 @@ def test_linear_elastic_model(obj_str, mesh, P1, u):
 
 
 @pytest.mark.parametrize("obj_str", ("float", "Constant", "Function"))
-def test_linear_elastic_model_with_invalid_range(obj_str, mesh, P1):
+def test_linear_elastic_model_with_invalid_range(obj_str, mesh, P1) -> None:
     E = 2.0
     _nu = 0.5
     nu = utils.float2object(f=_nu, obj_str=obj_str, mesh=mesh, V=P1)
@@ -43,7 +43,7 @@ def test_linear_elastic_model_with_invalid_range(obj_str, mesh, P1):
         (pulsex.HolzapfelOgden.transversely_isotropic_parameters, 53.6468124607508),
     ),
 )
-def test_holzapfel_ogden(params_func, expected_value, mesh, u):
+def test_holzapfel_ogden(params_func, expected_value, mesh, u) -> None:
     params = params_func()
     f0 = dolfinx.fem.Constant(mesh, (1.0, 0.0, 0.0))
     s0 = dolfinx.fem.Constant(mesh, (0.0, 1.0, 0.0))

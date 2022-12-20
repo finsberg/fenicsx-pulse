@@ -49,3 +49,9 @@ compressibility
 .. automodule:: pulsex.compressibility
     :members:
     :inherited-members:
+
+cardiac_model
+-------------
+.. automodule:: pulsex.cardiac_model
+    :members:
+    :inherited-members:

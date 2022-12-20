@@ -14,7 +14,7 @@ from pulsex import kinematics
         (utils.IsochoricDeformationGradient, pow(8, -2 / 3) * 4 * 3),
     ),
 )
-def test_I1(cls, expected, u):
+def test_I1(cls, expected, u) -> None:
     u.interpolate(lambda x: x)
     F = cls(u)
     I1 = invariants.I1(F)
@@ -35,7 +35,7 @@ def test_I1(cls, expected, u):
         ),
     ),
 )
-def test_I2(cls, expected, u):
+def test_I2(cls, expected, u) -> None:
     u.interpolate(lambda x: x)
     F = cls(u)
     I2 = invariants.I2(F)
@@ -52,7 +52,7 @@ def test_I2(cls, expected, u):
         (utils.IsochoricDeformationGradient, (pow(8, -2 / 3) * 4) ** 3),
     ),
 )
-def test_I3(cls, expected, u):
+def test_I3(cls, expected, u) -> None:
     u.interpolate(lambda x: x)
     F = cls(u)
     I3 = invariants.I3(F)
@@ -70,7 +70,7 @@ def test_I3(cls, expected, u):
         (utils.IsochoricDeformationGradient, pow(8, -2 / 3) * 4),
     ),
 )
-def test_I4(cls, expected, u, mesh):
+def test_I4(cls, expected, u, mesh) -> None:
     u.interpolate(lambda x: x)
     F = cls(u)
     a0 = dolfinx.fem.Constant(mesh, (1.0, 0.0, 0.0))
@@ -89,7 +89,7 @@ def test_I4(cls, expected, u, mesh):
         (utils.IsochoricDeformationGradient, (pow(8, -2 / 3) * 4) ** 2),
     ),
 )
-def test_I5(cls, expected, u, mesh):
+def test_I5(cls, expected, u, mesh) -> None:
     u.interpolate(lambda x: x)
     F = cls(u)
     a0 = dolfinx.fem.Constant(mesh, (1.0, 0.0, 0.0))
@@ -105,7 +105,7 @@ def test_I5(cls, expected, u, mesh):
     "cls, expected",
     ((kinematics.DeformationGradient, 0), (utils.IsochoricDeformationGradient, 0)),
 )
-def test_I8(cls, expected, u, mesh):
+def test_I8(cls, expected, u, mesh) -> None:
     u.interpolate(lambda x: x)
     F = cls(u)
     a0 = dolfinx.fem.Constant(mesh, (1.0, 0.0, 0.0))

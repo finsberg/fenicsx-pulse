@@ -1,8 +1,11 @@
 import abc
 from dataclasses import dataclass
+from dataclasses import field
 
 import dolfinx
 import ufl
+
+from . import exceptions
 
 
 class Compressibility(abc.ABC):
@@ -10,16 +13,24 @@ class Compressibility(abc.ABC):
     def strain_energy(self, J: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
         ...
 
+    def register(self, *args, **kwargs) -> None:
+        ...
 
-@dataclass
+
+@dataclass(slots=True)
 class Incompressible(Compressibility):
-    p: dolfinx.fem.Function
+    p: dolfinx.fem.Function = field(default=None, init=False)
+
+    def register(self, p: dolfinx.fem.Function) -> None:
+        self.p = p
 
     def strain_energy(self, J: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
+        if self.p is None:
+            raise exceptions.MissingModelAttribute(attr="p", model=type(self).__name__)
         return self.p * (J - 1.0)
 
 
-@dataclass
+@dataclass(slots=True)
 class Compressible(Compressibility):
     kappa: float | dolfinx.fem.Function | dolfinx.fem.Constant = 1e3
 

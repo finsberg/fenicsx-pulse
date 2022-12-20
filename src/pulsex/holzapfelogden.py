@@ -1,6 +1,7 @@
 import typing
 from dataclasses import dataclass
 from dataclasses import field
+from functools import partial
 
 import dolfinx
 import numpy as np
@@ -9,11 +10,11 @@ import ufl
 from . import exceptions
 from . import functions
 from . import invariants
-from .material_model import HyperElasticMaterialModel
+from .material_model import HyperElasticMaterial
 
 
 @dataclass(slots=True)
-class HolzapfelOgden(HyperElasticMaterialModel):
+class HolzapfelOgden(HyperElasticMaterial):
     r"""
     Orthotropic model by Holzapfel and Ogden
 
@@ -113,6 +114,18 @@ class HolzapfelOgden(HyperElasticMaterialModel):
         init=False,
         repr=False,
     )
+    _I4f: typing.Callable[[ufl.core.expr.Expr], ufl.core.expr.Expr] = field(
+        init=False,
+        repr=False,
+    )
+    _I4s: typing.Callable[[ufl.core.expr.Expr], ufl.core.expr.Expr] = field(
+        init=False,
+        repr=False,
+    )
+    _I8fs: typing.Callable[[ufl.core.expr.Expr], ufl.core.expr.Expr] = field(
+        init=False,
+        repr=False,
+    )
 
     def __post_init__(self):
         # Check that all values are positive
@@ -127,10 +140,24 @@ class HolzapfelOgden(HyperElasticMaterialModel):
                     expected_range=(0.0, np.inf),
                 )
 
-        self._W1_func = self._resolve_W1()
-        self._W4f_func = self._resolve_W4(a=self.a_f, b=self.b_f)
+        if self.f0 is not None:
+            self._I4f = partial(invariants.I4, a0=self.f0)
+        else:
+            self._I4f = lambda x: 0.0
 
-        self._W4s_func = self._resolve_W4(a=self.a_s, b=self.b_s)
+        if self.s0 is not None:
+            self._I4s = partial(invariants.I4, a0=self.s0)
+        else:
+            self._I4s = lambda x: 0.0
+
+        if self.f0 is not None and self.s0 is not None:
+            self._I8fs = partial(invariants.I8, a0=self.f0, b0=self.s0)
+        else:
+            self._I8fs = lambda x: 0.0
+
+        self._W1_func = self._resolve_W1()
+        self._W4f_func = self._resolve_W4(a=self.a_f, b=self.b_f, required_attr="f0")
+        self._W4s_func = self._resolve_W4(a=self.a_s, b=self.b_s, required_attr="s0")
         self._W8fs_func = self._resolve_W8fs()
 
     def _resolve_W1(self):
@@ -144,11 +171,17 @@ class HolzapfelOgden(HyperElasticMaterialModel):
         else:
             return lambda I1: 0.0
 
-    def _resolve_W4(self, a, b):
+    def _resolve_W4(self, a, b, required_attr: str):
         subplus = functions.subplus if self.use_subplus else lambda x: x
         heaviside = functions.heaviside if self.use_heaviside else lambda x: 1
         if exceptions.check_value_greater_than(a, 1e-10):
             if exceptions.check_value_greater_than(b, 1e-10):
+                a0 = getattr(self, required_attr)
+                if a0 is None:
+                    raise exceptions.MissingModelAttribute(
+                        attr=required_attr,
+                        model=type(self).__name__,
+                    )
                 return (
                     lambda I4: (a / (2.0 * b))
                     * heaviside(I4 - 1)
@@ -162,6 +195,11 @@ class HolzapfelOgden(HyperElasticMaterialModel):
     def _resolve_W8fs(self):
         if exceptions.check_value_greater_than(self.a_fs, 1e-10):
             if exceptions.check_value_greater_than(self.b_fs, 1e-10):
+                if self.f0 is None or self.s0 is None:
+                    raise exceptions.MissingModelAttribute(
+                        attr="f0 and s0",
+                        model=type(self).__name__,
+                    )
                 return (
                     lambda I8: self.a_fs
                     / (2.0 * self.b_fs)
@@ -240,8 +278,8 @@ class HolzapfelOgden(HyperElasticMaterialModel):
 
     def strain_energy(self, F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
         I1 = invariants.I1(F)
-        I4f = invariants.I4(F, self.f0)
-        I4s = invariants.I4(F, self.s0)
-        I8fs = invariants.I8(F, self.f0, self.s0)
+        I4f = self._I4f(F)
+        I4s = self._I4s(F)
+        I8fs = self._I8fs(F)
 
         return self._W1(I1) + self._W4f(I4f) + self._W4s(I4s) + self._W8fs(I8fs)
