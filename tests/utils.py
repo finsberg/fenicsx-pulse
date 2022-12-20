@@ -8,6 +8,7 @@ def matrix_is_zero(A: ufl.core.expr.Expr) -> bool:
     for i in range(n):
         for j in range(n):
             value = dolfinx.fem.assemble_scalar(dolfinx.fem.form(A[i, j] * ufl.dx))
+            print(i, j, value)
             is_zero = np.isclose(value, 0)
             if not is_zero:
                 return False

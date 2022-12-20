@@ -1,8 +1,12 @@
 dolfinx
 fenics
+gradu
+hyperelastic
 isochoric
+lmbda
 multiplicatively
 nabla
 Piola
 pulsex
 varepsilon
+Venant

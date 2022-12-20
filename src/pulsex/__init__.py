@@ -10,5 +10,16 @@ __program_name__ = meta["Name"]
 
 from . import kinematics
 from . import invariants
+from . import material_model
+from .material_model import HyperElasticMaterialModel
 
-__all__ = ["kinematics", "invariants"]
+from .linear_elastic import LinearElastic
+
+__all__ = [
+    "kinematics",
+    "invariants",
+    "material_model",
+    "Material",
+    "HyperElasticMaterialModel",
+    "LinearElastic",
+]
