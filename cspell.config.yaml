@@ -1,0 +1,21 @@
+dictionaryDefinitions:
+  - name: pulsex
+    path: .cspell_dict.txt
+    addWords: true
+dictionaries:
+  - pulsex
+ignoreWords: [
+    quickstart,
+    toctree,
+    maxdepth,
+    genindex,
+    modindex,
+    mathbf,
+    mathrm,
+    mathbb,
+    mathcal,
+    operatorname,
+    docname,
+    docnames,
+    automodule
+  ]
