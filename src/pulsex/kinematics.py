@@ -147,7 +147,7 @@ def EngineeringStrain(F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
     r"""Engineering strain
 
     .. math::
-        \mathbf{\varepsilon} = \mathbf{F} - \mathbf{I}
+        \mathbf{\varepsilon} = \frac{1}{2}\left( \nabla u + (\nabla u)^T \right)
 
     Parameters
     ----------
@@ -161,7 +161,8 @@ def EngineeringStrain(F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
 
     """
     I = SecondOrderIdentity(F)
-    return F - I
+    gradu = F - I
+    return 0.5 * (gradu + gradu.T)
 
 
 def GreenLagrangeStrain(F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
@@ -188,16 +189,69 @@ def GreenLagrangeStrain(F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
 
 
 def PiolaTransform(A, F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
-    """Pull-back of a two-tensor from the current to the reference
-    configuration"""
+    r"""Pull-back of a two-tensor from the current to the reference
+    configuration
+
+    Parameters
+    ----------
+    A : ufl.core.expr.Expr
+        The tensor you want to push forward
+    F : ufl.core.expr.Expr
+        The deformation gradient
+
+    Returns
+    -------
+    ufl.core.expr.Expr
+        The pull-back
+
+    Notes
+    -----
+    A pull-back is a transformation of a rank-2 tensor from
+    the current configuration to the reference configuration.
+    A common example is the pull-back of the Cauchy
+    stress tensor to the reference configuration which yields the
+    First Piola-Kirchhoff stress tensor, i.e
+
+    .. math::
+        \mathbf{P} = J \sigma \mathbf{F}^{-T}
+
+    """
     J = Jacobian(F)
     B = J * A * ufl.inv(F).T
     return B
 
 
-def InversePiolaTransform(A, F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
-    """Push-forward of a two-tensor from the reference to the current
-    configuration"""
+def InversePiolaTransform(
+    A: ufl.core.expr.Expr,
+    F: ufl.core.expr.Expr,
+) -> ufl.core.expr.Expr:
+    r"""Push-forward of a rank two-tensor from the reference to the current
+    configuration
+
+    Parameters
+    ----------
+    A : ufl.core.expr.Expr
+        The tensor you want to push forward
+    F : ufl.core.expr.Expr
+        The deformation gradient
+
+    Returns
+    -------
+    ufl.core.expr.Expr
+        The push-forward
+
+    Notes
+    -----
+    A push-forward is a transformation of a rank-2 tensor from
+    the reference configuration to the current configuration.
+    A common example is the push-forward of the First Piola-Kirchhoff
+    stress tensor to the current configuration which yields the
+    Cauchy stress tensor, i.e
+
+    .. math::
+        \sigma = \frac{1}{J} \mathbf{P} \mathbf{F}^T
+
+    """
     J = Jacobian(F)
     B = (1 / J) * A * F.T
     return B

@@ -10,6 +10,11 @@ def mesh():
 
 
 @pytest.fixture(scope="session")
+def P1(mesh):
+    return dolfinx.fem.FunctionSpace(mesh, ufl.FiniteElement("CG", mesh.ufl_cell(), 1))
+
+
+@pytest.fixture(scope="session")
 def P2(mesh):
     return dolfinx.fem.FunctionSpace(mesh, ufl.VectorElement("CG", mesh.ufl_cell(), 2))
 

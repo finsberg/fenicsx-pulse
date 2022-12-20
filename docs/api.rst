@@ -1,10 +1,6 @@
 API Reference
 =============
 
-.. automodule:: pulsex
-    :members:
-    :inherited-members:
-
 kinematics
 ----------
 
@@ -17,5 +13,21 @@ invariants
 ----------
 
 .. automodule:: pulsex.invariants
+    :members:
+    :inherited-members:
+
+
+material_model
+--------------
+
+.. automodule:: pulsex.material_model
+    :members:
+    :inherited-members:
+
+.. automodule:: pulsex.linear_elastic
+    :members:
+    :inherited-members:
+
+.. automodule:: pulsex.holzapfelogden
     :members:
     :inherited-members:
