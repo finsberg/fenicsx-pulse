@@ -31,3 +31,15 @@ material_model
 .. automodule:: pulsex.holzapfelogden
     :members:
     :inherited-members:
+
+
+active_model
+------------
+
+.. automodule:: pulsex.active_model
+    :members:
+    :inherited-members:
+
+.. automodule:: pulsex.active_stress
+    :members:
+    :inherited-members:
