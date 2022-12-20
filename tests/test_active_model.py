@@ -8,7 +8,7 @@ from pulsex import kinematics
 from pulsex.active_stress import ActiveStress
 
 
-def W_fun(Ta, eta=0.0):
+def W_fun(Ta: float, eta: float = 0.0) -> float:
     return 0.5 * Ta * ((4 - 1) + eta * ((12 - 3) - (4 - 1)))
 
 
@@ -19,7 +19,7 @@ def W_fun(Ta, eta=0.0):
         (0.0, 1.0, 2.0),
     ),
 )
-def test_transversely_active_stress(eta, Ta, mesh, u):
+def test_transversely_active_stress(eta, Ta, mesh, u) -> None:
     f0 = dolfinx.fem.Constant(mesh, (1.0, 0.0, 0.0))
     active_model = ActiveStress(f0, eta=eta)
 

@@ -37,7 +37,7 @@ class Material(abc.ABC):
         return kinematics.PiolaTransform(self.sigma(F), F)
 
 
-class HyperElasticMaterialModel(Material, abc.ABC):
+class HyperElasticMaterial(Material, abc.ABC):
     @abc.abstractmethod
     def strain_energy(self, F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
         """Strain energy density function

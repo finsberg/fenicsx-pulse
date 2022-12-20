@@ -5,19 +5,20 @@ import pulsex
 import ufl
 
 
-def test_Incompressible(u, P1):
+def test_Incompressible(u, P1) -> None:
     p = dolfinx.fem.Function(P1)
     p.x.set(3.14)
     u.interpolate(lambda x: x)
     F = pulsex.kinematics.DeformationGradient(u)
     J = pulsex.kinematics.Jacobian(F)
-    comp = pulsex.compressibility.Incompressible(p)
+    comp = pulsex.compressibility.Incompressible()
+    comp.register(p)
     psi = comp.strain_energy(J)
     value = dolfinx.fem.assemble_scalar(dolfinx.fem.form(psi * ufl.dx))
     assert math.isclose(value, 3.14 * (8 - 1))
 
 
-def test_Compressible(u):
+def test_Compressible(u) -> None:
 
     u.interpolate(lambda x: x)
     F = pulsex.kinematics.DeformationGradient(u)

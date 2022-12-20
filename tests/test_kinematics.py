@@ -4,7 +4,7 @@ import utils
 from pulsex import kinematics
 
 
-def test_SecondOrderIdentity(u):
+def test_SecondOrderIdentity(u) -> None:
     assert kinematics.SecondOrderIdentity(u) == ufl.Identity(3)
 
 
@@ -15,7 +15,7 @@ def test_SecondOrderIdentity(u):
         (utils.IsochoricDeformationGradient, pow(8, -1 / 3) * 2),
     ),
 )
-def test_DeformationGradient(cls, factor, u):
+def test_DeformationGradient(cls, factor, u) -> None:
     r"""Test deformation gradient for a linear displacement field, i.e
 
     .. math::
@@ -49,7 +49,7 @@ def test_DeformationGradient(cls, factor, u):
         (utils.IsochoricDeformationGradient, pow(8, -2 / 3) * 4),
     ),
 )
-def test_RightCauchyGreen(cls, factor, u):
+def test_RightCauchyGreen(cls, factor, u) -> None:
     u.interpolate(lambda x: x)
     F = cls(u)
     C = kinematics.RightCauchyGreen(F)
@@ -65,7 +65,7 @@ def test_RightCauchyGreen(cls, factor, u):
         (utils.IsochoricDeformationGradient, pow(8, -2 / 3) * 4),
     ),
 )
-def test_LeftCauchyGreen(cls, factor, u):
+def test_LeftCauchyGreen(cls, factor, u) -> None:
     u.interpolate(lambda x: x)
     F = cls(u)
     B = kinematics.LeftCauchyGreen(F)
@@ -81,7 +81,7 @@ def test_LeftCauchyGreen(cls, factor, u):
         (utils.IsochoricDeformationGradient, pow(8, -1 / 3) * 2 - 1),
     ),
 )
-def test_EngineeringStrain(cls, factor, u):
+def test_EngineeringStrain(cls, factor, u) -> None:
     u.interpolate(lambda x: x)
     F = cls(u)
     E = kinematics.EngineeringStrain(F)
@@ -97,7 +97,7 @@ def test_EngineeringStrain(cls, factor, u):
         (utils.IsochoricDeformationGradient, 0.5 * (pow(8, -2 / 3) * 4 - 1)),
     ),
 )
-def test_GreenLagrangeStrain(cls, factor, u):
+def test_GreenLagrangeStrain(cls, factor, u) -> None:
     u.interpolate(lambda x: x)
     F = cls(u)
     E = kinematics.GreenLagrangeStrain(F)

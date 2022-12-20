@@ -136,3 +136,12 @@ class InvalidRangeError(ValueError, PulsexException):
             f"Invalid range for variable {self.name}. "
             f"Expected variable to be in the range: {self.expected_range}"
         )
+
+
+@dataclass
+class MissingModelAttribute(AttributeError, PulsexException):
+    attr: str
+    model: str
+
+    def __str__(self) -> str:
+        return f"Missing required attributed {self.attr!r} for model {self.model!r}"
