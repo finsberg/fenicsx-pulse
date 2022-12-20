@@ -225,7 +225,7 @@ def InversePiolaTransform(
     A: ufl.core.expr.Expr,
     F: ufl.core.expr.Expr,
 ) -> ufl.core.expr.Expr:
-    """Push-forward of a rank two-tensor from the reference to the current
+    r"""Push-forward of a rank two-tensor from the reference to the current
     configuration
 
     Parameters
@@ -249,7 +249,7 @@ def InversePiolaTransform(
     Cauchy stress tensor, i.e
 
     .. math::
-        \\sigma = \frac{1}{J} \\mathbf{P} \\mathbf{F}^T
+        \sigma = \frac{1}{J} \mathbf{P} \mathbf{F}^T
 
     """
     J = Jacobian(F)

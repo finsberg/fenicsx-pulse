@@ -19,3 +19,20 @@ def IsochoricDeformationGradient(u):
     from pulsex import kinematics
 
     return kinematics.IsochoricDeformationGradient(kinematics.DeformationGradient(u))
+
+
+def float2object(
+    f: float,
+    obj_str: str,
+    mesh: dolfinx.mesh.Mesh,
+    V: dolfinx.fem.FunctionSpace,
+):
+    if obj_str == "float":
+        return f
+    if obj_str == "Constant":
+        return dolfinx.fem.Constant(mesh, f)
+    if obj_str == "Function":
+        v = dolfinx.fem.Function(V)
+        v.x.set(f)
+        return v
+    raise ValueError(f"Invalid object string {obj_str!r}")

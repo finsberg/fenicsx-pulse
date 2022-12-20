@@ -12,8 +12,10 @@ from . import kinematics
 from . import invariants
 from . import material_model
 from .material_model import HyperElasticMaterialModel
+from . import exceptions
 
 from .linear_elastic import LinearElastic
+from .holzapfelogden import HolzapfelOgden
 
 __all__ = [
     "kinematics",
@@ -22,4 +24,6 @@ __all__ = [
     "Material",
     "HyperElasticMaterialModel",
     "LinearElastic",
+    "exceptions",
+    "HolzapfelOgden",
 ]
