@@ -1,6 +1,7 @@
 allreduce
 dolfinx
 fenics
+finsberg
 gradu
 Holzapfel
 holzapfelogden
