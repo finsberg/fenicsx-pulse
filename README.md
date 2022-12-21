@@ -14,5 +14,5 @@ python3 -m pip install pulsex
 ```
 We also provide a pre-built docker image with FEniCSx and `pulsex` installed. You pull this image using the command
 ```
-docker pull ghcr.io/finsberg/pulsex:v0.1.0
+docker pull ghcr.io/finsberg/pulsex:v0.1.1
 ```
