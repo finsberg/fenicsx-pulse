@@ -47,5 +47,8 @@ testpaths = [
 
 [tool.coverage.report]
 exclude_lines = [
-    "pass"
+    "pragma: no cover",
+    "pass",
+    "raise NotImplementedError",
+    "def __str__"
 ]

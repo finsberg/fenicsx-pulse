@@ -175,13 +175,13 @@ class HolzapfelOgden(HyperElasticMaterial):
         subplus = functions.subplus if self.use_subplus else lambda x: x
         heaviside = functions.heaviside if self.use_heaviside else lambda x: 1
         if exceptions.check_value_greater_than(a, 1e-10):
+            a0 = getattr(self, required_attr)
+            if a0 is None:
+                raise exceptions.MissingModelAttribute(
+                    attr=required_attr,
+                    model=type(self).__name__,
+                )
             if exceptions.check_value_greater_than(b, 1e-10):
-                a0 = getattr(self, required_attr)
-                if a0 is None:
-                    raise exceptions.MissingModelAttribute(
-                        attr=required_attr,
-                        model=type(self).__name__,
-                    )
                 return (
                     lambda I4: (a / (2.0 * b))
                     * heaviside(I4 - 1)
@@ -194,12 +194,12 @@ class HolzapfelOgden(HyperElasticMaterial):
 
     def _resolve_W8fs(self):
         if exceptions.check_value_greater_than(self.a_fs, 1e-10):
+            if self.f0 is None or self.s0 is None:
+                raise exceptions.MissingModelAttribute(
+                    attr="f0 and/or s0",
+                    model=type(self).__name__,
+                )
             if exceptions.check_value_greater_than(self.b_fs, 1e-10):
-                if self.f0 is None or self.s0 is None:
-                    raise exceptions.MissingModelAttribute(
-                        attr="f0 and s0",
-                        model=type(self).__name__,
-                    )
                 return (
                     lambda I8: self.a_fs
                     / (2.0 * self.b_fs)

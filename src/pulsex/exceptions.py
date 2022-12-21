@@ -33,8 +33,6 @@ def check_value_greater_than(
     op = operator.ge if inclusive else operator.gt
     if np.isscalar(f):
         return op(f, bound)
-    elif isinstance(f, np.ndarray):
-        return op(f.max(), bound)
     elif isinstance(f, dolfinx.fem.Constant):
         return op(f.value.max(), bound)
     elif isinstance(f, dolfinx.fem.Function):
@@ -43,7 +41,7 @@ def check_value_greater_than(
             bound,
         )
 
-    raise exceptions.PulsexException(
+    raise exceptions.PulsexException(  # pragma: no cover
         f"Invalid type for f: {type(f)}. Expected 'float', "
         "'dolfinx.fem.Constant', 'numpy array' or 'dolfinx.fem.Function'",
     )
@@ -74,8 +72,6 @@ def check_value_lower_than(
     op = operator.le if inclusive else operator.lt
     if np.isscalar(f):
         return op(f, bound)
-    elif isinstance(f, np.ndarray):
-        return op(f.min(), bound)
     elif isinstance(f, dolfinx.fem.Constant):
         return op(f.value.min(), bound)
     elif isinstance(f, dolfinx.fem.Function):
@@ -84,7 +80,7 @@ def check_value_lower_than(
             bound,
         )
 
-    raise exceptions.PulsexException(
+    raise exceptions.PulsexException(  # pragma: no cover
         f"Invalid type for f: {type(f)}. Expected 'float', "
         "'dolfinx.fem.Constant', 'numpy array' or 'dolfinx.fem.Function'",
     )
