@@ -9,9 +9,7 @@ authors = [{name = "Henrik Finsberg", email = "henriknf@simula.no"}]
 license = {file = "LICENSE"}
 readme = "README.md"
 requires-python = ">=3.10.0"
-
-[project.scripts]
-pulsex = "pulsex.cli:main"
+dependencies = ["fenics-dolfinx"]
 
 [project.optional-dependencies]
 test = [
@@ -21,7 +19,7 @@ test = [
 dev = [
     "pdbpp",
     "ipython",
-
+    "bump2version",
     "pre-commit",
 ]
 docs = [
