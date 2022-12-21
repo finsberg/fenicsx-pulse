@@ -44,3 +44,8 @@ addopts = [
 testpaths = [
     "tests"
 ]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pass"
+]

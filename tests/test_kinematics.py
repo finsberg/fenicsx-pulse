@@ -104,3 +104,13 @@ def test_GreenLagrangeStrain(cls, factor, u) -> None:
     assert E.ufl_shape == (3, 3)
     zero = E - factor * ufl.Identity(3)
     assert utils.matrix_is_zero(zero)
+
+
+def test_PiolaTransform(u):
+    u.interpolate(lambda x: x)
+    F = kinematics.DeformationGradient(u)
+    A = F
+    B = kinematics.PiolaTransform(A, F)
+    C = kinematics.InversePiolaTransform(B, F)
+    zero = A - C
+    assert utils.matrix_is_zero(zero)

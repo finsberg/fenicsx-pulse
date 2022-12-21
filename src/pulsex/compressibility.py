@@ -11,10 +11,10 @@ from . import exceptions
 class Compressibility(abc.ABC):
     @abc.abstractmethod
     def strain_energy(self, J: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
-        ...
+        pass
 
     def register(self, *args, **kwargs) -> None:
-        ...
+        pass
 
 
 @dataclass(slots=True)

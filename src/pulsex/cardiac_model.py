@@ -18,7 +18,7 @@ class CardiacModel:
         self.compressibility.register(p)
         # If active strain we would need to get the elastic
         # part of the deformation gradient
-        Fe = self.active.F(F)
+        Fe = self.active.Fe(F)
         J = kinematics.Jacobian(Fe)
         return (
             self.material.strain_energy(Fe)

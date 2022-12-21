@@ -60,7 +60,7 @@ class ActiveStress(ActiveModel):
         """The active stress"""
         return self.T_ref * self.activation
 
-    def F(self, F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
+    def Fe(self, F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
         return F
 
     def strain_energy(self, F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
