@@ -19,3 +19,10 @@ jobs:
 
       - name: Run tests
         run: python3 -m pytest -v
+
+      - name: Coverage report
+        if: github.ref == 'refs/heads/main'
+        uses: codecov/codecov-action@v3
+        with:
+          fail_ci_if_error: true
+          files: ./coverage.xml
