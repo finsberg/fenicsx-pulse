@@ -12,6 +12,7 @@ lmbda
 multiplicatively
 nabla
 ndarray
+neohookean
 Piola
 pulsex
 subplus

@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 import ufl
 from pulsex import kinematics
+from pulsex.active_model import Passive
 from pulsex.active_stress import ActiveStress
 
 
@@ -27,7 +28,7 @@ def test_transversely_active_stress(eta, Ta, mesh, u) -> None:
     F = kinematics.DeformationGradient(u)
     W = active_model.strain_energy(F)
 
-    assert active_model.F(F) is F
+    assert active_model.Fe(F) is F
     active_model.activation.value = Ta
 
     assert np.isclose(
@@ -44,3 +45,15 @@ def test_transversely_active_stress(eta, Ta, mesh, u) -> None:
         dolfinx.fem.assemble_scalar(dolfinx.fem.form(active_model.Ta * ufl.dx)),
         2 * Ta,
     )
+
+
+def test_Passive(u) -> None:
+
+    active_model = Passive()
+
+    u.interpolate(lambda x: x)
+    F = kinematics.DeformationGradient(u)
+
+    assert active_model.Fe(F) is F
+    W = active_model.strain_energy(F)
+    assert np.isclose(dolfinx.fem.assemble_scalar(dolfinx.fem.form(W * ufl.dx)), 0.0)

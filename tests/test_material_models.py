@@ -55,3 +55,60 @@ def test_holzapfel_ogden(params_func, expected_value, mesh, u) -> None:
     psi = model.strain_energy(F)
     value = dolfinx.fem.assemble_scalar(dolfinx.fem.form(psi * ufl.dx))
     assert math.isclose(value, expected_value)
+
+
+def test_holzapfel_ogden_invalid_range():
+    with pytest.raises(pulsex.exceptions.InvalidRangeError):
+        pulsex.HolzapfelOgden(a=-1.0)
+
+
+@pytest.mark.parametrize(
+    "params, attr",
+    (
+        ({"a_f": 1}, "f0"),
+        ({"a_s": 1}, "s0"),
+        ({"a_fs": 1}, "f0 and/or s0"),
+    ),
+)
+def test_holzapfel_ogden_raises_MissingModelAttribute(params, attr):
+    with pytest.raises(pulsex.exceptions.MissingModelAttribute) as e:
+        pulsex.HolzapfelOgden(**params)
+    assert e.value == pulsex.exceptions.MissingModelAttribute(
+        attr=attr,
+        model="HolzapfelOgden",
+    )
+
+
+def test_holzapfel_ogden_neohookean(u):
+    model = pulsex.HolzapfelOgden(a=1.0)
+    u.interpolate(lambda x: x / 10)
+    F = pulsex.kinematics.DeformationGradient(u)
+    psi = model.strain_energy(F)
+    value = dolfinx.fem.assemble_scalar(dolfinx.fem.form(psi * ufl.dx))
+    # F = I + 0.1 I, C = 1.21 I, I1= 3*1.21
+    # psi = (a / 2) * (I1 - 3) = 0.5 (3 * 1.21 - 3) = 0.315
+    assert math.isclose(value, 0.315)
+
+
+def test_holzapfel_ogden_pure_fiber(u, mesh):
+    f0 = dolfinx.fem.Constant(mesh, (1.0, 0.0, 0.0))
+    model = pulsex.HolzapfelOgden(a_f=1.0, f0=f0)
+    u.interpolate(lambda x: x / 10)
+    F = pulsex.kinematics.DeformationGradient(u)
+    psi = model.strain_energy(F)
+    value = dolfinx.fem.assemble_scalar(dolfinx.fem.form(psi * ufl.dx))
+    # F = I + 0.1 I, C = 1.21 I, I4f = 1.21
+    # psi = (a_f / 2) * (I4 - 1)**2 = 0.5 * 0.21**2
+    assert math.isclose(value, 0.5 * 0.21**2)
+
+
+def test_holzapfel_ogden_pure_fiber_sheets(u, mesh):
+    f0 = dolfinx.fem.Constant(mesh, (1.0, 0.0, 0.0))
+    model = pulsex.HolzapfelOgden(a_fs=1.0, f0=f0, s0=f0)
+    u.interpolate(lambda x: x / 10)
+    F = pulsex.kinematics.DeformationGradient(u)
+    psi = model.strain_energy(F)
+    value = dolfinx.fem.assemble_scalar(dolfinx.fem.form(psi * ufl.dx))
+    # F = I + 0.1 I, = 1.1 -> I8fs = 1.21
+    # psi = (a_f / 2) * I8fs**2 = 0.5 * 1.21**2
+    assert math.isclose(value, 0.5 * 1.21**2)

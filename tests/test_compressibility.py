@@ -2,6 +2,7 @@ import math
 
 import dolfinx
 import pulsex
+import pytest
 import ufl
 
 
@@ -16,6 +17,15 @@ def test_Incompressible(u, P1) -> None:
     psi = comp.strain_energy(J)
     value = dolfinx.fem.assemble_scalar(dolfinx.fem.form(psi * ufl.dx))
     assert math.isclose(value, 3.14 * (8 - 1))
+
+
+def test_Incompressible_with_missing_pressure_raises_MissingModelAttribute(u) -> None:
+    u.interpolate(lambda x: x)
+    F = pulsex.kinematics.DeformationGradient(u)
+    J = pulsex.kinematics.Jacobian(F)
+    comp = pulsex.compressibility.Incompressible()
+    with pytest.raises(pulsex.exceptions.MissingModelAttribute):
+        comp.strain_energy(J)
 
 
 def test_Compressible(u) -> None:
