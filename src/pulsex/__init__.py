@@ -20,7 +20,12 @@ from .cardiac_model import CardiacModel
 from . import active_model
 from . import active_stress
 from .active_stress import ActiveStress
-
+from . import geometry
+from .geometry import Geometry
+from . import boundary_conditions
+from .boundary_conditions import NeumannBC, RobinBC, BoundaryConditions
+from . import mechanicsproblem
+from .mechanicsproblem import MechanicsProblem
 from .linear_elastic import LinearElastic
 from .holzapfelogden import HolzapfelOgden
 
@@ -41,4 +46,12 @@ __all__ = [
     "active_model",
     "active_stress",
     "ActiveStress",
+    "geometry",
+    "Geometry",
+    "NeumannBC",
+    "RobinBC",
+    "boundary_conditions",
+    "mechanicsproblem",
+    "MechanicsProblem",
+    "BoundaryConditions",
 ]

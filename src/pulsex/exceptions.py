@@ -141,3 +141,8 @@ class MissingModelAttribute(AttributeError, PulsexException):
 
     def __str__(self) -> str:
         return f"Missing required attributed {self.attr!r} for model {self.model!r}"
+
+
+class MeshTagNotFoundError(PulsexException):
+    def __str__(self) -> str:
+        return "No mesh tags found"
