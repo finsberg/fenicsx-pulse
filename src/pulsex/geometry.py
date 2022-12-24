@@ -1,11 +1,14 @@
 import typing
 from dataclasses import dataclass
 from dataclasses import field
+from pathlib import Path
 from typing import NamedTuple
 
 import dolfinx
 import numpy as np
 import ufl
+
+from . import exceptions
 
 
 class Marker(NamedTuple):
@@ -34,15 +37,26 @@ class Geometry:
             facets = dolfinx.mesh.locate_entities(self.mesh, dim, locator)
             facet_indices.append(facets)
             facet_markers.append(np.full_like(facets, marker))
-        self._facet_indices = np.hstack(facet_indices).astype(np.int32)
-        self._facet_markers = np.hstack(facet_markers).astype(np.int32)
-        self._sorted_facets = np.argsort(self._facet_indices)
 
+        hstack = lambda x: np.array(x) if len(x) == 0 else np.hstack(x).astype(np.int32)
+        self._facet_indices = hstack(facet_indices)
+        self._facet_markers = hstack(facet_markers)
+        self._sorted_facets = np.argsort(self._facet_indices)
+        entities = (
+            []
+            if len(self._sorted_facets) == 0
+            else self._facet_indices[self._sorted_facets]
+        )
+        values = (
+            []
+            if len(self._sorted_facets) == 0
+            else self._facet_markers[self._sorted_facets]
+        )
         self.facet_tags = dolfinx.mesh.meshtags(
             self.mesh,
             self.facet_dimension,
-            self._facet_indices[self._sorted_facets],
-            self._facet_markers[self._sorted_facets],
+            entities,
+            values,
         )
         self.dx = ufl.Measure("dx", domain=self.mesh, metadata=self.metadata)
         self.ds = ufl.Measure(
@@ -61,8 +75,14 @@ class Geometry:
         return self.mesh.topology.dim
 
     def dump_mesh_tags(self, fname: str) -> None:
+        if self.facet_tags.values.size == 0:
+            raise exceptions.MeshTagNotFoundError
         self.mesh.topology.create_connectivity(self.facet_dimension, self.dim)
-        with dolfinx.io.XDMFFile(self.mesh.comm, fname, "w") as xdmf:
+        with dolfinx.io.XDMFFile(
+            self.mesh.comm,
+            Path(fname).with_suffix(".xdmf"),
+            "w",
+        ) as xdmf:
             xdmf.write_mesh(self.mesh)
             xdmf.write_meshtags(self.facet_tags)
 
