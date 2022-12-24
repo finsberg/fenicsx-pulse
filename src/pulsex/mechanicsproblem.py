@@ -85,16 +85,13 @@ class MechanicsProblem:
         external_work = []
 
         for neumann in self.bcs.neumann:
-
             n = neumann.traction * ufl.cofac(F) * N
             external_work.append(ufl.inner(v, n) * ds(neumann.marker))
 
         for robin in self.bcs.robin:
-
             external_work.append(ufl.inner(robin.value * u, v) * ds(robin.marker))
 
         for body_force in self.bcs.body_force:
-
             external_work.append(
                 -ufl.derivative(ufl.inner(body_force, u) * dx, u, v),
             )

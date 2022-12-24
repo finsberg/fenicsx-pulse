@@ -1,8 +1,11 @@
+allclose
 allreduce
 argsort
 astype
 atol
 cofac
+dirichletbc
+dofs
 dolfinx
 fenics
 finsberg
