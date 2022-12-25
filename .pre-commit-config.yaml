@@ -45,3 +45,8 @@ repos:
     hooks:
       - id: cspell
         files: src/|docs|tests|README.md
+
+  - repo: https://github.com/kynan/nbstripout
+    rev: 0.6.1
+    hooks:
+      - id: nbstripout

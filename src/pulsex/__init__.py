@@ -21,7 +21,7 @@ from . import active_model
 from . import active_stress
 from .active_stress import ActiveStress
 from . import geometry
-from .geometry import Geometry
+from .geometry import Geometry, Marker
 from . import boundary_conditions
 from .boundary_conditions import NeumannBC, RobinBC, BoundaryConditions
 from . import mechanicsproblem
@@ -54,4 +54,5 @@ __all__ = [
     "mechanicsproblem",
     "MechanicsProblem",
     "BoundaryConditions",
+    "Marker",
 ]
