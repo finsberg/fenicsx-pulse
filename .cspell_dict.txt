@@ -26,6 +26,7 @@ ndarray
 neohookean
 Neumann
 numpy
+Paraview
 petsc
 Piola
 pulsex
