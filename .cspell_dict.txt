@@ -8,6 +8,8 @@ dirichletbc
 dofs
 dolfinx
 fenics
+fenicsx
+fenicsx_pulse
 finsberg
 gradu
 Holzapfel
@@ -29,7 +31,6 @@ numpy
 Paraview
 petsc
 Piola
-pulsex
 rtol
 subplus
 varepsilon

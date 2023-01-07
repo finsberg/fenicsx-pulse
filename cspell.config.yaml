@@ -1,9 +1,9 @@
 dictionaryDefinitions:
-  - name: pulsex
+  - name: fenicsx_pulse
     path: .cspell_dict.txt
     addWords: true
 dictionaries:
-  - pulsex
+  - fenicsx_pulse
 ignoreWords: [
     quickstart,
     toctree,

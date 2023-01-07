@@ -4,9 +4,9 @@ import dolfinx
 import numpy as np
 import pytest
 import ufl
-from pulsex import kinematics
-from pulsex.active_model import Passive
-from pulsex.active_stress import ActiveStress
+from fenicsx_pulse import kinematics
+from fenicsx_pulse.active_model import Passive
+from fenicsx_pulse.active_stress import ActiveStress
 
 
 def W_fun(Ta: float, eta: float = 0.0) -> float:

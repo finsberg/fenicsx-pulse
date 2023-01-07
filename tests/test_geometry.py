@@ -1,11 +1,11 @@
+import fenicsx_pulse
 import numpy as np
-import pulsex
 import pytest
 import ufl
 
 
 def test_geometry_empty_initialization(mesh):
-    geo = pulsex.Geometry(mesh=mesh)
+    geo = fenicsx_pulse.Geometry(mesh=mesh)
     assert geo.facet_tags.values.size == 0
     assert geo.facet_tags.indices.size == 0
     assert geo._facet_indices.size == 0
@@ -24,7 +24,7 @@ def test_geometry_with_boundary_and_metadata(mesh):
         (2, 2, lambda x: np.isclose(x[0], 1)),
     ]
     metadata = {"quadrature_degree": 4}
-    geo = pulsex.Geometry(
+    geo = fenicsx_pulse.Geometry(
         mesh=mesh,
         boundaries=boundaries,
         metadata=metadata,
@@ -45,7 +45,7 @@ def test_geometry_with_boundary_and_metadata(mesh):
 
 
 def test_dump_mesh_tags(tmp_path, mesh):
-    geo = pulsex.Geometry(
+    geo = fenicsx_pulse.Geometry(
         mesh=mesh,
         boundaries=[(1, 2, lambda x: np.isclose(x[0], 0))],
     )
@@ -57,6 +57,6 @@ def test_dump_mesh_tags(tmp_path, mesh):
 
 
 def test_dump_mesh_tags_raises_MeshTagNotFoundError(tmp_path, mesh):
-    geo = pulsex.Geometry(mesh=mesh)
-    with pytest.raises(pulsex.exceptions.MeshTagNotFoundError):
+    geo = fenicsx_pulse.Geometry(mesh=mesh)
+    with pytest.raises(fenicsx_pulse.exceptions.MeshTagNotFoundError):
         geo.dump_mesh_tags(tmp_path)

@@ -4,7 +4,7 @@ API Reference
 kinematics
 ----------
 
-.. automodule:: pulsex.kinematics
+.. automodule:: fenicsx_pulse.kinematics
     :members:
     :inherited-members:
 
@@ -12,7 +12,7 @@ kinematics
 invariants
 ----------
 
-.. automodule:: pulsex.invariants
+.. automodule:: fenicsx_pulse.invariants
     :members:
     :inherited-members:
 
@@ -20,15 +20,15 @@ invariants
 material_model
 --------------
 
-.. automodule:: pulsex.material_model
+.. automodule:: fenicsx_pulse.material_model
     :members:
     :inherited-members:
 
-.. automodule:: pulsex.linear_elastic
+.. automodule:: fenicsx_pulse.linear_elastic
     :members:
     :inherited-members:
 
-.. automodule:: pulsex.holzapfelogden
+.. automodule:: fenicsx_pulse.holzapfelogden
     :members:
     :inherited-members:
 
@@ -36,22 +36,22 @@ material_model
 active_model
 ------------
 
-.. automodule:: pulsex.active_model
+.. automodule:: fenicsx_pulse.active_model
     :members:
     :inherited-members:
 
-.. automodule:: pulsex.active_stress
+.. automodule:: fenicsx_pulse.active_stress
     :members:
     :inherited-members:
 
 compressibility
 ---------------
-.. automodule:: pulsex.compressibility
+.. automodule:: fenicsx_pulse.compressibility
     :members:
     :inherited-members:
 
 cardiac_model
 -------------
-.. automodule:: pulsex.cardiac_model
+.. automodule:: fenicsx_pulse.cardiac_model
     :members:
     :inherited-members:

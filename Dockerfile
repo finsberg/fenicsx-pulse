@@ -1,5 +1,5 @@
 # Use github pages for docker image
-FROM ghcr.io/finsberg/pulsex:v0.1.1
+FROM ghcr.io/finsberg/fenicsx-pulse:v0.1.1
 
 # Create user with a home directory
 ARG NB_USER

@@ -16,7 +16,7 @@ def matrix_is_zero(A: ufl.core.expr.Expr) -> bool:
 
 
 def IsochoricDeformationGradient(u) -> ufl.core.expr.Expr:
-    from pulsex import kinematics
+    from fenicsx_pulse import kinematics
 
     return kinematics.IsochoricDeformationGradient(kinematics.DeformationGradient(u))
 

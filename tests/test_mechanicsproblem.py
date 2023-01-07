@@ -1,6 +1,6 @@
 import dolfinx
+import fenicsx_pulse
 import numpy as np
-import pulsex
 from petsc4py import PETSc
 
 
@@ -12,22 +12,22 @@ def test_MechanicsProblem_and_boundary_conditions(mesh):
         (3, 2, lambda x: np.isclose(x[1], 0)),
         (4, 2, lambda x: np.isclose(x[1], 1)),
     ]
-    geo = pulsex.Geometry(
+    geo = fenicsx_pulse.Geometry(
         mesh=mesh,
         boundaries=boundaries,
         metadata={"quadrature_degree": 4},
     )
 
-    material_params = pulsex.HolzapfelOgden.transversely_isotropic_parameters()
+    material_params = fenicsx_pulse.HolzapfelOgden.transversely_isotropic_parameters()
     f0 = dolfinx.fem.Constant(mesh, PETSc.ScalarType((1.0, 0.0, 0.0)))
     s0 = dolfinx.fem.Constant(mesh, PETSc.ScalarType((0.0, 1.0, 0.0)))
-    material = pulsex.HolzapfelOgden(f0=f0, s0=s0, **material_params)
+    material = fenicsx_pulse.HolzapfelOgden(f0=f0, s0=s0, **material_params)
 
     Ta = dolfinx.fem.Constant(mesh, PETSc.ScalarType(0.0))
-    active_model = pulsex.ActiveStress(f0, activation=Ta)
-    comp_model = pulsex.Incompressible()
+    active_model = fenicsx_pulse.ActiveStress(f0, activation=Ta)
+    comp_model = fenicsx_pulse.Incompressible()
 
-    model = pulsex.CardiacModel(
+    model = fenicsx_pulse.CardiacModel(
         material=material,
         active=active_model,
         compressibility=comp_model,
@@ -44,21 +44,21 @@ def test_MechanicsProblem_and_boundary_conditions(mesh):
         return [dolfinx.fem.dirichletbc(u_fixed, dofs, state_space.sub(0))]
 
     traction = dolfinx.fem.Constant(mesh, PETSc.ScalarType(0.0))
-    neumann = pulsex.NeumannBC(traction=traction, marker=2)
+    neumann = fenicsx_pulse.NeumannBC(traction=traction, marker=2)
 
     robin_value = dolfinx.fem.Constant(mesh, PETSc.ScalarType(0.0))
-    robin = pulsex.RobinBC(value=robin_value, marker=3)
+    robin = fenicsx_pulse.RobinBC(value=robin_value, marker=3)
 
     body_force = dolfinx.fem.Constant(mesh, PETSc.ScalarType((0.0, 0.0, 0.0)))
 
-    bcs = pulsex.BoundaryConditions(
+    bcs = fenicsx_pulse.BoundaryConditions(
         dirichlet=(dirichlet_bc,),
         neumann=(neumann,),
         robin=(robin,),
         body_force=(body_force,),
     )
 
-    problem = pulsex.MechanicsProblem(model=model, geometry=geo, bcs=bcs)
+    problem = fenicsx_pulse.MechanicsProblem(model=model, geometry=geo, bcs=bcs)
     problem.solve()
 
     u = problem.state.sub(0).collapse()

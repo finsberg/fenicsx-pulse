@@ -1,7 +1,7 @@
 # Book settings
 # Learn more at https://jupyterbook.org/customize/config.html
 
-title: pulsex
+title: fenicsx_pulse
 author: Henrik Finsberg
 logo: "docs/logo.png"
 copyright: "2022"
@@ -14,7 +14,7 @@ execute:
 
 # Information about where the book exists on the web
 repository:
-  url: https://github.com/finsberg/pulsex # Online location of your book
+  url: https://github.com/finsberg/fenicsx_pulse # Online location of your book
   branch: main
 
 html:
