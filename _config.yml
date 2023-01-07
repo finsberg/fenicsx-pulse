@@ -37,4 +37,4 @@ sphinx:
   - 'sphinx.ext.napoleon'
   - 'sphinx.ext.viewcode'
 
-exclude_patterns: [".pytest_cache/*"]
+exclude_patterns: [".pytest_cache/*", ".github/*"]
