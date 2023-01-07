@@ -20,6 +20,22 @@ jobs:
       - name: Run tests
         run: python3 -m pytest -v
 
-      - name: Coverage report
+      - name: Extract Coverage
+        run: |
+          python3 -m coverage report | sed 's/^/    /' >> $GITHUB_STEP_SUMMARY
+          python3 -m coverage json
+          export TOTAL=$(python -c "import json;print(json.load(open('coverage.json'))['totals']['percent_covered_display'])")
+          echo "total=$TOTAL" >> $GITHUB_ENV
+
+      - name: Create coverage Badge
         if: github.ref == 'refs/heads/main'
-        uses: codecov/codecov-action@v3
+        uses: schneegans/dynamic-badges-action@v1.6.0
+        with:
+          auth: ${{ secrets.GIST_SECRET }}
+          gistID: a7290de789564f03eb6b1ee122fce423
+          filename: fenicsx-pulse-coverage.json
+          label: Coverage
+          message: ${{ env.total }}%
+          minColorRange: 50
+          maxColorRange: 90
+          valColorRange: ${{ env.total }}
