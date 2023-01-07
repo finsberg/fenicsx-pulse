@@ -24,7 +24,7 @@ jobs:
         run: |
           python3 -m coverage report | sed 's/^/    /' >> $GITHUB_STEP_SUMMARY
           python3 -m coverage json
-          export TOTAL=$(python -c "import json;print(json.load(open('coverage.json'))['totals']['percent_covered_display'])")
+          export TOTAL=$(python3 -c "import json;print(json.load(open('coverage.json'))['totals']['percent_covered_display'])")
           echo "total=$TOTAL" >> $GITHUB_ENV
 
       - name: Create coverage Badge
