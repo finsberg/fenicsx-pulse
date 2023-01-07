@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0.0", "wheel"]
 
 [project]
 name = "fenicsx-pulse"
-version = "0.1.1"
+version = "0.1.2"
 description = "Next generation cardiac mechanics solver based on FEniCSx"
 authors = [{name = "Henrik Finsberg", email = "henriknf@simula.no"}]
 license = {file = "LICENSE"}
