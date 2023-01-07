@@ -28,11 +28,11 @@ If you are using FEniCS please check out [`pulse`](https://github.com/finsberg/p
 
 To install `fenicsx_pulse` you need to first [install FEniCSx](https://github.com/FEniCS/dolfinx#installation). Next you can install `fenicsx_pulse` via pip
 ```
-python3 -m pip install fenicsx_pulse
+python3 -m pip install fenicsx-pulse
 ```
 We also provide a pre-built docker image with FEniCSx and `fenicsx_pulse` installed. You pull this image using the command
 ```
-docker pull ghcr.io/finsberg/fenicsx_pulse:v0.1.1
+docker pull ghcr.io/finsberg/fenicsx-pulse:v0.1.1
 ```
 
 ## Simple Example
