@@ -16,8 +16,8 @@ RUN python3 -m pip install pip setuptools --upgrade
 WORKDIR /tmp/
 
 # Install the Python-module
-RUN git clone --branch ${REPO_BRANCH} --single-branch https://github.com/finsberg/pulsex
-RUN python3 -m pip install ./pulsex[all]
+RUN git clone --branch ${REPO_BRANCH} --single-branch https://github.com/finsberg/fenicsx-pulse
+RUN python3 -m pip install  --no-cache-dir ./fenicsx-pulse[all]
 
 
 # We remove the contents of the temporary directory to minimize the size of the image

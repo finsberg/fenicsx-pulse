@@ -3,8 +3,8 @@ import numpy as np
 import pytest
 import ufl
 import utils
-from pulsex import invariants
-from pulsex import kinematics
+from fenicsx_pulse import invariants
+from fenicsx_pulse import kinematics
 
 
 @pytest.mark.parametrize(

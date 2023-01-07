@@ -5,8 +5,6 @@ import dolfinx
 import numpy as np
 from mpi4py import MPI
 
-from . import exceptions
-
 
 def check_value_greater_than(
     f: float | dolfinx.fem.Function | dolfinx.fem.Constant | np.ndarray,
@@ -41,7 +39,7 @@ def check_value_greater_than(
             bound,
         )
 
-    raise exceptions.PulsexException(  # pragma: no cover
+    raise PulseException(  # pragma: no cover
         f"Invalid type for f: {type(f)}. Expected 'float', "
         "'dolfinx.fem.Constant', 'numpy array' or 'dolfinx.fem.Function'",
     )
@@ -80,7 +78,7 @@ def check_value_lower_than(
             bound,
         )
 
-    raise exceptions.PulsexException(  # pragma: no cover
+    raise PulseException(  # pragma: no cover
         f"Invalid type for f: {type(f)}. Expected 'float', "
         "'dolfinx.fem.Constant', 'numpy array' or 'dolfinx.fem.Function'",
     )
@@ -118,12 +116,12 @@ def check_value_between(
     ) and check_value_lower_than(f, upper_bound, inclusive=inclusive)
 
 
-class PulsexException(Exception):
+class PulseException(Exception):
     pass
 
 
 @dataclass
-class InvalidRangeError(ValueError, PulsexException):
+class InvalidRangeError(ValueError, PulseException):
     name: str
     expected_range: tuple[float, float]
 
@@ -135,7 +133,7 @@ class InvalidRangeError(ValueError, PulsexException):
 
 
 @dataclass
-class MissingModelAttribute(AttributeError, PulsexException):
+class MissingModelAttribute(AttributeError, PulseException):
     attr: str
     model: str
 
@@ -143,6 +141,6 @@ class MissingModelAttribute(AttributeError, PulsexException):
         return f"Missing required attributed {self.attr!r} for model {self.model!r}"
 
 
-class MeshTagNotFoundError(PulsexException):
+class MeshTagNotFoundError(PulseException):
     def __str__(self) -> str:
         return "No mesh tags found"

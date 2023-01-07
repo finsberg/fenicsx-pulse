@@ -1,14 +1,15 @@
-[![MIT](https://img.shields.io/github/license/finsberg/pulsex)](https://github.com/finsberg/pulsex/blob/main/LICENSE)
-[![PyPI version](https://badge.fury.io/py/pulsex.svg)](https://pypi.org/project/pulsex/)
-[![Test package](https://github.com/finsberg/pulsex/actions/workflows/test_package_coverage.yml/badge.svg)](https://github.com/finsberg/pulsex/actions/workflows/test_package_coverage.yml)
-[![Pre-commit](https://github.com/finsberg/pulsex/actions/workflows/pre-commit.yml/badge.svg)](https://github.com/finsberg/pulsex/actions/workflows/pre-commit.yml)
-[![Deploy static content to Pages](https://github.com/finsberg/pulsex/actions/workflows/build_docs.yml/badge.svg)](https://github.com/finsberg/pulsex/actions/workflows/build_docs.yml)
+[![MIT](https://img.shields.io/github/license/finsberg/fenicsx-pulse)](https://github.com/finsberg/fenicsx-pulse/blob/main/LICENSE)
+[![PyPI version](https://badge.fury.io/py/fenicsx-pulse.svg)](https://pypi.org/project/fenicsx_pulse/)
+[![Test package](https://github.com/finsberg/fenicsx-pulse/actions/workflows/test_package_coverage.yml/badge.svg)](https://github.com/finsberg/fenicsx-pulse/actions/workflows/test_package_coverage.yml)
+[![Pre-commit](https://github.com/finsberg/fenicsx-pulse/actions/workflows/pre-commit.yml/badge.svg)](https://github.com/finsberg/fenicsx-pulse/actions/workflows/pre-commit.yml)
+[![Deploy static content to Pages](https://github.com/finsberg/fenicsx-pulse/actions/workflows/build_docs.yml/badge.svg)](https://github.com/finsberg/fenicsx-pulse/actions/workflows/build_docs.yml)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
-[![Create and publish a Docker image](https://github.com/finsberg/pulsex/actions/workflows/docker-image.yml/badge.svg)](https://github.com/finsberg/pulsex/pkgs/container/pulsex)
+[![Create and publish a Docker image](https://github.com/finsberg/fenicsx-pulse/actions/workflows/docker-image.yml/badge.svg)](https://github.com/finsberg/fenicsx-pulse/pkgs/container/fenicsx_pulse)
 
-# pulsex
 
-`pulsex` is a cardiac mechanics solver based on FEniCSx. It is a successor of [`pulse`](https://github.com/finsberg/pulse) which is a cardiac mechanics solver based on FEniCS.
+# fenicsx-pulse
+
+`fenicsx-pulse` is a cardiac mechanics solver based on FEniCSx. It is a successor of [`pulse`](https://github.com/finsberg/pulse) which is a cardiac mechanics solver based on FEniCS.
 
 ---
 
@@ -20,18 +21,18 @@ If you are using FEniCS please check out [`pulse`](https://github.com/finsberg/p
 
 ---
 
-* Documentation: https://finsberg.github.io/pulsex/
-* Source code: https://github.com/finsberg/pulsex
+* Documentation: https://finsberg.github.io/fenicsx-pulse/
+* Source code: https://github.com/finsberg/fenicsx-pulse
 
 ## Install
 
-To install `pulsex` you need to first [install FEniCSx](https://github.com/FEniCS/dolfinx#installation). Next you can install `pulsex` via pip
+To install `fenicsx_pulse` you need to first [install FEniCSx](https://github.com/FEniCS/dolfinx#installation). Next you can install `fenicsx_pulse` via pip
 ```
-python3 -m pip install pulsex
+python3 -m pip install fenicsx_pulse
 ```
-We also provide a pre-built docker image with FEniCSx and `pulsex` installed. You pull this image using the command
+We also provide a pre-built docker image with FEniCSx and `fenicsx_pulse` installed. You pull this image using the command
 ```
-docker pull ghcr.io/finsberg/pulsex:v0.1.1
+docker pull ghcr.io/finsberg/fenicsx_pulse:v0.1.1
 ```
 
 ## Simple Example
@@ -39,7 +40,7 @@ docker pull ghcr.io/finsberg/pulsex:v0.1.1
 ```python
 import dolfinx
 import numpy as np
-import pulsex
+import fenicsx_pulse
 from mpi4py import MPI
 from petsc4py import PETSc
 
@@ -48,31 +49,31 @@ mesh = dolfinx.mesh.create_unit_cube(MPI.COMM_WORLD, 3, 3, 3)
 
 # Specific list of boundary markers
 boundaries = [
-    pulsex.Marker(marker=1, dim=2, locator=lambda x: np.isclose(x[0], 0)),
-    pulsex.Marker(marker=2, dim=2, locator=lambda x: np.isclose(x[0], 1)),
+    fenicsx_pulse.Marker(marker=1, dim=2, locator=lambda x: np.isclose(x[0], 0)),
+    fenicsx_pulse.Marker(marker=2, dim=2, locator=lambda x: np.isclose(x[0], 1)),
 ]
 # Create geometry
-geo = pulsex.Geometry(
+geo = fenicsx_pulse.Geometry(
     mesh=mesh,
     boundaries=boundaries,
     metadata={"quadrature_degree": 4},
 )
 
 # Create passive material model
-material_params = pulsex.HolzapfelOgden.transversely_isotropic_parameters()
+material_params = fenicsx_pulse.HolzapfelOgden.transversely_isotropic_parameters()
 f0 = dolfinx.fem.Constant(mesh, PETSc.ScalarType((1.0, 0.0, 0.0)))
 s0 = dolfinx.fem.Constant(mesh, PETSc.ScalarType((0.0, 1.0, 0.0)))
-material = pulsex.HolzapfelOgden(f0=f0, s0=s0, **material_params)
+material = fenicsx_pulse.HolzapfelOgden(f0=f0, s0=s0, **material_params)
 
 # Create model for active contraction
 Ta = dolfinx.fem.Constant(mesh, PETSc.ScalarType(0.0))
-active_model = pulsex.ActiveStress(f0, activation=Ta)
+active_model = fenicsx_pulse.ActiveStress(f0, activation=Ta)
 
 # Create model for compressibility
-comp_model = pulsex.Incompressible()
+comp_model = fenicsx_pulse.Incompressible()
 
 # Create Cardiac Model
-model = pulsex.CardiacModel(
+model = fenicsx_pulse.CardiacModel(
     material=material,
     active=active_model,
     compressibility=comp_model,
@@ -91,13 +92,13 @@ def dirichlet_bc(
 
 # Use a traction on the opposite boundary
 traction = dolfinx.fem.Constant(mesh, PETSc.ScalarType(-1.0))
-neumann = pulsex.NeumannBC(traction=traction, marker=2)
+neumann = fenicsx_pulse.NeumannBC(traction=traction, marker=2)
 
 # Collect all boundary conditions
-bcs = pulsex.BoundaryConditions(dirichlet=(dirichlet_bc,), neumann=(neumann,))
+bcs = fenicsx_pulse.BoundaryConditions(dirichlet=(dirichlet_bc,), neumann=(neumann,))
 
 # Create mechanics problem
-problem = pulsex.MechanicsProblem(model=model, geometry=geo, bcs=bcs)
+problem = fenicsx_pulse.MechanicsProblem(model=model, geometry=geo, bcs=bcs)
 
 # Set a value for the active stress
 Ta.value = 2.0

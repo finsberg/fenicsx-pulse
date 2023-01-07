@@ -1,7 +1,7 @@
 import pytest
 import ufl
 import utils
-from pulsex import kinematics
+from fenicsx_pulse import kinematics
 
 
 def test_SecondOrderIdentity(u) -> None:

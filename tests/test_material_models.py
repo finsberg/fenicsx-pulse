@@ -1,7 +1,7 @@
 import math
 
 import dolfinx
-import pulsex
+import fenicsx_pulse
 import pytest
 import ufl
 import utils
@@ -12,10 +12,10 @@ def test_linear_elastic_model(obj_str, mesh, P1, u) -> None:
     E = 2.0
     _nu = 0.2
     nu = utils.float2object(f=_nu, obj_str=obj_str, mesh=mesh, V=P1)
-    model = pulsex.LinearElastic(E=E, nu=nu)
+    model = fenicsx_pulse.LinearElastic(E=E, nu=nu)
 
     u.interpolate(lambda x: x)
-    F = pulsex.kinematics.DeformationGradient(u)
+    F = fenicsx_pulse.kinematics.DeformationGradient(u)
     # F = 2I, e = I, tr(e) = 3
     # sigma = (E / (1 + nu)) * (e + (nu / (1 - 2 * nu)) * tr(e) * I
     # sigma = (E / (1 + nu)) * (1 + (nu / (1 - 2 * nu)) * 3) * I
@@ -31,26 +31,29 @@ def test_linear_elastic_model_with_invalid_range(obj_str, mesh, P1) -> None:
     _nu = 0.5
     nu = utils.float2object(f=_nu, obj_str=obj_str, mesh=mesh, V=P1)
 
-    with pytest.raises(pulsex.exceptions.InvalidRangeError):
-        pulsex.LinearElastic(E=E, nu=nu)
+    with pytest.raises(fenicsx_pulse.exceptions.InvalidRangeError):
+        fenicsx_pulse.LinearElastic(E=E, nu=nu)
 
 
 @pytest.mark.parametrize(
     "params_func, expected_value",
     (
-        (pulsex.HolzapfelOgden.orthotropic_parameters, 1.2352937267),
-        (pulsex.HolzapfelOgden.partly_orthotropic_parameters, 1.435870273157),
-        (pulsex.HolzapfelOgden.transversely_isotropic_parameters, 53.6468124607508),
+        (fenicsx_pulse.HolzapfelOgden.orthotropic_parameters, 1.2352937267),
+        (fenicsx_pulse.HolzapfelOgden.partly_orthotropic_parameters, 1.435870273157),
+        (
+            fenicsx_pulse.HolzapfelOgden.transversely_isotropic_parameters,
+            53.6468124607508,
+        ),
     ),
 )
 def test_holzapfel_ogden(params_func, expected_value, mesh, u) -> None:
     params = params_func()
     f0 = dolfinx.fem.Constant(mesh, (1.0, 0.0, 0.0))
     s0 = dolfinx.fem.Constant(mesh, (0.0, 1.0, 0.0))
-    model = pulsex.HolzapfelOgden(f0=f0, s0=s0, **params)
+    model = fenicsx_pulse.HolzapfelOgden(f0=f0, s0=s0, **params)
 
     u.interpolate(lambda x: x / 10)
-    F = pulsex.kinematics.DeformationGradient(u)
+    F = fenicsx_pulse.kinematics.DeformationGradient(u)
     # F = I + 0.1 I, C = 1.21 I
     psi = model.strain_energy(F)
     value = dolfinx.fem.assemble_scalar(dolfinx.fem.form(psi * ufl.dx))
@@ -58,8 +61,8 @@ def test_holzapfel_ogden(params_func, expected_value, mesh, u) -> None:
 
 
 def test_holzapfel_ogden_invalid_range():
-    with pytest.raises(pulsex.exceptions.InvalidRangeError):
-        pulsex.HolzapfelOgden(a=-1.0)
+    with pytest.raises(fenicsx_pulse.exceptions.InvalidRangeError):
+        fenicsx_pulse.HolzapfelOgden(a=-1.0)
 
 
 @pytest.mark.parametrize(
@@ -71,18 +74,18 @@ def test_holzapfel_ogden_invalid_range():
     ),
 )
 def test_holzapfel_ogden_raises_MissingModelAttribute(params, attr):
-    with pytest.raises(pulsex.exceptions.MissingModelAttribute) as e:
-        pulsex.HolzapfelOgden(**params)
-    assert e.value == pulsex.exceptions.MissingModelAttribute(
+    with pytest.raises(fenicsx_pulse.exceptions.MissingModelAttribute) as e:
+        fenicsx_pulse.HolzapfelOgden(**params)
+    assert e.value == fenicsx_pulse.exceptions.MissingModelAttribute(
         attr=attr,
         model="HolzapfelOgden",
     )
 
 
 def test_holzapfel_ogden_neohookean(u):
-    model = pulsex.HolzapfelOgden(a=1.0)
+    model = fenicsx_pulse.HolzapfelOgden(a=1.0)
     u.interpolate(lambda x: x / 10)
-    F = pulsex.kinematics.DeformationGradient(u)
+    F = fenicsx_pulse.kinematics.DeformationGradient(u)
     psi = model.strain_energy(F)
     value = dolfinx.fem.assemble_scalar(dolfinx.fem.form(psi * ufl.dx))
     # F = I + 0.1 I, C = 1.21 I, I1= 3*1.21
@@ -92,9 +95,9 @@ def test_holzapfel_ogden_neohookean(u):
 
 def test_holzapfel_ogden_pure_fiber(u, mesh):
     f0 = dolfinx.fem.Constant(mesh, (1.0, 0.0, 0.0))
-    model = pulsex.HolzapfelOgden(a_f=1.0, f0=f0)
+    model = fenicsx_pulse.HolzapfelOgden(a_f=1.0, f0=f0)
     u.interpolate(lambda x: x / 10)
-    F = pulsex.kinematics.DeformationGradient(u)
+    F = fenicsx_pulse.kinematics.DeformationGradient(u)
     psi = model.strain_energy(F)
     value = dolfinx.fem.assemble_scalar(dolfinx.fem.form(psi * ufl.dx))
     # F = I + 0.1 I, C = 1.21 I, I4f = 1.21
@@ -104,9 +107,9 @@ def test_holzapfel_ogden_pure_fiber(u, mesh):
 
 def test_holzapfel_ogden_pure_fiber_sheets(u, mesh):
     f0 = dolfinx.fem.Constant(mesh, (1.0, 0.0, 0.0))
-    model = pulsex.HolzapfelOgden(a_fs=1.0, f0=f0, s0=f0)
+    model = fenicsx_pulse.HolzapfelOgden(a_fs=1.0, f0=f0, s0=f0)
     u.interpolate(lambda x: x / 10)
-    F = pulsex.kinematics.DeformationGradient(u)
+    F = fenicsx_pulse.kinematics.DeformationGradient(u)
     psi = model.strain_energy(F)
     value = dolfinx.fem.assemble_scalar(dolfinx.fem.form(psi * ufl.dx))
     # F = I + 0.1 I, = 1.1 -> I8fs = 1.21
