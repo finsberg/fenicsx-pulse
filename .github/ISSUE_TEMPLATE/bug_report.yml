@@ -1,0 +1,117 @@
+name: "🐛 Bug Report"
+description: Create a new ticket for a bug.
+title: "🐛 [BUG] - <title>"
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for taking the time to submit your feedback!
+  - type: textarea
+    id: description
+    attributes:
+      label: "Description"
+      description: Please enter an explicit description of your issue
+      placeholder: Short and explicit description of your incident...
+      value: |
+        I get a TypeError when running my code
+    validations:
+      required: true
+
+  - type: textarea
+    id: reprod
+    attributes:
+      label: "Minimal working example"
+      description: Please provided a minimal example the reproduce the bug or provide a link to a repository where you have a reproducing example.
+      value: |
+        x = 1
+        y = "Hello"
+        z = x + y
+      render: python
+    validations:
+      required: true
+
+  - type: textarea
+    id: screenshot
+    attributes:
+      label: "Stack trace"
+      description: Copy the complete stack trace
+      value: |
+        python mwe.py
+        Traceback (most recent call last):
+          File "/Users/finsberg/local/src/fenicsx-pulse/mwe.py", line 3, in <module>
+            z = x + y
+        TypeError: unsupported operand type(s) for +: 'int' and 'str'
+      render: bash
+    validations:
+      required: false
+
+  - type: textarea
+    id: screenshot
+    attributes:
+      label: "Screenshots"
+      description: If applicable, add screenshots to help explain your problem.
+      value: |
+        ![DESCRIPTION](LINK.png)
+      render: bash
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: "Logs"
+      description: Please copy and paste any relevant log output.
+      render: bash
+    validations:
+      required: false
+
+  - type: textarea
+    id: dolfinx
+    attributes:
+      label: "dolfinx version"
+      description: What is the version of dolfinx. You can get the version by using the command `python3 -c 'import dolfinx; print(dolfinx.__version__)'`
+      value: |
+        0.6.0.0
+    validations:
+      required: true
+
+  - type: textarea
+    id: fenicsx-pulse
+    attributes:
+      label: "fenicsx-pulse version"
+      description: What is the version of fenicsx-pulse. You can get the version by using the command `python3 -c 'import fenicsx_pulse; print(fenicsx_pulse.__version__)'`
+      value: |
+        0.1.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: "OS"
+      description: What is the impacted environment ?
+      multiple: true
+      options:
+        - Windows
+        - Linux
+        - Mac
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: env
+    attributes:
+      label: "Environment"
+      description: How did you install dolfinx
+      multiple: true
+      options:
+        - From source
+        - Docker
+        - Conda
+        - Spack
+        - Ubuntu packages
+        - Other
+    validations:
+      required: true

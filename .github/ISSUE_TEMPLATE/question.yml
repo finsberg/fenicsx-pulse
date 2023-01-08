@@ -1,0 +1,35 @@
+name: Question
+description: Add information about what type of help you need
+title: "[Question]: "
+labels: ["question"]
+
+body:
+
+  - type: input
+    id: description
+    attributes:
+      label: Title
+      description: Add a title that described what you need help with
+      placeholder: I would like to do ... I have tried ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: "Logs"
+      description: Please copy and paste any relevant log output. This will be automatically formatted into code, so no need for backticks.
+      render: bash
+    validations:
+      required: false
+
+  - type: textarea
+    id: screenshot
+    attributes:
+      label: "Screenshots"
+      description: If applicable, add screenshots to help explain your problem.
+      value: |
+        ![DESCRIPTION](LINK.png)
+      render: bash
+    validations:
+      required: false
