@@ -1,0 +1,24 @@
+name: "Documentation"
+description: Suggest an idea or report an issue with the documentation site, https://finsberg.github.io/fenicsx-pulse
+labels: ["documentation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for taking the time to submit your feedback!
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Please provide a clear and concise description the idea or issue. The more information you can provide here, the better.
+      placeholder: I'd like to add a sample that does ...
+    validations:
+      required: true
+  - type: input
+    id: link
+    attributes:
+      label: Link to page
+      description: Please provide the URL to the associated documentation page, if applicable.
+      placeholder: e.g. https://finsberg.github.io/fenicsx-pulse/demo/unit_cube.html
+    validations:
+      required: false
