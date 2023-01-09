@@ -118,5 +118,4 @@ xdmf.write_function(p, 0.0)
 
 
 ## Contributing
-
-TBW
+See https://finsberg.github.io/fenicsx-pulse/CONTRIBUTING.html
