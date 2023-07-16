@@ -6,7 +6,6 @@ import ufl
 
 
 def test_CardiacModel(mesh, u):
-
     material_params = fenicsx_pulse.HolzapfelOgden.transversely_isotropic_parameters()
     f0 = dolfinx.fem.Constant(mesh, (1.0, 0.0, 0.0))
     s0 = dolfinx.fem.Constant(mesh, (0.0, 1.0, 0.0))
