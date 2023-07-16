@@ -6,6 +6,7 @@ from typing import NamedTuple
 
 import dolfinx
 import numpy as np
+import numpy.typing as npt
 import ufl
 
 from . import exceptions
@@ -14,7 +15,7 @@ from . import exceptions
 class Marker(NamedTuple):
     marker: int
     dim: int
-    locator: typing.Callable[[np.ndarray[np.float64]], bool]
+    locator: typing.Callable[[npt.NDArray[np.float64]], bool]
 
 
 @dataclass(slots=True)
@@ -22,10 +23,10 @@ class Geometry:
     mesh: dolfinx.mesh.Mesh
     boundaries: typing.Sequence[Marker] = ()
     metadata: dict[str, typing.Any] = field(default_factory=dict)
-    _facet_indices: np.ndarray[np.int32] = field(init=False, repr=False)
-    _facet_markers: np.ndarray[np.int32] = field(init=False, repr=False)
-    _sorted_facets: np.ndarray[np.int32] = field(init=False, repr=False)
-    facet_tags: dolfinx.mesh.MeshTagsMetaClass = field(init=False, repr=False)
+    _facet_indices: npt.NDArray[np.int32] = field(init=False, repr=False)
+    _facet_markers: npt.NDArray[np.int32] = field(init=False, repr=False)
+    _sorted_facets: npt.NDArray[np.int32] = field(init=False, repr=False)
+    facet_tags: dolfinx.mesh.MeshTags = field(init=False, repr=False)
     dx: ufl.Measure = field(init=False, repr=False)
     ds: ufl.Measure = field(init=False, repr=False)
 
@@ -33,7 +34,7 @@ class Geometry:
         facet_indices, facet_markers = [], []
 
         # TODO: Handle when dim is not 2
-        for (marker, dim, locator) in self.boundaries:
+        for marker, dim, locator in self.boundaries:
             facets = dolfinx.mesh.locate_entities(self.mesh, dim, locator)
             facet_indices.append(facets)
             facet_markers.append(np.full_like(facets, marker))
@@ -78,13 +79,14 @@ class Geometry:
         if self.facet_tags.values.size == 0:
             raise exceptions.MeshTagNotFoundError
         self.mesh.topology.create_connectivity(self.facet_dimension, self.dim)
+
         with dolfinx.io.XDMFFile(
             self.mesh.comm,
             Path(fname).with_suffix(".xdmf"),
             "w",
         ) as xdmf:
             xdmf.write_mesh(self.mesh)
-            xdmf.write_meshtags(self.facet_tags)
+            xdmf.write_meshtags(self.facet_tags, x=self.mesh.geometry)
 
     @property
     def markers(self) -> tuple[int, ...]:

@@ -2,7 +2,8 @@ import typing
 from dataclasses import dataclass
 from dataclasses import field
 
-import dolfinx
+import dolfinx.fem.petsc
+import dolfinx.nls.petsc
 import ufl
 
 from . import kinematics
@@ -22,7 +23,7 @@ class MechanicsProblem:
     state: dolfinx.fem.Function = field(init=False, repr=False)
     test_state: dolfinx.fem.Function = field(init=False, repr=False)
     _virtual_work: ufl.form.Form = field(init=False, repr=False)
-    _dirichlet_bc: typing.Sequence[dolfinx.fem.bcs.DirichletBCMetaClass] = field(
+    _dirichlet_bc: typing.Sequence[dolfinx.fem.bcs.DirichletBC] = field(
         init=False,
         repr=False,
     )
@@ -75,7 +76,6 @@ class MechanicsProblem:
         self._solver.convergence_criterion = "incremental"
 
     def _external_work(self, u, v):
-
         F = kinematics.DeformationGradient(u)
 
         N = self.geometry.facet_normal
@@ -103,7 +103,6 @@ class MechanicsProblem:
 
     def _set_dirichlet_bc(self) -> None:
         for dirichlet_bc in self.bcs.dirichlet:
-
             if callable(dirichlet_bc):
                 try:
                     self._dirichlet_bc = dirichlet_bc(self.state_space)
@@ -111,7 +110,6 @@ class MechanicsProblem:
                     print(ex)
                     raise ex
             else:
-
                 raise NotImplementedError
 
     def solve(self):

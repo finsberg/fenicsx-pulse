@@ -8,7 +8,7 @@ import ufl
 
 def test_Incompressible(u, P1) -> None:
     p = dolfinx.fem.Function(P1)
-    p.x.set(3.14)
+    p.x.array[:] = 3.14
     u.interpolate(lambda x: x)
     F = fenicsx_pulse.kinematics.DeformationGradient(u)
     J = fenicsx_pulse.kinematics.Jacobian(F)
@@ -29,7 +29,6 @@ def test_Incompressible_with_missing_pressure_raises_MissingModelAttribute(u) ->
 
 
 def test_Compressible(u) -> None:
-
     u.interpolate(lambda x: x)
     F = fenicsx_pulse.kinematics.DeformationGradient(u)
     J = fenicsx_pulse.kinematics.Jacobian(F)
