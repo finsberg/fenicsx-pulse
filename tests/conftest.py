@@ -1,6 +1,5 @@
 import dolfinx
 import pytest
-import ufl
 from mpi4py import MPI
 
 
@@ -11,12 +10,12 @@ def mesh():
 
 @pytest.fixture(scope="session")
 def P1(mesh):
-    return dolfinx.fem.FunctionSpace(mesh, ufl.FiniteElement("CG", mesh.ufl_cell(), 1))
+    return dolfinx.fem.FunctionSpace(mesh, ("Lagrange", 1))
 
 
 @pytest.fixture(scope="session")
 def P2(mesh):
-    return dolfinx.fem.FunctionSpace(mesh, ufl.VectorElement("CG", mesh.ufl_cell(), 2))
+    return dolfinx.fem.VectorFunctionSpace(mesh, ("Lagrange", 2))
 
 
 @pytest.fixture

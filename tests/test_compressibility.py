@@ -1,9 +1,10 @@
 import math
 
 import dolfinx
-import fenicsx_pulse
 import pytest
 import ufl
+
+import fenicsx_pulse
 
 
 def test_Incompressible(u, P1) -> None:
