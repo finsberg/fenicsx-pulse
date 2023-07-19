@@ -33,6 +33,6 @@ def float2object(
         return dolfinx.fem.Constant(mesh, f)
     if obj_str == "Function":
         v = dolfinx.fem.Function(V)
-        v.x.set(f)
+        v.x.array[:] = f
         return v
     raise ValueError(f"Invalid object string {obj_str!r}")

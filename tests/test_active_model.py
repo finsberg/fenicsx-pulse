@@ -48,7 +48,6 @@ def test_transversely_active_stress(eta, Ta, mesh, u) -> None:
 
 
 def test_Passive(u) -> None:
-
     active_model = Passive()
 
     u.interpolate(lambda x: x)

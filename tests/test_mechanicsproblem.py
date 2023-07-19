@@ -5,7 +5,6 @@ from petsc4py import PETSc
 
 
 def test_MechanicsProblem_and_boundary_conditions(mesh):
-
     boundaries = [
         (1, 2, lambda x: np.isclose(x[0], 0)),
         (2, 2, lambda x: np.isclose(x[0], 1)),
@@ -35,12 +34,12 @@ def test_MechanicsProblem_and_boundary_conditions(mesh):
 
     def dirichlet_bc(
         state_space: dolfinx.fem.FunctionSpace,
-    ) -> list[dolfinx.fem.bcs.DirichletBCMetaClass]:
+    ) -> list[dolfinx.fem.bcs.DirichletBC]:
         V, _ = state_space.sub(0).collapse()
         facets = geo.facet_tags.find(1)
         dofs = dolfinx.fem.locate_dofs_topological((state_space.sub(0), V), 2, facets)
         u_fixed = dolfinx.fem.Function(V)
-        u_fixed.x.set(0.0)
+        u_fixed.x.array[:] = 0.0
         return [dolfinx.fem.dirichletbc(u_fixed, dofs, state_space.sub(0))]
 
     traction = dolfinx.fem.Constant(mesh, PETSc.ScalarType(0.0))

@@ -18,7 +18,7 @@ class BoundaryConditions(typing.NamedTuple):
     dirichlet: typing.Sequence[
         typing.Callable[
             [dolfinx.fem.FunctionSpace],
-            typing.Sequence[dolfinx.fem.bcs.DirichletBCMetaClass],
+            typing.Sequence[dolfinx.fem.bcs.DirichletBC],
         ]
     ] = ()
     robin: typing.Sequence[RobinBC] = ()
