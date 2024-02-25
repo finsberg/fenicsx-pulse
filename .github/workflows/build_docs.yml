@@ -2,10 +2,10 @@
 name: Deploy static content to Pages
 
 on:
-  # Runs on pushes targeting the default branch
+  pull_request:
   push:
-    branches:
-    - "**"
+    branches: [main]
+
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
@@ -29,10 +29,17 @@ jobs:
     env:
       DEB_PYTHON_INSTALL_LAYOUT: deb_system
       PUBLISH_DIR: ./_build/html
+      PYVISTA_TRAME_SERVER_PROXY_PREFIX: "/proxy/"
+      PYVISTA_TRAME_SERVER_PROXY_ENABLED: "True"
+      PYVISTA_OFF_SCREEN: false
+      PYVISTA_JUPYTER_BACKEND: "html"
 
     steps:
       - name: Checkout
         uses: actions/checkout@v3
+
+      - name: Install dependencies for pyvista
+        run: apt-get update && apt-get install -y libgl1-mesa-glx libxrender1 xvfb
 
       - name: Install dependencies
         run: python3 -m pip install ".[docs]"

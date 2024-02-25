@@ -39,3 +39,8 @@ subplus
 varepsilon
 Venant
 XDMF
+PYVISTA
+TRAME
+libgl
+libxrender
+xvfb
