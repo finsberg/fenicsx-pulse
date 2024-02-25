@@ -10,12 +10,12 @@ def mesh():
 
 @pytest.fixture(scope="session")
 def P1(mesh):
-    return dolfinx.fem.FunctionSpace(mesh, ("Lagrange", 1))
+    return dolfinx.fem.functionspace(mesh, ("Lagrange", 1))
 
 
 @pytest.fixture(scope="session")
 def P2(mesh):
-    return dolfinx.fem.VectorFunctionSpace(mesh, ("Lagrange", 2))
+    return dolfinx.fem.functionspace(mesh, ("Lagrange", 2, (mesh.geometry.dim,)))
 
 
 @pytest.fixture

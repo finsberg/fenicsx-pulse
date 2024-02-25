@@ -37,6 +37,7 @@ def test_MechanicsProblem_and_boundary_conditions(mesh):
     ) -> list[dolfinx.fem.bcs.DirichletBC]:
         V, _ = state_space.sub(0).collapse()
         facets = geo.facet_tags.find(1)
+        mesh.topology.create_connectivity(mesh.topology.dim - 1, mesh.topology.dim)
         dofs = dolfinx.fem.locate_dofs_topological((state_space.sub(0), V), 2, facets)
         u_fixed = dolfinx.fem.Function(V)
         u_fixed.x.array[:] = 0.0
