@@ -38,7 +38,7 @@ geo = fenicsx_pulse.Geometry(
 material_params = fenicsx_pulse.HolzapfelOgden.transversely_isotropic_parameters()
 f0 = dolfinx.fem.Constant(mesh, PETSc.ScalarType((1.0, 0.0, 0.0)))
 s0 = dolfinx.fem.Constant(mesh, PETSc.ScalarType((0.0, 1.0, 0.0)))
-material = fenicsx_pulse.HolzapfelOgden(f0=f0, s0=s0, **material_params)
+material = fenicsx_pulse.HolzapfelOgden(f0=f0, s0=s0, **material_params)  # type: ignore
 
 # We also need to create a model for the active contraction. Here we use an active stress model
 
