@@ -3,6 +3,8 @@ allreduce
 argsort
 astype
 atol
+basix
+cellname
 cofac
 dirichletbc
 dofs
@@ -11,6 +13,7 @@ fenics
 fenicsx
 fenicsx_pulse
 finsberg
+functionspace
 gradu
 Holzapfel
 holzapfelogden
@@ -36,3 +39,8 @@ subplus
 varepsilon
 Venant
 XDMF
+PYVISTA
+TRAME
+libgl
+libxrender
+xvfb
