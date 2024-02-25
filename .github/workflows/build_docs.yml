@@ -21,13 +21,16 @@ concurrency:
   group: "pages"
   cancel-in-progress: true
 
+env:
+  DEB_PYTHON_INSTALL_LAYOUT: deb_system
+  DISPLAY: ":99.0"
+
 jobs:
 
   build:
     runs-on: ubuntu-22.04
     container: ghcr.io/fenics/dolfinx/dolfinx:nightly
     env:
-      DEB_PYTHON_INSTALL_LAYOUT: deb_system
       PUBLISH_DIR: ./_build/html
       PYVISTA_TRAME_SERVER_PROXY_PREFIX: "/proxy/"
       PYVISTA_TRAME_SERVER_PROXY_ENABLED: "True"
