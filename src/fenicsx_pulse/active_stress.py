@@ -44,13 +44,16 @@ class ActiveStress(ActiveModel):
     activation: dolfinx.fem.Function | dolfinx.fem.Constant = None
     s0: dolfinx.fem.Function | dolfinx.fem.Constant | None = None
     n0: dolfinx.fem.Function | dolfinx.fem.Constant | None = None
-    T_ref: dolfinx.fem.Constant = 1.0
-    eta: dolfinx.fem.Constant = 0.0
+    T_ref: dolfinx.fem.Constant = dolfinx.default_scalar_type(1.0)
+    eta: dolfinx.fem.Constant = dolfinx.default_scalar_type(0.0)
     isotropy: ActiveStressModels = ActiveStressModels.transversely
 
     def __post_init__(self) -> None:
         if self.activation is None:
-            self.activation = dolfinx.fem.Constant(self.f0.ufl_domain(), 0.0)
+            self.activation = dolfinx.fem.Constant(
+                self.f0.ufl_domain(),
+                dolfinx.default_scalar_type(0.0),
+            )
 
         self.T_ref = dolfinx.fem.Constant(self.f0.ufl_domain(), self.T_ref)
         self.eta = dolfinx.fem.Constant(self.f0.ufl_domain(), self.eta)

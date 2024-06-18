@@ -1,4 +1,5 @@
 """Top-level package for fenicsx_pulse."""
+
 from importlib.metadata import metadata
 
 meta = metadata("fenicsx_pulse")
@@ -8,26 +9,28 @@ __license__ = meta["License"]
 __email__ = meta["Author-email"]
 __program_name__ = meta["Name"]
 
-from . import kinematics
-from . import invariants
-from . import material_model
-from .material_model import HyperElasticMaterial
-from . import compressibility
-from .compressibility import Compressible, Incompressible
-from . import exceptions
-from . import cardiac_model
-from .cardiac_model import CardiacModel
-from . import active_model
-from . import active_stress
+from . import (
+    active_model,
+    active_stress,
+    boundary_conditions,
+    cardiac_model,
+    compressibility,
+    exceptions,
+    geometry,
+    invariants,
+    kinematics,
+    material_model,
+    mechanicsproblem,
+)
 from .active_stress import ActiveStress
-from . import geometry
+from .boundary_conditions import BoundaryConditions, NeumannBC, RobinBC
+from .cardiac_model import CardiacModel
+from .compressibility import Compressible, Incompressible
 from .geometry import Geometry, Marker
-from . import boundary_conditions
-from .boundary_conditions import NeumannBC, RobinBC, BoundaryConditions
-from . import mechanicsproblem
-from .mechanicsproblem import MechanicsProblem
-from .linear_elastic import LinearElastic
 from .holzapfelogden import HolzapfelOgden
+from .linear_elastic import LinearElastic
+from .material_model import HyperElasticMaterial
+from .mechanicsproblem import MechanicsProblem
 
 __all__ = [
     "kinematics",

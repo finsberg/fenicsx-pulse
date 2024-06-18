@@ -1,9 +1,10 @@
 import operator
 from dataclasses import dataclass
 
+from mpi4py import MPI
+
 import dolfinx
 import numpy as np
-from mpi4py import MPI
 
 
 def check_value_greater_than(

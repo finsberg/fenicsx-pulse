@@ -22,6 +22,4 @@ class BoundaryConditions(typing.NamedTuple):
         ]
     ] = ()
     robin: typing.Sequence[RobinBC] = ()
-    body_force: typing.Sequence[
-        float | dolfinx.fem.Constant | dolfinx.fem.Function
-    ] = ()
+    body_force: typing.Sequence[float | dolfinx.fem.Constant | dolfinx.fem.Function] = ()

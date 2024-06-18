@@ -5,12 +5,12 @@
 #
 # First let us do the necessary imports
 
-import dolfinx
-import numpy as np
-import fenicsx_pulse
 from mpi4py import MPI
 from petsc4py import PETSc
 
+import dolfinx
+import fenicsx_pulse
+import numpy as np
 
 # Then we can create unit cube mesh
 

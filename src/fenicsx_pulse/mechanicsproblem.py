@@ -1,11 +1,10 @@
 import typing
-from dataclasses import dataclass
-from dataclasses import field
+from dataclasses import dataclass, field
 
+import basix
 import dolfinx.fem.petsc
 import dolfinx.nls.petsc
 import ufl
-import basix
 
 from . import kinematics
 from .boundary_conditions import BoundaryConditions

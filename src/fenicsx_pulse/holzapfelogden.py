@@ -1,15 +1,12 @@
 import typing
-from dataclasses import dataclass
-from dataclasses import field
+from dataclasses import dataclass, field
 from functools import partial
 
 import dolfinx
 import numpy as np
 import ufl
 
-from . import exceptions
-from . import functions
-from . import invariants
+from . import exceptions, functions, invariants
 from .material_model import HyperElasticMaterial
 
 
@@ -85,16 +82,17 @@ class HolzapfelOgden(HyperElasticMaterial):
         3445-3475.
 
     """
+
     f0: dolfinx.fem.Function | dolfinx.fem.Constant | None = None
     s0: dolfinx.fem.Function | dolfinx.fem.Constant | None = None
-    a: float | dolfinx.fem.Function | dolfinx.fem.Constant = 0.0
-    b: float | dolfinx.fem.Function | dolfinx.fem.Constant = 0.0
-    a_f: float | dolfinx.fem.Function | dolfinx.fem.Constant = 0.0
-    b_f: float | dolfinx.fem.Function | dolfinx.fem.Constant = 0.0
-    a_s: float | dolfinx.fem.Function | dolfinx.fem.Constant = 0.0
-    b_s: float | dolfinx.fem.Function | dolfinx.fem.Constant = 0.0
-    a_fs: float | dolfinx.fem.Function | dolfinx.fem.Constant = 0.0
-    b_fs: float | dolfinx.fem.Function | dolfinx.fem.Constant = 0.0
+    a: float | dolfinx.fem.Function | dolfinx.fem.Constant = dolfinx.default_scalar_type(0.0)
+    b: float | dolfinx.fem.Function | dolfinx.fem.Constant = dolfinx.default_scalar_type(0.0)
+    a_f: float | dolfinx.fem.Function | dolfinx.fem.Constant = dolfinx.default_scalar_type(0.0)
+    b_f: float | dolfinx.fem.Function | dolfinx.fem.Constant = dolfinx.default_scalar_type(0.0)
+    a_s: float | dolfinx.fem.Function | dolfinx.fem.Constant = dolfinx.default_scalar_type(0.0)
+    b_s: float | dolfinx.fem.Function | dolfinx.fem.Constant = dolfinx.default_scalar_type(0.0)
+    a_fs: float | dolfinx.fem.Function | dolfinx.fem.Constant = dolfinx.default_scalar_type(0.0)
+    b_fs: float | dolfinx.fem.Function | dolfinx.fem.Constant = dolfinx.default_scalar_type(0.0)
     use_subplus: bool = field(default=True, repr=False)
     use_heaviside: bool = field(default=True, repr=False)
 
@@ -163,9 +161,7 @@ class HolzapfelOgden(HyperElasticMaterial):
     def _resolve_W1(self):
         if exceptions.check_value_greater_than(self.a, 1e-10):
             if exceptions.check_value_greater_than(self.b, 1e-10):
-                return lambda I1: (self.a / (2.0 * self.b)) * (
-                    ufl.exp(self.b * (I1 - 3)) - 1.0
-                )
+                return lambda I1: (self.a / (2.0 * self.b)) * (ufl.exp(self.b * (I1 - 3)) - 1.0)
             else:
                 return lambda I1: (self.a / 2.0) * (I1 - 3)
         else:
@@ -200,11 +196,7 @@ class HolzapfelOgden(HyperElasticMaterial):
                     model=type(self).__name__,
                 )
             if exceptions.check_value_greater_than(self.b_fs, 1e-10):
-                return (
-                    lambda I8: self.a_fs
-                    / (2.0 * self.b_fs)
-                    * (ufl.exp(self.b_fs * I8**2) - 1.0)
-                )
+                return lambda I8: self.a_fs / (2.0 * self.b_fs) * (ufl.exp(self.b_fs * I8**2) - 1.0)
             else:
                 return lambda I8: self.a_fs / 2.0 * I8**2
         else:
