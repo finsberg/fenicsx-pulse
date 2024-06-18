@@ -1,6 +1,5 @@
 import typing
-from dataclasses import dataclass
-from dataclasses import field
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import NamedTuple
 
@@ -43,16 +42,8 @@ class Geometry:
         self._facet_indices = hstack(facet_indices)
         self._facet_markers = hstack(facet_markers)
         self._sorted_facets = np.argsort(self._facet_indices)
-        entities = (
-            []
-            if len(self._sorted_facets) == 0
-            else self._facet_indices[self._sorted_facets]
-        )
-        values = (
-            []
-            if len(self._sorted_facets) == 0
-            else self._facet_markers[self._sorted_facets]
-        )
+        entities = [] if len(self._sorted_facets) == 0 else self._facet_indices[self._sorted_facets]
+        values = [] if len(self._sorted_facets) == 0 else self._facet_markers[self._sorted_facets]
         self.facet_tags = dolfinx.mesh.meshtags(
             self.mesh,
             self.facet_dimension,

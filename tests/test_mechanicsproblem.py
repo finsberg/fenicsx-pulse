@@ -1,7 +1,8 @@
+from petsc4py import PETSc
+
 import dolfinx
 import fenicsx_pulse
 import numpy as np
-from petsc4py import PETSc
 
 
 def test_MechanicsProblem_and_boundary_conditions(mesh):

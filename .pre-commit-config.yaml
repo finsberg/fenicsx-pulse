@@ -9,16 +9,17 @@ repos:
       - id: debug-statements
       - id: requirements-txt-fixer
 
-  - repo: https://github.com/psf/black
-    rev: 23.7.0
-    hooks:
-      - id: black
 
-  - repo: https://github.com/charliermarsh/ruff-pre-commit
+  - repo: https://github.com/astral-sh/ruff-pre-commit
     # Ruff version.
-    rev: 'v0.0.278'
+    rev: 'v0.3.7'
     hooks:
+       # Run the linter.
       - id: ruff
+        args: [ --fix ]
+      # Run the formatter.
+      - id: ruff-format
+        exclude: 'demos/.*.py$'
 
 
   - repo: https://github.com/asottile/add-trailing-comma

@@ -1,6 +1,7 @@
+from mpi4py import MPI
+
 import dolfinx
 import pytest
-from mpi4py import MPI
 
 
 @pytest.fixture(scope="session")

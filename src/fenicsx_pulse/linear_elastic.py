@@ -3,8 +3,7 @@ from dataclasses import dataclass
 import dolfinx
 import ufl
 
-from . import exceptions
-from . import kinematics
+from . import exceptions, kinematics
 from .material_model import Material
 
 
@@ -48,6 +47,4 @@ class LinearElastic(Material):
         """
         e = kinematics.EngineeringStrain(F)
         I = kinematics.SecondOrderIdentity(F)
-        return (self.E / (1 + self.nu)) * (
-            e + (self.nu / (1 - 2 * self.nu)) * ufl.tr(e) * I
-        )
+        return (self.E / (1 + self.nu)) * (e + (self.nu / (1 - 2 * self.nu)) * ufl.tr(e) * I)

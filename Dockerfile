@@ -1,19 +1,16 @@
-# Use github pages for docker image
-FROM ghcr.io/finsberg/fenicsx-pulse:v0.1.5
+# We choose ubuntu 22.04 as our base docker image
+FROM ghcr.io/fenics/dolfinx/dolfinx:v0.8.0
 
-# Create user with a home directory
-ARG NB_USER
-ARG NB_UID=1000
-ENV USER ${NB_USER}
-ENV HOME /home/${NB_USER}
+ENV PYVISTA_JUPYTER_BACKEND="html"
 
-# Copy current directory
-WORKDIR ${HOME}
-COPY . ${HOME}
+# Requirements for pyvista
+RUN apt-get update && apt-get install -y libgl1-mesa-glx libxrender1 xvfb nodejs
 
-# Change ownership of home directory
-USER root
-RUN chown -R ${NB_UID} ${HOME}
+COPY . /repo
+WORKDIR /repo
 
-USER ${NB_USER}
-ENTRYPOINT []
+ARG TARGETPLATFORM
+RUN echo "Building for $TARGETPLATFORM"
+RUN if [ "$TARGETPLATFORM" = "linux/arm64" ]; then python3 -m pip install "https://github.com/finsberg/vtk-aarch64/releases/download/vtk-9.2.6-cp310/vtk-9.2.6.dev0-cp310-cp310-linux_aarch64.whl"; fi
+
+RUN python3 -m pip install ".[docs]"
