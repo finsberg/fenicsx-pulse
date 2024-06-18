@@ -29,7 +29,7 @@ jobs:
 
   build:
     runs-on: ubuntu-22.04
-    container: ghcr.io/fenics/dolfinx/lab:nightly
+    container: ghcr.io/fenics/dolfinx/lab:v0.8.0
     env:
       PUBLISH_DIR: ./_build/html
       DISPLAY: ":99.0"
