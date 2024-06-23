@@ -6,6 +6,7 @@ atol
 basix
 cellname
 cofac
+deviatoric
 dirichletbc
 dofs
 dolfinx
@@ -22,6 +23,8 @@ hyperelastic
 isclose
 isochoric
 isscalar
+libgl
+libxrender
 lmbda
 mechanicsproblem
 meshtags
@@ -34,13 +37,11 @@ numpy
 Paraview
 petsc
 Piola
+PYVISTA
 rtol
 subplus
+TRAME
 varepsilon
 Venant
 XDMF
-PYVISTA
-TRAME
-libgl
-libxrender
 xvfb

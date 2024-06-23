@@ -15,6 +15,10 @@ class Compressibility(abc.ABC):
     def register(self, *args, **kwargs) -> None:
         pass
 
+    @abc.abstractmethod
+    def is_compressible(self) -> bool:
+        pass
+
 
 @dataclass(slots=True)
 class Incompressible(Compressibility):
@@ -28,6 +32,9 @@ class Incompressible(Compressibility):
             raise exceptions.MissingModelAttribute(attr="p", model=type(self).__name__)
         return self.p * (J - 1.0)
 
+    def is_compressible(self) -> bool:
+        return False
+
 
 @dataclass(slots=True)
 class Compressible(Compressibility):
@@ -35,3 +42,6 @@ class Compressible(Compressibility):
 
     def strain_energy(self, J: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
         return self.kappa * (J * ufl.ln(J) - J + 1)
+
+    def is_compressible(self) -> bool:
+        return True

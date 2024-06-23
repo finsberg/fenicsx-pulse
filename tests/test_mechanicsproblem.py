@@ -5,7 +5,7 @@ import fenicsx_pulse
 import numpy as np
 
 
-def test_MechanicsProblem_and_boundary_conditions(mesh):
+def test_MechanicsProblemMixed_and_boundary_conditions(mesh):
     boundaries = [
         (1, 2, lambda x: np.isclose(x[0], 0)),
         (2, 2, lambda x: np.isclose(x[0], 1)),
@@ -59,7 +59,7 @@ def test_MechanicsProblem_and_boundary_conditions(mesh):
         body_force=(body_force,),
     )
 
-    problem = fenicsx_pulse.MechanicsProblem(model=model, geometry=geo, bcs=bcs)
+    problem = fenicsx_pulse.MechanicsProblemMixed(model=model, geometry=geo, bcs=bcs)
     problem.solve()
 
     u = problem.state.sub(0).collapse()

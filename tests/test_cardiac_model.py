@@ -23,4 +23,4 @@ def test_CardiacModel(mesh, u):
     F = fenicsx_pulse.kinematics.DeformationGradient(u)
     psi = model.strain_energy(F)
     value = dolfinx.fem.assemble_scalar(dolfinx.fem.form(psi * ufl.dx))
-    assert math.isclose(value, 103.22036041941614)
+    assert math.isclose(value, 49.57354795865461)

@@ -5,6 +5,7 @@ parts:
   - caption: Demos
     chapters:
     - file: "demo/unit_cube"
+    - file: "demo/lv_ellipsoid"
   - caption: Community
     chapters:
       - file: "CONTRIBUTING"

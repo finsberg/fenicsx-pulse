@@ -13,6 +13,7 @@ class ActiveModel(Protocol):
 
 class Compressibility(Protocol):
     def strain_energy(self, J) -> dolfinx.fem.Form: ...
+    def is_compressible(self) -> bool: ...
     def register(self, p: dolfinx.fem.Function | None) -> None: ...
 
 
@@ -32,7 +33,14 @@ class CardiacModel:
         # part of the deformation gradient
         Fe = self.active.Fe(F)
         J = kinematics.Jacobian(Fe)
-        Jm13 = J ** (-1 / 3)
+
+        # If model is compressible we need to to a
+        # deviatoric / volumetric split
+        if self.compressibility.is_compressible():
+            Jm13 = J ** (-1 / 3)
+        else:
+            Jm13 = 1.0
+
         return (
             self.material.strain_energy(Jm13 * Fe)
             + self.active.strain_energy(Jm13 * F)
