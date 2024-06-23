@@ -17,6 +17,7 @@ class BaseMechanicsProblem:
     model: CardiacModel
     geometry: Geometry
     bcs: BoundaryConditions = field(default_factory=BoundaryConditions)
+    parameters: dict[str, typing.Any] = field(default_factory=dict)
     _problem: dolfinx.fem.petsc.NonlinearProblem = field(init=False, repr=False)
     _solver: dolfinx.fem.petsc.NonlinearProblem = field(init=False, repr=False)
     state_space: dolfinx.fem.FunctionSpace = field(init=False, repr=False)
@@ -58,6 +59,8 @@ class BaseMechanicsProblem:
         self._solver.atol = 1e-8
         self._solver.rtol = 1e-8
         self._solver.convergence_criterion = "incremental"
+        self._solver.report = True
+        self._solver.max_it = 20
 
     def _external_work(self, u, v):
         F = kinematics.DeformationGradient(u)
@@ -101,18 +104,20 @@ class BaseMechanicsProblem:
 
 
 @dataclass(slots=True)
-class MechanicsProblem(BaseMechanicsProblem):
+class MechanicsProblemMixed(BaseMechanicsProblem):
     def _init_space(self) -> None:
+        u_order = self.parameters.get("u_order", 2)
         P2 = basix.ufl.element(
             family="Lagrange",
             cell=self.geometry.mesh.ufl_cell().cellname(),
-            degree=2,
+            degree=u_order,
             shape=(self.geometry.mesh.ufl_cell().topological_dimension(),),
         )
+        p_order = self.parameters.get("p_order", 1)
         P1 = basix.ufl.element(
             family="Lagrange",
             cell=self.geometry.mesh.ufl_cell().cellname(),
-            degree=1,
+            degree=p_order,
         )
         element = basix.ufl.mixed_element([P2, P1])
 
@@ -134,6 +139,36 @@ class MechanicsProblem(BaseMechanicsProblem):
             argument=self.test_state,
         )
         external_work = self._external_work(u, v)
+        if external_work is not None:
+            self.virtual_work += external_work
+
+        self._set_dirichlet_bc()
+
+
+@dataclass(slots=True)
+class MechanicsProblem(BaseMechanicsProblem):
+    def _init_space(self) -> None:
+        u_order = self.parameters.get("u_order", 2)
+        element = basix.ufl.element(
+            family="Lagrange",
+            cell=self.geometry.mesh.ufl_cell().cellname(),
+            degree=u_order,
+            shape=(self.geometry.mesh.ufl_cell().topological_dimension(),),
+        )
+
+        self.state_space = dolfinx.fem.functionspace(self.geometry.mesh, element)
+        self.state = dolfinx.fem.Function(self.state_space)
+        self.test_state = ufl.TestFunction(self.state_space)
+
+    def _init_form(self) -> None:
+        F = kinematics.DeformationGradient(self.state)
+        psi = self.model.strain_energy(F)
+        self.virtual_work = ufl.derivative(
+            psi * self.geometry.dx,
+            coefficient=self.state,
+            argument=self.test_state,
+        )
+        external_work = self._external_work(self.state, self.test_state)
         if external_work is not None:
             self.virtual_work += external_work
 

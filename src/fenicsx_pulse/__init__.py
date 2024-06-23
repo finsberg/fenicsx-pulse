@@ -20,6 +20,7 @@ from . import (
     invariants,
     kinematics,
     material_model,
+    material_models,
     mechanicsproblem,
 )
 from .active_stress import ActiveStress
@@ -27,10 +28,10 @@ from .boundary_conditions import BoundaryConditions, NeumannBC, RobinBC
 from .cardiac_model import CardiacModel
 from .compressibility import Compressible, Incompressible
 from .geometry import Geometry, Marker
-from .holzapfelogden import HolzapfelOgden
 from .linear_elastic import LinearElastic
 from .material_model import HyperElasticMaterial
-from .mechanicsproblem import MechanicsProblem
+from .material_models import HolzapfelOgden, NeoHookean
+from .mechanicsproblem import MechanicsProblem, MechanicsProblemMixed
 
 __all__ = [
     "kinematics",
@@ -58,4 +59,7 @@ __all__ = [
     "MechanicsProblem",
     "BoundaryConditions",
     "Marker",
+    "material_models",
+    "NeoHookean",
+    "MechanicsProblemMixed",
 ]

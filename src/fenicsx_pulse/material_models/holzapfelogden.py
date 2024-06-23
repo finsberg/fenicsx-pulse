@@ -6,8 +6,8 @@ import dolfinx
 import numpy as np
 import ufl
 
-from . import exceptions, functions, invariants
-from .material_model import HyperElasticMaterial
+from .. import exceptions, functions, invariants
+from ..material_model import HyperElasticMaterial
 
 
 @dataclass(slots=True)

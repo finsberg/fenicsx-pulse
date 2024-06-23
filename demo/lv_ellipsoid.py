@@ -20,6 +20,10 @@ geometry = cardiac_geometries.geometry.Geometry.from_folder(
     comm=MPI.COMM_WORLD,
     folder=geodir,
 )
+with dolfinx.io.XDMFFile(MPI.COMM_WORLD, "lv_facet_tags.xdmf", "w") as xdmf:
+    xdmf.write_mesh(geometry.mesh)
+    xdmf.write_meshtags(geometry.ffun, geometry.mesh.geometry)
+
 geometry.dx = ufl.Measure("dx", domain=geometry.mesh, metadata={"quadrature_degree": 4})
 geometry.ds = ufl.Measure(
     "ds",
@@ -52,7 +56,7 @@ model = fenicsx_pulse.CardiacModel(
 def dirichlet_bc(
     state_space: dolfinx.fem.FunctionSpace,
 ) -> list[dolfinx.fem.bcs.DirichletBC]:
-    V, _ = state_space.sub(0).collapse()
+    V, _ = state_space.collapse()
     facets = geometry.facet_tags.find(
         geometry.markers["BASE"][0],
     )  # Specify the marker used on the boundary
@@ -60,10 +64,10 @@ def dirichlet_bc(
         geometry.mesh.topology.dim - 1,
         geometry.mesh.topology.dim,
     )
-    dofs = dolfinx.fem.locate_dofs_topological((state_space.sub(0), V), 2, facets)
+    dofs = dolfinx.fem.locate_dofs_topological((state_space, V), 2, facets)
     u_fixed = dolfinx.fem.Function(V)
     u_fixed.x.array[:] = 0.0
-    return [dolfinx.fem.dirichletbc(u_fixed, dofs, state_space.sub(0))]
+    return [dolfinx.fem.dirichletbc(u_fixed, dofs, state_space)]
 
 
 traction = dolfinx.fem.Constant(geometry.mesh, PETSc.ScalarType(0.0))
