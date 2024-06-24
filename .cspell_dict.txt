@@ -18,6 +18,7 @@ functionspace
 gradu
 Holzapfel
 holzapfelogden
+Hookean
 hstack
 hyperelastic
 isclose

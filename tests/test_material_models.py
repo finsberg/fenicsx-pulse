@@ -115,3 +115,30 @@ def test_holzapfel_ogden_pure_fiber_sheets(u, mesh):
     # F = I + 0.1 I, = 1.1 -> I8fs = 1.21
     # psi = (a_f / 2) * I8fs**2 = 0.5 * 1.21**2
     assert math.isclose(value, 0.5 * 1.21**2)
+
+
+def test_neo_hookean(u, mesh):
+    model = fenicsx_pulse.NeoHookean(mu=1.0)
+    u.interpolate(lambda x: x / 10)
+    F = fenicsx_pulse.kinematics.DeformationGradient(u)
+    psi = model.strain_energy(F)
+    value = dolfinx.fem.assemble_scalar(dolfinx.fem.form(psi * ufl.dx))
+    # F = I + 0.1 I, C = 1.21 I
+    # psi = (mu / 2) * (I1 - 3) = 0.5 * (3.63 - 3)
+    assert math.isclose(value, 0.5 * 0.63)
+
+
+def test_saint_venant_kirchhoff(u, mesh):
+    lmbda = 1.0
+    mu = 1.0
+    model = fenicsx_pulse.SaintVenantKirchhoff(lmbda=lmbda, mu=mu)
+    u.interpolate(lambda x: x / 10)
+    F = fenicsx_pulse.kinematics.DeformationGradient(u)
+    psi = model.strain_energy(F)
+    value = dolfinx.fem.assemble_scalar(dolfinx.fem.form(psi * ufl.dx))
+    # gradu = 0.1 I, epsilon = 0.5 (gradu + gradu.T) = 0.1 I
+    # tr(epsilon) = 0.1 * 3 = 0.3, tr(epsilon * epsilon) = 0.1**2 * 3 = 0.03
+    # psi = lmbda / 2 * tr(epsilon)**2 + mu * tr(epsilon * epsilon)
+
+    expected = 0.5 * lmbda * 0.3**2 + mu * 0.03
+    assert math.isclose(value, expected)

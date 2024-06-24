@@ -30,7 +30,7 @@ from .compressibility import Compressible, Incompressible
 from .geometry import Geometry, Marker
 from .linear_elastic import LinearElastic
 from .material_model import HyperElasticMaterial
-from .material_models import HolzapfelOgden, NeoHookean
+from .material_models import HolzapfelOgden, NeoHookean, SaintVenantKirchhoff
 from .mechanicsproblem import MechanicsProblem, MechanicsProblemMixed
 
 __all__ = [
@@ -61,5 +61,6 @@ __all__ = [
     "Marker",
     "material_models",
     "NeoHookean",
+    "SaintVenantKirchhoff",
     "MechanicsProblemMixed",
 ]
