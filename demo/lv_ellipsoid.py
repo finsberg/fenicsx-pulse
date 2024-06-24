@@ -49,9 +49,11 @@ material = fenicsx_pulse.HolzapfelOgden(f0=geometry.f0, s0=geometry.s0, **materi
 Ta = dolfinx.fem.Constant(geometry.mesh, PETSc.ScalarType(0.0))
 active_model = fenicsx_pulse.ActiveStress(geometry.f0, activation=Ta, eta=0.3)
 
+# We use an incompressible model
 
 comp_model = fenicsx_pulse.Incompressible()
 
+# and assembles the `CardiacModel`
 
 model = fenicsx_pulse.CardiacModel(
     material=material,
@@ -60,10 +62,12 @@ model = fenicsx_pulse.CardiacModel(
 )
 
 
+# Next we need to apply some boundary conditions. For the Dirichlet BC we can supply a function that takes as input the state space and returns a list of `DirichletBC`. We will fix the base in all directions. Note that the displacement is in the first subspace since we use an incompressible model. The hydrostatic pressure is in the second subspace
+
 def dirichlet_bc(
     state_space: dolfinx.fem.FunctionSpace,
 ) -> list[dolfinx.fem.bcs.DirichletBC]:
-    V, _ = state_space.collapse()
+    V, _ = state_space.sub(0).collapse()
     facets = geometry.facet_tags.find(
         geometry.markers["BASE"][0],
     )  # Specify the marker used on the boundary
@@ -71,30 +75,37 @@ def dirichlet_bc(
         geometry.mesh.topology.dim - 1,
         geometry.mesh.topology.dim,
     )
-    dofs = dolfinx.fem.locate_dofs_topological((state_space, V), 2, facets)
+    dofs = dolfinx.fem.locate_dofs_topological((state_space.sub(0), V), 2, facets)
     u_fixed = dolfinx.fem.Function(V)
     u_fixed.x.array[:] = 0.0
-    return [dolfinx.fem.dirichletbc(u_fixed, dofs, state_space)]
+    return [dolfinx.fem.dirichletbc(u_fixed, dofs, state_space.sub(0))]
 
+
+# We apply a traction in endocardium
 
 traction = dolfinx.fem.Constant(geometry.mesh, PETSc.ScalarType(0.0))
 neumann = fenicsx_pulse.NeumannBC(traction=traction, marker=geometry.markers["ENDO"][0])
 
+# and finally combine all the boundary conditions
 
 bcs = fenicsx_pulse.BoundaryConditions(dirichlet=(dirichlet_bc,), neumann=(neumann,))
 
+# and create a Mixed problem
 
-problem = fenicsx_pulse.MechanicsProblem(model=model, geometry=geometry, bcs=bcs)
+problem = fenicsx_pulse.MechanicsProblemMixed(model=model, geometry=geometry, bcs=bcs)
 
+# Now we can solve the problem
 
 problem.solve()
+
+# And save the displacement to a file that we can view in Paraview
 
 u = problem.state.sub(0).collapse()
 vtx = dolfinx.io.VTXWriter(geometry.mesh.comm, "lv_displacement.bp", [u], engine="BP4")
 vtx.write(0.0)
 
 i = 1
-for plv in [0.1, 0.5, 1.0]:
+for plv in [0.1]: #, 0.5, 1.0]:
     print(f"plv: {plv}")
     traction.value = plv
     problem.solve()
@@ -103,7 +114,7 @@ for plv in [0.1, 0.5, 1.0]:
     i += 1
 
 
-for ta in [0.1, 0.5, 1.0]:
+for ta in [0.1]: #, 0.5, 1.0]:
     print(f"ta: {ta}")
     Ta.value = ta
     problem.solve()
