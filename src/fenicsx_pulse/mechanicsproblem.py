@@ -9,11 +9,22 @@ import ufl
 from . import kinematics
 from .boundary_conditions import BoundaryConditions
 from .cardiac_model import CardiacModel
-from .geometry import Geometry
+
+
+class Geometry(typing.Protocol):
+    """Protocol for geometry objects used in mechanics problems."""
+
+    dx: ufl.Measure
+    ds: ufl.Measure
+    mesh: dolfinx.mesh.Mesh
+    facet_normal: ufl.Coefficient
+    facet_tags: dolfinx.mesh.MeshTags
 
 
 @dataclass(slots=True)
 class BaseMechanicsProblem:
+    """Base class for mechanics problems."""
+
     model: CardiacModel
     geometry: Geometry
     bcs: BoundaryConditions = field(default_factory=BoundaryConditions)
@@ -105,6 +116,18 @@ class BaseMechanicsProblem:
 
 @dataclass(slots=True)
 class MechanicsProblemMixed(BaseMechanicsProblem):
+    """Mechanics problem for mixed formulation.
+
+    This class is used to solve mechanics problems using a mixed formulation,
+    where the displacement is the first component of the state and the pressure
+    is the second component.
+
+    Default spaces for the displacement and pressure are P_2 and P_1, respectively.
+
+    You can set the order of the displacement and pressure spaces using the parameters
+    `u_order` and `p_order`, respectively.
+    """
+
     def _init_space(self) -> None:
         u_order = self.parameters.get("u_order", 2)
         P2 = basix.ufl.element(
@@ -147,6 +170,16 @@ class MechanicsProblemMixed(BaseMechanicsProblem):
 
 @dataclass(slots=True)
 class MechanicsProblem(BaseMechanicsProblem):
+    """Mechanics problem for displacement-based formulation.
+
+    This class is used to solve mechanics problems using a displacement-based formulation
+    which is typically used for compressible or nearly-incompressible materials.
+
+    Default space for the displacement is P_2.
+
+    You can set the order of the displacement space using the parameter `u_order`.
+    """
+
     def _init_space(self) -> None:
         u_order = self.parameters.get("u_order", 2)
         element = basix.ufl.element(

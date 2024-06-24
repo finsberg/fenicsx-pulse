@@ -31,6 +31,7 @@ parse:
 sphinx:
   config:
     html_last_updated_fmt: "%b %d, %Y"
+    nb_execution_show_tb: True
     nb_custom_formats:  # https://jupyterbook.org/en/stable/file-types/jupytext.html#file-types-custom
         .py:
             - jupytext.reads

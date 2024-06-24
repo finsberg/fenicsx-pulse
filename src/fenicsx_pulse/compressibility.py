@@ -8,8 +8,11 @@ from . import exceptions
 
 
 class Compressibility(abc.ABC):
+    """Base class for compressibility models."""
+
     @abc.abstractmethod
     def strain_energy(self, J: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
+        """Strain energy density function"""
         pass
 
     def register(self, *args, **kwargs) -> None:
@@ -17,12 +20,25 @@ class Compressibility(abc.ABC):
 
     @abc.abstractmethod
     def is_compressible(self) -> bool:
+        """Returns True if the material model is compressible."""
         pass
 
 
 @dataclass(slots=True)
 class Incompressible(Compressibility):
+    """Incompressible material model
+
+    Strain energy density function is given by
+
+    .. math::
+        \Psi = p (J - 1)
+
+    """
+
     p: dolfinx.fem.Function = field(default=None, init=False)
+
+    def __str__(self) -> str:
+        return "p (J - 1)"
 
     def register(self, p: dolfinx.fem.Function) -> None:
         self.p = p
@@ -38,6 +54,15 @@ class Incompressible(Compressibility):
 
 @dataclass(slots=True)
 class Compressible(Compressibility):
+    """Compressible material model
+
+    Strain energy density function is given by
+
+    .. math::
+        \Psi = \kappa (J \ln(J) - J + 1)
+
+    """
+
     kappa: float | dolfinx.fem.Function | dolfinx.fem.Constant = 1e3
 
     def __str__(self) -> str:

@@ -24,11 +24,12 @@ material_model
     :members:
     :inherited-members:
 
-.. automodule:: fenicsx_pulse.linear_elastic
+
+.. automodule:: fenicsx_pulse.material_models.linear_elastic
     :members:
     :inherited-members:
 
-.. automodule:: fenicsx_pulse.holzapfelogden
+.. automodule:: fenicsx_pulse.material_models.holzapfelogden
     :members:
     :inherited-members:
 
@@ -53,5 +54,18 @@ compressibility
 cardiac_model
 -------------
 .. automodule:: fenicsx_pulse.cardiac_model
+    :members:
+    :inherited-members:
+
+geometry
+--------
+.. automodule:: fenicsx_pulse.geometry
+    :members:
+    :inherited-members:
+
+
+mechanicsproblem
+----------------
+.. automodule:: fenicsx_pulse.mechanicsproblem
     :members:
     :inherited-members:
