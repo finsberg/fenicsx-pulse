@@ -26,11 +26,11 @@ from . import (
 from .active_stress import ActiveStress
 from .boundary_conditions import BoundaryConditions, NeumannBC, RobinBC
 from .cardiac_model import CardiacModel
-from .compressibility import Compressible, Incompressible
+from .compressibility import Compressibility, Compressible, Incompressible
 from .geometry import Geometry, Marker
 from .material_model import HyperElasticMaterial
 from .material_models import HolzapfelOgden, LinearElastic, NeoHookean, SaintVenantKirchhoff
-from .mechanicsproblem import MechanicsProblem, MechanicsProblemMixed
+from .mechanicsproblem import BaseMechanicsProblem, MechanicsProblem, MechanicsProblemMixed
 
 __all__ = [
     "kinematics",
@@ -62,4 +62,6 @@ __all__ = [
     "NeoHookean",
     "SaintVenantKirchhoff",
     "MechanicsProblemMixed",
+    "BaseMechanicsProblem",
+    "Compressibility",
 ]

@@ -26,7 +26,7 @@ class Compressibility(abc.ABC):
 
 @dataclass(slots=True)
 class Incompressible(Compressibility):
-    """Incompressible material model
+    r"""Incompressible material model
 
     Strain energy density function is given by
 
@@ -54,7 +54,7 @@ class Incompressible(Compressibility):
 
 @dataclass(slots=True)
 class Compressible(Compressibility):
-    """Compressible material model
+    r"""Compressible material model
 
     Strain energy density function is given by
 

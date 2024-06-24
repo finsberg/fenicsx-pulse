@@ -62,14 +62,14 @@ incompressible = False
 # And in both cases we will use different compressible models, mechanics problems and different ways to get the displacement.
 
 if incompressible:
-    comp_model = fenicsx_pulse.Incompressible()
-    def get_u(problem: fenicsx_pulse.MechanicsProblem) -> dolfinx.fem.Function:
+    comp_model: fenicsx_pulse.Compressibility = fenicsx_pulse.Incompressible()
+    def get_u(problem: fenicsx_pulse.BaseMechanicsProblem) -> dolfinx.fem.Function:
         return problem.state.sub(0).collapse()
 
-    Problem = fenicsx_pulse.MechanicsProblemMixed
+    Problem: type[fenicsx_pulse.BaseMechanicsProblem] = fenicsx_pulse.MechanicsProblemMixed
 else:
     comp_model = fenicsx_pulse.Compressible()
-    def get_u(problem: fenicsx_pulse.MechanicsProblem) -> dolfinx.fem.Function:
+    def get_u(problem: fenicsx_pulse.BaseMechanicsProblem) -> dolfinx.fem.Function:
         return problem.state
 
     Problem = fenicsx_pulse.MechanicsProblem

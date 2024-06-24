@@ -10,7 +10,7 @@ from ..material_model import HyperElasticMaterial
 
 @dataclass(slots=True)
 class NeoHookean(HyperElasticMaterial):
-    """Neo-Hookean material model
+    r"""Neo-Hookean material model
 
     The strain energy density function is given by
 
