@@ -1,3 +1,44 @@
+r"""This module defines the ActiveModel class which is an abstract
+class for active models. Active models are used to incorporate
+active stress or active strain in the material model.
+
+The ActiveModel class defines two methods:
+
+- `Fe(F)`: Transforming the deformation gradient to an active deformation gradient
+- `strain_energy(F)`: Active strain energy density function
+
+The `Fe` method transforms the deformation gradient to an active deformation gradient.
+For example in the active strain approach we perform a multiplicative decomposition of
+the deformation gradient into an elastic and an active part, i.e
+
+.. math::
+    \mathbf{F} = \mathbf{F}_e \mathbf{F}_a
+
+In which case the active model can be incorporated by transforming the full deformation
+gradient into a pure elastic component.
+
+The `strain_energy` method defines the active strain energy density function. For example
+in the active stress approach, the active stress is added as an extra stress component
+
+.. math::
+    \mathbf{P} = \frac{\partial \Psi}{\partial \mathbf{F}} + \mathbf{P}_a
+
+where :math:`\mathbf{P}_a`. Now we can instead rewrite this as a total strain energy
+by considering the following equation
+
+.. math::
+    \mathbf{P} = \frac{\partial \Psi}{\partial \mathbf{F}}
+    =  \frac{\partial \Psi_p}{\partial \mathbf{F}}
+    +  \frac{\partial \Psi_a}{\partial \mathbf{F}}
+
+where :math:`\Psi_p` is the passive (classical) strain energy density function
+and :math:`\Psi_a` is the corresponding active strain energy density function.
+
+The `Passive` class is a simple active model with no active component.
+This model could for example be used if you want to use a pure passive model.
+
+"""
+
 from __future__ import annotations
 
 import abc
@@ -40,18 +81,18 @@ class ActiveModel(abc.ABC):
         as an extra stress component
 
         .. math::
-            \\mathbf{P} = \frac{\\partial \\Psi}{\\partial \\mathbf{F}} + \\mathbf{P}_a
+            \mathbf{P} = \frac{\partial \Psi}{\partial \mathbf{F}} + \mathbf{P}_a
 
-        where :math:`\\mathbf{P}_a`. Now we can instead rewrite this
+        where :math:`\mathbf{P}_a`. Now we can instead rewrite this
         as a total strain energy by considering the following equation
 
         .. math::
-            \\mathbf{P} = \frac{\\partial \\Psi}{\\partial \\mathbf{F}}
-            =  \frac{\\partial \\Psi_p}{\\partial \\mathbf{F}}
-            +  \frac{\\partial \\Psi_a}{\\partial \\mathbf{F}}
+            \mathbf{P} = \frac{\partial \Psi}{\partial \mathbf{F}}
+            =  \frac{\partial \Psi_p}{\partial \mathbf{F}}
+            +  \frac{\partial \Psi_a}{\partial \mathbf{F}}
 
-        where :math:`\\Psi_p` is the passive (classical) strain energy
-        density function and :math:`\\Psi_a` is the corresponding active
+        where :math:`\Psi_p` is the passive (classical) strain energy
+        density function and :math:`\Psi_a` is the corresponding active
         strain energy density function.
 
         Parameters

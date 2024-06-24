@@ -1,3 +1,22 @@
+"""This module defines the material model interface and some common material models.
+
+The material model describes the mechanical behavior of a material. The material
+model is used to compute the stress tensor given the deformation gradient.
+
+The material model interface defines two methods:
+
+- `sigma(F)`: The Cauchy stress tensor
+- `P(F)`: The first Piola-Kirchhoff stress tensor
+
+The `sigma` method computes the Cauchy stress tensor given the deformation gradient.
+The `P` method computes the first Piola-Kirchhoff stress tensor given the deformation gradient.
+
+The `HyperElasticMaterial` class is a base class for hyperelastic material models.
+Hyperelastic materials are materials that have a strain energy density function that
+depends only on the deformation gradient. The `strain_energy` method computes the
+strain energy density function given the deformation gradient.
+"""
+
 import abc
 
 import ufl

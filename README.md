@@ -100,7 +100,7 @@ neumann = fenicsx_pulse.NeumannBC(traction=traction, marker=2)
 bcs = fenicsx_pulse.BoundaryConditions(dirichlet=(dirichlet_bc,), neumann=(neumann,))
 
 # Create mechanics problem
-problem = fenicsx_pulse.MechanicsProblem(model=model, geometry=geo, bcs=bcs)
+problem = fenicsx_pulse.MechanicsProblemMixed(model=model, geometry=geo, bcs=bcs)
 
 # Set a value for the active stress
 Ta.value = 2.0
@@ -111,11 +111,9 @@ problem.solve()
 # Get the solution
 u, p = problem.state.split()
 
-# And save to XDMF
-xdmf = dolfinx.io.XDMFFile(mesh.comm, "results.xdmf", "w")
-xdmf.write_mesh(mesh)
-xdmf.write_function(u, 0.0)
-xdmf.write_function(p, 0.0)
+# And save to VTX
+with dolfinx.io.VTXWriter(geometry.mesh.comm, "lv_displacement.bp", [u], engine="BP4")as vtx:
+    vtx.write(0.0)
 ```
 
 

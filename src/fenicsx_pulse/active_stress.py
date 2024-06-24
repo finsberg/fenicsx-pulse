@@ -1,3 +1,9 @@
+"""This module contains the active stress model for the cardiac
+mechanics problem. The active stress model is used to describe
+the active contraction of the heart. The active stress model
+is used to compute the active stress given the deformation gradient.
+"""
+
 from dataclasses import dataclass
 from enum import Enum
 

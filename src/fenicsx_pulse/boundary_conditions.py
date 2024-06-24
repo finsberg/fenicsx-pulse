@@ -1,3 +1,16 @@
+"""This module defines boundary conditions.
+
+Boundary conditions are used to specify the behavior of the solution on the boundary of the domain.
+The boundary conditions can be Dirichlet, Neumann, or Robin boundary conditions.
+
+Dirichlet boundary conditions are used to specify the solution on the boundary of the domain.
+Neumann boundary conditions are used to specify the traction on the boundary of the domain.
+Robin boundary conditions are used to specify a Robin type boundary condition
+on the boundary of the domain.
+
+The boundary conditions are collected in a `BoundaryConditions` object.
+"""
+
 import typing
 
 import dolfinx
