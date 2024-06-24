@@ -13,16 +13,6 @@
 
 `fenicsx-pulse` is a cardiac mechanics solver based on FEniCSx. It is a successor of [`pulse`](https://github.com/finsberg/pulse) which is a cardiac mechanics solver based on FEniCS.
 
----
-
-## Notice
-
-**This repo is a complete rewrite of `pulse` to work with FEniCSx. The package is not yet ready for release.**
-
-If you are using FEniCS please check out [`pulse`](https://github.com/finsberg/pulse) instead
-
----
-
 * Documentation: https://finsberg.github.io/fenicsx-pulse/
 * Source code: https://github.com/finsberg/fenicsx-pulse
 
