@@ -40,6 +40,9 @@ class Incompressible(Compressibility):
 class Compressible(Compressibility):
     kappa: float | dolfinx.fem.Function | dolfinx.fem.Constant = 1e3
 
+    def __str__(self) -> str:
+        return "\u03ba (J ln(J) - J + 1)"
+
     def strain_energy(self, J: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
         return self.kappa * (J * ufl.ln(J) - J + 1)
 
