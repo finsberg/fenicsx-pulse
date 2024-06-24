@@ -1,4 +1,4 @@
-"""This module defines the ActiveModel class which is an abstract
+r"""This module defines the ActiveModel class which is an abstract
 class for active models. Active models are used to incorporate
 active stress or active strain in the material model.
 
@@ -81,18 +81,18 @@ class ActiveModel(abc.ABC):
         as an extra stress component
 
         .. math::
-            \\mathbf{P} = \frac{\\partial \\Psi}{\\partial \\mathbf{F}} + \\mathbf{P}_a
+            \mathbf{P} = \frac{\partial \Psi}{\partial \mathbf{F}} + \mathbf{P}_a
 
-        where :math:`\\mathbf{P}_a`. Now we can instead rewrite this
+        where :math:`\mathbf{P}_a`. Now we can instead rewrite this
         as a total strain energy by considering the following equation
 
         .. math::
-            \\mathbf{P} = \frac{\\partial \\Psi}{\\partial \\mathbf{F}}
-            =  \frac{\\partial \\Psi_p}{\\partial \\mathbf{F}}
-            +  \frac{\\partial \\Psi_a}{\\partial \\mathbf{F}}
+            \mathbf{P} = \frac{\partial \Psi}{\partial \mathbf{F}}
+            =  \frac{\partial \Psi_p}{\partial \mathbf{F}}
+            +  \frac{\partial \Psi_a}{\partial \mathbf{F}}
 
-        where :math:`\\Psi_p` is the passive (classical) strain energy
-        density function and :math:`\\Psi_a` is the corresponding active
+        where :math:`\Psi_p` is the passive (classical) strain energy
+        density function and :math:`\Psi_a` is the corresponding active
         strain energy density function.
 
         Parameters
