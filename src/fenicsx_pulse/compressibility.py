@@ -1,3 +1,18 @@
+r"""This module defines compressibility models for the material models.
+We define two compressibility models: `Incompressible` and `Compressible`.
+
+An incompressible material is a material that does not change its volume under
+deformation. The volume change is described by the Jacobian :math:`J = \det(F)`,
+where :math:`F` is the deformation gradient.
+
+The `Incompressible` model is defined by the strain energy density function
+:math:`\Psi = p (J - 1)`, where :math:`p` is a function representing the
+Lagrange multiplier. The `Compressible` model is defined by the strain energy
+density function :math:`\Psi = \kappa (J \ln(J) - J + 1)`, where :math:`\kappa`
+is a material parameter representing the bulk modulus. Higher values of
+:math:`\kappa` correspond to more incompressible material.
+"""
+
 import abc
 from dataclasses import dataclass, field
 

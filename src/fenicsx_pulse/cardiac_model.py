@@ -1,3 +1,9 @@
+"""This module defines the cardiac model.
+
+The cardiac model is a combination of a material model,
+an active model, and a compressibility model.
+"""
+
 from dataclasses import dataclass
 from typing import Protocol
 

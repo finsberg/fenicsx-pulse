@@ -1,3 +1,27 @@
+r"""This module defines invariants of the deformation gradient.
+
+The deformation gradient :math:`\mathbf{F}` is a tensor field that describes the
+deformation of a material. The invariants of the deformation gradient are scalar
+quantities that are invariant under rigid body motion.
+
+The invariants are defined as follows:
+
+- First principal invariant
+    :math:`I_1 = \text{tr}(\mathbf{C})`
+- Second principal invariant
+    :math:`I_2 = \left( I_1^2 - \text{tr}(\mathbf{C}\cdot\mathbf{C})\right)`
+- Third principal invariant
+    :math:`I_3 = \text{det}(\mathbf{C})`
+- Fourth quasi invariant
+    :math:`I_{4\mathbf{a_0}} = \mathbf{C}\mathbf{a}_0 \cdot \mathbf{a}_0`
+- Fifth quasi invariant
+    :math:`I_{5\mathbf{a_0}} = \mathbf{C}\mathbf{a}_0 \cdot \mathbf{C}\mathbf{a}_0`
+- Eight quasi invariant
+    :math:`I_{8\mathbf{a_0}\mathbf{b_0}} = \mathbf{F}\mathbf{a}_0 \cdot \mathbf{F}\mathbf{b}_0`
+
+where :math:`\mathbf{C} = \mathbf{F}^T\mathbf{F}` is the right Cauchy-Green tensor.
+"""
+
 import ufl
 
 from . import kinematics
