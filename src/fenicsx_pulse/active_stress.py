@@ -72,12 +72,12 @@ class ActiveStress(ActiveModel):
         Parameters
         ----------
         F : ufl.core.expr.Expr
-            _description_
+            The deformation gradient
 
         Returns
         -------
         ufl.core.expr.Expr
-            _description_
+            The active strain energy density
 
         Raises
         ------
@@ -92,10 +92,16 @@ class ActiveStress(ActiveModel):
 
 
 def transversely_active_stress(Ta, C, f0, eta=0.0):
-    """
+    r"""
     Return active strain energy when activation is only
     working along the fibers, with a possible transverse
-    component defined by eta
+    component defined by :math:`\eta` with :math:`\eta = 0`
+    meaning that all active stress is along the fiber and
+    :math:`\eta = 1` meaning that all active stress is in the
+    transverse direction. The active strain energy is given by
+
+    .. math::
+        W = \frac{1}{2} T_a \left( I_{4f} - 1 + \eta ((I_1 - 3) - (I_{4f} - 1)) \right)
 
     Arguments
     ---------

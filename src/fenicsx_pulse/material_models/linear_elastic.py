@@ -3,13 +3,15 @@ from dataclasses import dataclass
 import dolfinx
 import ufl
 
-from . import exceptions, kinematics
-from .material_model import Material
+from .. import exceptions, kinematics
+from ..material_model import Material
 
 
 @dataclass(frozen=True, slots=True)
 class LinearElastic(Material):
     """Linear elastic material
+
+
 
     Parameters
     ----------

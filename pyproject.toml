@@ -27,6 +27,7 @@ docs = [
    "jupytext",
    "jupyter",
    "cardiac-geometriesx",
+   "fenicsx-ldrb",
    "pyvista[all]>=0.43.0",
    "trame-vuetify",
    "ipywidgets",
@@ -54,6 +55,7 @@ testpaths = [
 [tool.ruff]
 # Exclude a variety of commonly ignored directories.
 exclude = [
+    "demo/*.py",
     ".bzr",
     ".direnv",
     ".eggs",

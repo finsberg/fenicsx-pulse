@@ -90,7 +90,7 @@ bcs = fenicsx_pulse.BoundaryConditions(dirichlet=(dirichlet_bc,), neumann=(neuma
 
 # and create a mechanics problem
 
-problem = fenicsx_pulse.MechanicsProblem(model=model, geometry=geo, bcs=bcs)
+problem = fenicsx_pulse.MechanicsProblemMixed(model=model, geometry=geo, bcs=bcs)
 
 # We also set a value for the active stress
 
