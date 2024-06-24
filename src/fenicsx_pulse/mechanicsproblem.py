@@ -17,8 +17,10 @@ class Geometry(typing.Protocol):
     dx: ufl.Measure
     ds: ufl.Measure
     mesh: dolfinx.mesh.Mesh
-    facet_normal: ufl.Coefficient
     facet_tags: dolfinx.mesh.MeshTags
+
+    @property
+    def facet_normal(self) -> ufl.FacetNormal: ...
 
 
 @dataclass(slots=True)
