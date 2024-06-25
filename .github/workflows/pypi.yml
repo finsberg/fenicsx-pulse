@@ -1,9 +1,14 @@
-name: Release
+name: PyPI
 
 on:
-  pull_request:
   push:
-    branches: [main]
+    branches:
+      - "main"
+    tags:
+      - "v*"
+  pull_request:
+    branches:
+      - "main"
 
 
 jobs:
