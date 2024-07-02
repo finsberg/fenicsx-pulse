@@ -4,7 +4,7 @@ from importlib.metadata import metadata
 
 meta = metadata("fenicsx_pulse")
 __version__ = meta["Version"]
-__author__ = meta["Author"]
+__author__ = meta["Author-email"]
 __license__ = meta["License"]
 __email__ = meta["Author-email"]
 __program_name__ = meta["Name"]
@@ -29,7 +29,13 @@ from .cardiac_model import CardiacModel
 from .compressibility import Compressibility, Compressible, Incompressible
 from .geometry import Geometry, Marker
 from .material_model import HyperElasticMaterial
-from .material_models import HolzapfelOgden, LinearElastic, NeoHookean, SaintVenantKirchhoff
+from .material_models import (
+    Guccione,
+    HolzapfelOgden,
+    LinearElastic,
+    NeoHookean,
+    SaintVenantKirchhoff,
+)
 from .mechanicsproblem import BaseMechanicsProblem, MechanicsProblem, MechanicsProblemMixed
 
 __all__ = [
@@ -64,4 +70,5 @@ __all__ = [
     "MechanicsProblemMixed",
     "BaseMechanicsProblem",
     "Compressibility",
+    "Guccione",
 ]
