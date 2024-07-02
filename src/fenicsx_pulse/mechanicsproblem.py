@@ -1,3 +1,10 @@
+"""This module defines the mechanics problem.
+
+The mechanics problem is a combination of a cardiac model, a geometry, and boundary conditions.
+
+
+"""
+
 import typing
 from dataclasses import dataclass, field
 
@@ -113,7 +120,9 @@ class BaseMechanicsProblem:
                 raise NotImplementedError
 
     def solve(self):
-        return self._solver.solve(self.state)
+        ret = self._solver.solve(self.state)
+        self.state.x.scatter_forward()
+        return ret
 
 
 @dataclass(slots=True)

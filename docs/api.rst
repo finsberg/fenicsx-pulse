@@ -34,6 +34,11 @@ material_model
     :inherited-members:
 
 
+.. automodule:: fenicsx_pulse.material_models.guccione
+    :members:
+    :inherited-members:
+
+
 active_model
 ------------
 

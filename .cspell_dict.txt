@@ -6,6 +6,7 @@ atol
 basix
 cellname
 cofac
+Culloch
 deviatoric
 dirichletbc
 dofs
@@ -16,6 +17,7 @@ fenicsx_pulse
 finsberg
 functionspace
 gradu
+Guccione
 Holzapfel
 holzapfelogden
 Hookean
@@ -44,5 +46,6 @@ subplus
 TRAME
 varepsilon
 Venant
+Waldman
 XDMF
 xvfb
