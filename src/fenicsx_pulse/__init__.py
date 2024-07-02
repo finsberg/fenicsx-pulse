@@ -29,7 +29,13 @@ from .cardiac_model import CardiacModel
 from .compressibility import Compressibility, Compressible, Incompressible
 from .geometry import Geometry, Marker
 from .material_model import HyperElasticMaterial
-from .material_models import HolzapfelOgden, LinearElastic, NeoHookean, SaintVenantKirchhoff
+from .material_models import (
+    Guccione,
+    HolzapfelOgden,
+    LinearElastic,
+    NeoHookean,
+    SaintVenantKirchhoff,
+)
 from .mechanicsproblem import BaseMechanicsProblem, MechanicsProblem, MechanicsProblemMixed
 
 __all__ = [
@@ -64,4 +70,5 @@ __all__ = [
     "MechanicsProblemMixed",
     "BaseMechanicsProblem",
     "Compressibility",
+    "Guccione",
 ]
