@@ -31,6 +31,7 @@ def test_MechanicsProblemMixed_and_boundary_conditions(mesh):
         material=material,
         active=active_model,
         compressibility=comp_model,
+        decouple_deviatoric_volumetric=False,
     )
 
     def dirichlet_bc(
