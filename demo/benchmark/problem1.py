@@ -20,8 +20,8 @@ mesh = dolfinx.mesh.create_box(MPI.COMM_WORLD, [[0.0, 0.0, 0.0], [L, W, W]], [30
 left = 1
 bottom = 2
 boundaries = [
-    fenicsx_pulse.Marker(marker=left, dim=2, locator=lambda x: np.isclose(x[0], 0)),
-    fenicsx_pulse.Marker(marker=bottom, dim=2, locator=lambda x: np.isclose(x[2], 0)),
+    fenicsx_pulse.Marker(name="left", marker=left, dim=2, locator=lambda x: np.isclose(x[0], 0)),
+    fenicsx_pulse.Marker(name="bottom", marker=bottom, dim=2, locator=lambda x: np.isclose(x[2], 0)),
 ]
 
 # and assemble the geometry

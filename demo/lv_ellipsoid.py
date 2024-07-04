@@ -8,8 +8,8 @@ from pathlib import Path
 from mpi4py import MPI
 from petsc4py import PETSc
 import dolfinx
+from dolfinx import log
 import fenicsx_pulse
-import ufl
 import cardiac_geometries
 import cardiac_geometries.geometry
 
@@ -21,33 +21,25 @@ if not geodir.exists():
 
 # If the folder already exist, then we just load the geometry
 
-geometry = cardiac_geometries.geometry.Geometry.from_folder(
+geo = cardiac_geometries.geometry.Geometry.from_folder(
     comm=MPI.COMM_WORLD,
     folder=geodir,
 )
 
-# In order to use the geometry with `pulse` we can ether create a new geometry using the {py:class}`fenicsx_pulse.geometry.Geometry` or we can Monkey patch the missing attributes, which in this case are a volume and surface measure, the facet normal and facet tags (see the {py:class}`fenicsx_pulse.mechanicsproblem.Geometry` protocol).
+# In order to use the geometry with `pulse` we need to convert it to a `fenicsx_pulse.Geometry` object. We can do this by using the `from_cardiac_geometries` method. We also specify that we want to use a quadrature degree of 4
 #
 
-geometry.dx = ufl.Measure("dx", domain=geometry.mesh, metadata={"quadrature_degree": 4})
-geometry.ds = ufl.Measure(
-    "ds",
-    domain=geometry.mesh,
-    subdomain_data=geometry.ffun,
-    metadata={"quadrature_degree": 4},
-)
-geometry.facet_normal = ufl.FacetNormal(geometry.mesh)
-geometry.facet_tags = geometry.ffun
+geometry = fenicsx_pulse.Geometry.from_cardiac_geometries(geo, metadata={"quadrature_degree": 4})
 
 # Next we create the material object, and we will use the transversely isotropic version of the {py:class}`Holzapfel Ogden model <fenicsx_pulse.holzapfelogden.HolzapfelOgden>`
 
 material_params = fenicsx_pulse.HolzapfelOgden.transversely_isotropic_parameters()
-material = fenicsx_pulse.HolzapfelOgden(f0=geometry.f0, s0=geometry.s0, **material_params)  # type: ignore
+material = fenicsx_pulse.HolzapfelOgden(f0=geo.f0, s0=geo.s0, **material_params)  # type: ignore
 
 # We use an active stress approach with 30% transverse active stress (see {py:meth}`fenicsx_pulse.active_stress.transversely_active_stress`)
 
 Ta = dolfinx.fem.Constant(geometry.mesh, PETSc.ScalarType(0.0))
-active_model = fenicsx_pulse.ActiveStress(geometry.f0, activation=Ta, eta=0.3)
+active_model = fenicsx_pulse.ActiveStress(geo.f0, activation=Ta, eta=0.3)
 
 # We use an incompressible model
 
@@ -59,6 +51,7 @@ model = fenicsx_pulse.CardiacModel(
     material=material,
     active=active_model,
     compressibility=comp_model,
+    decouple_deviatoric_volumetric=False,
 )
 
 
@@ -96,7 +89,9 @@ problem = fenicsx_pulse.MechanicsProblemMixed(model=model, geometry=geometry, bc
 
 # Now we can solve the problem
 
+log.set_log_level(log.LogLevel.INFO)
 problem.solve()
+
 
 # And save the displacement to a file that we can view in Paraview
 
@@ -114,6 +109,35 @@ for plv in [0.1]: #, 0.5, 1.0]:
     i += 1
 
 
+# Now plot with pyvista
+
+try:
+    import pyvista
+except ImportError:
+    print("Pyvista is not installed")
+else:
+    pyvista.start_xvfb()
+    V = dolfinx.fem.functionspace(geometry.mesh, ("Lagrange", 1, (geometry.mesh.geometry.dim,)))
+    uh = dolfinx.fem.Function(V)
+    uh.interpolate(u)
+    # Create plotter and pyvista grid
+    p = pyvista.Plotter()
+    topology, cell_types, geometry = dolfinx.plot.vtk_mesh(V)
+    grid = pyvista.UnstructuredGrid(topology, cell_types, geometry)
+
+    # Attach vector values to grid and warp grid by vector
+    grid["u"] = uh.x.array.reshape((geometry.shape[0], 3))
+    actor_0 = p.add_mesh(grid, style="wireframe", color="k")
+    warped = grid.warp_by_vector("u", factor=1.5)
+    actor_1 = p.add_mesh(warped, show_edges=True)
+    p.show_axes()
+    if not pyvista.OFF_SCREEN:
+        p.show()
+    else:
+        figure_as_array = p.screenshot("lv_ellipsoid_pressure.png")
+
+
+
 for ta in [0.1]: #, 0.5, 1.0]:
     print(f"ta: {ta}")
     Ta.value = ta
@@ -122,4 +146,22 @@ for ta in [0.1]: #, 0.5, 1.0]:
     vtx.write(float(i))
     i += 1
 
+log.set_log_level(log.LogLevel.WARNING)
 vtx.close()
+
+
+try:
+    import pyvista
+except ImportError:
+    pass
+else:
+    # Attach vector values to grid and warp grid by vector
+    grid["u"] = uh.x.array.reshape((geometry.shape[0], 3))
+    actor_0 = p.add_mesh(grid, style="wireframe", color="k")
+    warped = grid.warp_by_vector("u", factor=1.5)
+    actor_1 = p.add_mesh(warped, show_edges=True)
+    p.show_axes()
+    if not pyvista.OFF_SCREEN:
+        p.show()
+    else:
+        figure_as_array = p.screenshot("lv_ellipsoid_active.png")

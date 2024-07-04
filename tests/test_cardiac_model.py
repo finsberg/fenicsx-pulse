@@ -24,6 +24,7 @@ def test_CardiacModel_HolzapfelOgden(comp_model, isotropy, mesh, u):
         material=material,
         active=active_model,
         compressibility=comp_model,
+        decouple_deviatoric_volumetric=False,
     )
     u.interpolate(lambda x: x / 10.0)
     F = fenicsx_pulse.kinematics.DeformationGradient(u)
@@ -51,6 +52,7 @@ def test_CardiacModel_NeoHookean(comp_model, isotropy, mesh, u):
         material=material,
         active=active_model,
         compressibility=comp_model,
+        decouple_deviatoric_volumetric=False,
     )
     u.interpolate(lambda x: x / 10.0)
     F = fenicsx_pulse.kinematics.DeformationGradient(u)

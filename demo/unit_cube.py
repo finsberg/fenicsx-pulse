@@ -9,6 +9,7 @@ from mpi4py import MPI
 from petsc4py import PETSc
 
 import dolfinx
+from dolfinx import log
 import fenicsx_pulse
 import numpy as np
 
@@ -19,8 +20,8 @@ mesh = dolfinx.mesh.create_unit_cube(MPI.COMM_WORLD, 3, 3, 3)
 # Next let up specify a list of boundary markers where we will set the different boundary conditions
 
 boundaries = [
-    fenicsx_pulse.Marker(marker=1, dim=2, locator=lambda x: np.isclose(x[0], 0)),
-    fenicsx_pulse.Marker(marker=2, dim=2, locator=lambda x: np.isclose(x[0], 1)),
+    fenicsx_pulse.Marker(name="X0", marker=1, dim=2, locator=lambda x: np.isclose(x[0], 0)),
+    fenicsx_pulse.Marker(name="X1", marker=2, dim=2, locator=lambda x: np.isclose(x[0], 1)),
 ]
 
 # Now collect the boundaries and mesh in to a geometry object
@@ -98,33 +99,45 @@ Ta.value = 2.0
 
 # And solve the problem
 
+log.set_log_level(log.LogLevel.INFO)
+
 problem.solve()
+
+log.set_log_level(log.LogLevel.WARNING)
+
 
 # We can get the solution (displacement)
 
 u = problem.state.sub(0).collapse()
 
+with dolfinx.io.VTXWriter(mesh.comm, "unit_cube_displacement.bp", [u], engine="BP4") as vtx:
+    vtx.write(0.0)
+
 # and visualize it using pyvista
 
-import pyvista
-
-pyvista.start_xvfb()
-
-# Create plotter and pyvista grid
-p = pyvista.Plotter()
-
-topology, cell_types, geometry = dolfinx.plot.vtk_mesh(
-    problem.state_space.sub(0).collapse()[0],
-)
-grid = pyvista.UnstructuredGrid(topology, cell_types, geometry)
-
-# Attach vector values to grid and warp grid by vectora
-grid["u"] = u.x.array.reshape((geometry.shape[0], 3))
-actor_0 = p.add_mesh(grid, style="wireframe", color="k")
-warped = grid.warp_by_vector("u", factor=1.5)
-actor_1 = p.add_mesh(warped, show_edges=True)
-p.show_axes()
-if not pyvista.OFF_SCREEN:
-    p.show()
+try:
+    import pyvista
+except ImportError:
+    print("Pyvista is not installed")
 else:
-    figure_as_array = p.screenshot("displacement.png")
+
+    pyvista.start_xvfb()
+
+    # Create plotter and pyvista grid
+    p = pyvista.Plotter()
+
+    topology, cell_types, geometry = dolfinx.plot.vtk_mesh(
+        problem.state_space.sub(0).collapse()[0],
+    )
+    grid = pyvista.UnstructuredGrid(topology, cell_types, geometry)
+
+    # Attach vector values to grid and warp grid by vectora
+    grid["u"] = u.x.array.reshape((geometry.shape[0], 3))
+    actor_0 = p.add_mesh(grid, style="wireframe", color="k")
+    warped = grid.warp_by_vector("u", factor=1.5)
+    actor_1 = p.add_mesh(warped, show_edges=True)
+    p.show_axes()
+    if not pyvista.OFF_SCREEN:
+        p.show()
+    else:
+        figure_as_array = p.screenshot("unit_cube_displacement.png")

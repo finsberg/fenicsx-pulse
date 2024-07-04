@@ -12,9 +12,16 @@ from . import exceptions
 
 
 class Marker(NamedTuple):
+    name: str
     marker: int
     dim: int
     locator: typing.Callable[[npt.NDArray[np.float64]], bool]
+
+
+class CardiacGeometriesObject(typing.Protocol):
+    mesh: dolfinx.mesh.Mesh
+    ffun: dolfinx.mesh.MeshTags
+    markers: dict[str, tuple[int, int]]
 
 
 @dataclass(slots=True)
@@ -26,6 +33,7 @@ class Geometry:
     _facet_markers: npt.NDArray[np.int32] = field(init=False, repr=False)
     _sorted_facets: npt.NDArray[np.int32] = field(init=False, repr=False)
     facet_tags: dolfinx.mesh.MeshTags = field(init=False, repr=False)
+    markers: dict[str, tuple[int, int]] = field(init=False)
     dx: ufl.Measure = field(init=False, repr=False)
     ds: ufl.Measure = field(init=False, repr=False)
 
@@ -33,7 +41,7 @@ class Geometry:
         facet_indices, facet_markers = [], []
 
         # TODO: Handle when dim is not 2
-        for marker, dim, locator in self.boundaries:
+        for _, marker, dim, locator in self.boundaries:
             facets = dolfinx.mesh.locate_entities(self.mesh, dim, locator)
             facet_indices.append(facets)
             facet_markers.append(np.full_like(facets, marker))
@@ -50,6 +58,10 @@ class Geometry:
             entities,
             values,
         )
+        self.markers = dict((x[0], (x[1], x[2])) for x in self.boundaries)
+        self._set_measures()
+
+    def _set_measures(self) -> None:
         self.dx = ufl.Measure("dx", domain=self.mesh, metadata=self.metadata)
         self.ds = ufl.Measure(
             "ds",
@@ -57,6 +69,19 @@ class Geometry:
             subdomain_data=self.facet_tags,
             metadata=self.metadata,
         )
+
+    @classmethod
+    def from_cardiac_geometries(
+        cls,
+        geo: CardiacGeometriesObject,
+        metadata: dict[str, typing.Any] | None = None,
+    ):
+        metadata = metadata or {}
+        obj = cls(mesh=geo.mesh, metadata=metadata)
+        obj.facet_tags = geo.ffun
+        obj.markers = geo.markers
+        obj._set_measures()
+        return obj
 
     @property
     def facet_dimension(self) -> int:
@@ -78,10 +103,6 @@ class Geometry:
         ) as xdmf:
             xdmf.write_mesh(self.mesh)
             xdmf.write_meshtags(self.facet_tags, x=self.mesh.geometry)
-
-    @property
-    def markers(self) -> tuple[int, ...]:
-        return tuple(x[0] for x in self.boundaries)
 
     @property
     def facet_normal(self) -> ufl.FacetNormal:

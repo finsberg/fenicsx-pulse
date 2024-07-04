@@ -57,12 +57,12 @@ class ActiveStress(ActiveModel):
     def __post_init__(self) -> None:
         if self.activation is None:
             self.activation = dolfinx.fem.Constant(
-                self.f0.ufl_domain(),
+                ufl.domain.extract_unique_domain(self.f0),
                 dolfinx.default_scalar_type(0.0),
             )
 
-        self.T_ref = dolfinx.fem.Constant(self.f0.ufl_domain(), self.T_ref)
-        self.eta = dolfinx.fem.Constant(self.f0.ufl_domain(), self.eta)
+        self.T_ref = dolfinx.fem.Constant(ufl.domain.extract_unique_domain(self.f0), self.T_ref)
+        self.eta = dolfinx.fem.Constant(ufl.domain.extract_unique_domain(self.f0), self.eta)
 
     @property
     def Ta(self) -> ufl.core.expr.Expr:
