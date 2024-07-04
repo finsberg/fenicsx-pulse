@@ -74,7 +74,7 @@ class Guccione(HyperElasticMaterial):
                 )
 
     @staticmethod
-    def default_parameters(self) -> dict:
+    def default_parameters() -> dict:
         return {"C": 2.0, "bf": 8.0, "bt": 2.0, "bfs": 4.0}
 
     def is_isotropic(self) -> bool:

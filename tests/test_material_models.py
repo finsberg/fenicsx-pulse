@@ -128,7 +128,7 @@ def test_neo_hookean(u, mesh):
     assert math.isclose(value, 0.5 * 0.63)
 
 
-def test_saint_venant_kirchhoff(u, mesh):
+def test_saint_venant_kirchhoff(u):
     lmbda = 1.0
     mu = 1.0
     model = fenicsx_pulse.SaintVenantKirchhoff(lmbda=lmbda, mu=mu)
@@ -142,3 +142,43 @@ def test_saint_venant_kirchhoff(u, mesh):
 
     expected = 0.5 * lmbda * 0.3**2 + mu * 0.03
     assert math.isclose(value, expected)
+
+
+def test_guccione_isotropic(u):
+    C = 10.0
+    bf = bt = bfs = 1.0
+    model = fenicsx_pulse.Guccione(C=C, bf=bf, bt=bt, bfs=bfs)
+    assert model.is_isotropic()
+
+    u.interpolate(lambda x: x / 10)
+    F = fenicsx_pulse.kinematics.DeformationGradient(u)
+    psi = model.strain_energy(F)
+    value = dolfinx.fem.assemble_scalar(dolfinx.fem.form(psi * ufl.dx))
+    # F = I + 0.1 I, C = 1.21 I, E = 0.5 * (C - I) = 0.105 I
+    # E * E = 0.105**2 I, tr(E * E) = 0.105**2 * 3
+    # psi = 0.5 * C * (exp(E * E) - 1) = 0.5 * 10.0 * (exp(0.105 ** 2) - 1)
+    assert math.isclose(value, 0.5 * 10.0 * (math.exp(3 * (0.105**2)) - 1))
+
+
+def test_guccione_anisotropic(u, mesh):
+    f0 = dolfinx.fem.Constant(mesh, (1.0, 0.0, 0.0))
+    s0 = dolfinx.fem.Constant(mesh, (0.0, 1.0, 0.0))
+    n0 = dolfinx.fem.Constant(mesh, (0.0, 0.0, 1.0))
+
+    C = 10.0
+    bf = 1.0
+    bt = 2.0
+    bfs = 3.0
+    model = fenicsx_pulse.Guccione(C=C, bf=bf, bt=bt, bfs=bfs, f0=f0, s0=s0, n0=n0)
+    assert not model.is_isotropic()
+
+    u.interpolate(lambda x: x / 10)
+    F = fenicsx_pulse.kinematics.DeformationGradient(u)
+    psi = model.strain_energy(F)
+    value = dolfinx.fem.assemble_scalar(dolfinx.fem.form(psi * ufl.dx))
+    # F = I + 0.1 I, C = 1.21 I, E = 0.5 * (C - I) = 0.105 I
+    # E11 = E22 = E33 = 0.105, E12 = E13 = E23 = 0
+    # Q = bf * E11**2 + bt * (E22**2 + E33**2 + 2 * E23**2) + bfs * (2 * E12**2 + 2 * E13**2)
+    # Q = E11**2 (bf + 2 bt)
+    Q = (0.105**2) * (1 + 2 * 2)
+    assert math.isclose(value, 0.5 * 10.0 * (math.exp(Q) - 1))
