@@ -13,15 +13,15 @@ def test_geometry_empty_initialization(mesh):
     assert geo._sorted_facets.size == 0
     assert geo.facet_dimension == 2
     assert geo.dim == 3
-    assert geo.markers == ()
+    assert geo.markers == {}
     assert geo.dx == ufl.Measure("dx", domain=mesh)
     assert geo.ds == ufl.Measure("ds", domain=mesh, subdomain_data=geo.facet_tags)
 
 
 def test_geometry_with_boundary_and_metadata(mesh):
     boundaries = [
-        (1, 2, lambda x: np.isclose(x[0], 0)),
-        (2, 2, lambda x: np.isclose(x[0], 1)),
+        ("left", 1, 2, lambda x: np.isclose(x[0], 0)),
+        ("right", 2, 2, lambda x: np.isclose(x[0], 1)),
     ]
     metadata = {"quadrature_degree": 4}
     geo = fenicsx_pulse.Geometry(
@@ -33,7 +33,7 @@ def test_geometry_with_boundary_and_metadata(mesh):
     assert geo._facet_indices.size == 36
     assert geo._facet_markers.size == 36
     assert geo._sorted_facets.size == 36
-    assert geo.markers == (1, 2)
+    assert geo.markers == {"left": 1, "right": 2}
 
     assert geo.dx == ufl.Measure("dx", domain=mesh, metadata=metadata)
     assert geo.ds == ufl.Measure(
@@ -47,7 +47,7 @@ def test_geometry_with_boundary_and_metadata(mesh):
 def test_dump_mesh_tags(tmp_path, mesh):
     geo = fenicsx_pulse.Geometry(
         mesh=mesh,
-        boundaries=[(1, 2, lambda x: np.isclose(x[0], 0))],
+        boundaries=[("marker", 1, 2, lambda x: np.isclose(x[0], 0))],
     )
     path = tmp_path.with_suffix(".xdmf")
     assert not path.is_file()

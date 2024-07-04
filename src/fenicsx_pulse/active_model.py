@@ -117,4 +117,4 @@ class Passive(ActiveModel):
         return F
 
     def strain_energy(self, F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
-        return dolfinx.fem.Constant(F.ufl_domain(), 0.0)
+        return dolfinx.fem.Constant(ufl.domain.extract_unique_domain(F), 0.0)
