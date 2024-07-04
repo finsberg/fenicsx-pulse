@@ -34,12 +34,12 @@ geometry = fenicsx_pulse.Geometry.from_cardiac_geometries(geo, metadata={"quadra
 # Next we create the material object, and we will use the transversely isotropic version of the {py:class}`Holzapfel Ogden model <fenicsx_pulse.holzapfelogden.HolzapfelOgden>`
 
 material_params = fenicsx_pulse.HolzapfelOgden.transversely_isotropic_parameters()
-material = fenicsx_pulse.HolzapfelOgden(f0=geometry.f0, s0=geometry.s0, **material_params)  # type: ignore
+material = fenicsx_pulse.HolzapfelOgden(f0=geo.f0, s0=geo.s0, **material_params)  # type: ignore
 
 # We use an active stress approach with 30% transverse active stress (see {py:meth}`fenicsx_pulse.active_stress.transversely_active_stress`)
 
 Ta = dolfinx.fem.Constant(geometry.mesh, PETSc.ScalarType(0.0))
-active_model = fenicsx_pulse.ActiveStress(geometry.f0, activation=Ta, eta=0.3)
+active_model = fenicsx_pulse.ActiveStress(geo.f0, activation=Ta, eta=0.3)
 
 # We use an incompressible model
 
