@@ -21,7 +21,7 @@ class Marker(NamedTuple):
 class CardiacGeometriesObject(typing.Protocol):
     mesh: dolfinx.mesh.Mesh
     ffun: dolfinx.mesh.MeshTags
-    markers: dict[str, int]
+    markers: dict[str, tuple[int, int]]
 
 
 @dataclass(slots=True)
@@ -33,7 +33,7 @@ class Geometry:
     _facet_markers: npt.NDArray[np.int32] = field(init=False, repr=False)
     _sorted_facets: npt.NDArray[np.int32] = field(init=False, repr=False)
     facet_tags: dolfinx.mesh.MeshTags = field(init=False, repr=False)
-    markers: dict[str, int] = field(init=False)
+    markers: dict[str, tuple[int, int]] = field(init=False)
     dx: ufl.Measure = field(init=False, repr=False)
     ds: ufl.Measure = field(init=False, repr=False)
 
@@ -58,7 +58,7 @@ class Geometry:
             entities,
             values,
         )
-        self.markers = dict((x[0], x[1]) for x in self.boundaries)
+        self.markers = dict((x[0], (x[1], x[2])) for x in self.boundaries)
         self._set_measures()
 
     def _set_measures(self) -> None:
@@ -79,6 +79,7 @@ class Geometry:
         metadata = metadata or {}
         obj = cls(mesh=geo.mesh, metadata=metadata)
         obj.facet_tags = geo.ffun
+        obj.markers = geo.markers
         obj._set_measures()
         return obj
 

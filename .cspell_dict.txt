@@ -38,6 +38,7 @@ ndarray
 neohookean
 Neumann
 numpy
+outdir
 Paraview
 petsc
 Piola
