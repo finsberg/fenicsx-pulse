@@ -10,6 +10,7 @@ parts:
     - file: "demo/benchmark/README"
       sections:
       - file: "demo/benchmark/problem1"
+      - file: "demo/benchmark/problem2"
   - caption: Community
     chapters:
       - file: "CONTRIBUTING"
