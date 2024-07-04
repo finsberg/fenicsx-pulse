@@ -19,8 +19,8 @@ mesh = dolfinx.mesh.create_unit_cube(MPI.COMM_WORLD, 3, 3, 3)
 # Next let up specify a list of boundary markers where we will set the different boundary conditions
 
 boundaries = [
-    fenicsx_pulse.Marker(marker=1, dim=2, locator=lambda x: np.isclose(x[0], 0)),
-    fenicsx_pulse.Marker(marker=2, dim=2, locator=lambda x: np.isclose(x[0], 1)),
+    fenicsx_pulse.Marker(name="X0", marker=1, dim=2, locator=lambda x: np.isclose(x[0], 0)),
+    fenicsx_pulse.Marker(name="X1", marker=2, dim=2, locator=lambda x: np.isclose(x[0], 1)),
 ]
 
 # Now collect the boundaries and mesh in to a geometry object
