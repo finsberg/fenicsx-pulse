@@ -17,6 +17,12 @@ class Marker(NamedTuple):
     locator: typing.Callable[[npt.NDArray[np.float64]], bool]
 
 
+class CardiacGeometriesObject(typing.Protocol):
+    mesh: dolfinx.mesh.Mesh
+    ffun: dolfinx.mesh.MeshTags
+    markers: dict[str, int]
+
+
 @dataclass(slots=True)
 class Geometry:
     mesh: dolfinx.mesh.Mesh
@@ -50,6 +56,9 @@ class Geometry:
             entities,
             values,
         )
+        self._set_measures()
+
+    def _set_measures(self) -> None:
         self.dx = ufl.Measure("dx", domain=self.mesh, metadata=self.metadata)
         self.ds = ufl.Measure(
             "ds",
@@ -57,6 +66,18 @@ class Geometry:
             subdomain_data=self.facet_tags,
             metadata=self.metadata,
         )
+
+    @classmethod
+    def from_cardiac_geometries(
+        cls,
+        geo: CardiacGeometriesObject,
+        metadata: dict[str, typing.Any] | None = None,
+    ):
+        metadata = metadata or {}
+        obj = cls(mesh=geo.mesh, metadata=metadata)
+        obj.facet_tags = geo.ffun
+        obj._set_measures()
+        return obj
 
     @property
     def facet_dimension(self) -> int:
