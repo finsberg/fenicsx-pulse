@@ -7,10 +7,10 @@ import numpy as np
 
 def test_MechanicsProblemMixed_and_boundary_conditions(mesh):
     boundaries = [
-        (1, 2, lambda x: np.isclose(x[0], 0)),
-        (2, 2, lambda x: np.isclose(x[0], 1)),
-        (3, 2, lambda x: np.isclose(x[1], 0)),
-        (4, 2, lambda x: np.isclose(x[1], 1)),
+        ("X0", 1, 2, lambda x: np.isclose(x[0], 0)),
+        ("X1", 2, 2, lambda x: np.isclose(x[0], 1)),
+        ("Y0", 3, 2, lambda x: np.isclose(x[1], 0)),
+        ("Y1", 4, 2, lambda x: np.isclose(x[1], 1)),
     ]
     geo = fenicsx_pulse.Geometry(
         mesh=mesh,
@@ -100,10 +100,10 @@ def test_MechanicsProblemMixed_and_boundary_conditions(mesh):
 
 def test_MechanicsProblem_and_boundary_conditions(mesh):
     boundaries = [
-        (1, 2, lambda x: np.isclose(x[0], 0)),
-        (2, 2, lambda x: np.isclose(x[0], 1)),
-        (3, 2, lambda x: np.isclose(x[1], 0)),
-        (4, 2, lambda x: np.isclose(x[1], 1)),
+        ("X0", 1, 2, lambda x: np.isclose(x[0], 0)),
+        ("X1", 2, 2, lambda x: np.isclose(x[0], 1)),
+        ("Y0", 3, 2, lambda x: np.isclose(x[1], 0)),
+        ("Y1", 4, 2, lambda x: np.isclose(x[1], 1)),
     ]
     geo = fenicsx_pulse.Geometry(
         mesh=mesh,

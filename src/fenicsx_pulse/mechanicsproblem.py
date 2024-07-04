@@ -92,7 +92,7 @@ class BaseMechanicsProblem:
         external_work = []
 
         for neumann in self.bcs.neumann:
-            n = neumann.traction * ufl.cofac(F) * N
+            n = neumann.traction * ufl.det(F) * ufl.inv(F).T * N
             external_work.append(ufl.inner(v, n) * ds(neumann.marker))
 
         for robin in self.bcs.robin:
