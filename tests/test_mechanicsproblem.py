@@ -60,42 +60,42 @@ def test_MechanicsProblemMixed_and_boundary_conditions(mesh):
     )
 
     problem = fenicsx_pulse.MechanicsProblemMixed(model=model, geometry=geo, bcs=bcs)
-    # problem.solve()
+    problem.solve()
 
-    # u = problem.state.sub(0).collapse()
-    # p = problem.state.sub(1).collapse()
+    u = problem.state.sub(0).collapse()
+    p = problem.state.sub(1).collapse()
 
-    # # With the HolzapfelOgden model the hydrostatic pressure
-    # # should equal the negative of the material parameter a
-    # assert np.allclose(p.x.array, -material_params["a"])
-    # # And with no external forces, there should be no displacement
-    # assert np.allclose(u.x.array, 0.0)
+    # With the HolzapfelOgden model the hydrostatic pressure
+    # should equal the negative of the material parameter a
+    assert np.allclose(p.x.array, -material_params["a"])
+    # And with no external forces, there should be no displacement
+    assert np.allclose(u.x.array, 0.0)
 
-    # # Update traction
-    # traction.value = -1.0
-    # problem.solve()
-    # # Now the displacement should be non zero
-    # assert not np.allclose(problem.state.sub(0).collapse().x.array, 0.0)
+    # Update traction
+    traction.value = -1.0
+    problem.solve()
+    # Now the displacement should be non zero
+    assert not np.allclose(problem.state.sub(0).collapse().x.array, 0.0)
 
-    # # Put on a similar opposite active stress
-    # Ta.value = 1.0
-    # problem.solve()
-    # # Now the displacement should be almost zero again
-    # assert np.allclose(problem.state.sub(0).collapse().x.array, 0.0)
+    # Put on a similar opposite active stress
+    Ta.value = 1.0
+    problem.solve()
+    # Now the displacement should be almost zero again
+    assert np.allclose(problem.state.sub(0).collapse().x.array, 0.0)
 
-    # # Put on a body force
-    # body_force.value[1] = 1.0
-    # problem.solve()
-    # # This should also change the displacement
-    # u_body = problem.state.sub(0).collapse().x.array
-    # assert not np.allclose(u_body, 0.0)
+    # Put on a body force
+    body_force.value[1] = 1.0
+    problem.solve()
+    # This should also change the displacement
+    u_body = problem.state.sub(0).collapse().x.array
+    assert not np.allclose(u_body, 0.0)
 
-    # # Now add a robin condition
-    # robin_value.value = 1.0
-    # problem.solve()
-    # u_robin = problem.state.sub(0).collapse().x.array
-    # # This should again change the displacement
-    # assert not np.allclose(u_body - u_robin, 0.0)
+    # Now add a robin condition
+    robin_value.value = 1.0
+    problem.solve()
+    u_robin = problem.state.sub(0).collapse().x.array
+    # This should again change the displacement
+    assert not np.allclose(u_body - u_robin, 0.0)
 
 
 def test_MechanicsProblem_and_boundary_conditions(mesh):

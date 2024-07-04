@@ -17,11 +17,6 @@ class Marker(NamedTuple):
     dim: int
     locator: typing.Callable[[npt.NDArray[np.float64]], bool]
 
-class CardiacGeomertriesObject(typing.Protocol):
-    mesh: dolfinx.mesh.Mesh
-    ffun: dolfinx.mesh.MeshTags
-    markers : dict[str, int]
-
 
 @dataclass(slots=True)
 class Geometry:
