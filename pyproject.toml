@@ -15,7 +15,7 @@ dependencies = ["fenics-dolfinx"]
 test = [
     "pytest",
     "pytest-cov",
-    "cardiac-geometries",
+    "cardiac-geometriesx",
 ]
 dev = [
     "pdbpp",
