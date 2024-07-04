@@ -26,6 +26,7 @@ hyperelastic
 isclose
 isochoric
 isscalar
+krylov
 libgl
 libxrender
 lmbda
@@ -40,9 +41,11 @@ numpy
 Paraview
 petsc
 Piola
+preonly
 PYVISTA
 rtol
 subplus
+superlu
 TRAME
 varepsilon
 Venant

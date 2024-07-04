@@ -76,11 +76,17 @@ class BaseMechanicsProblem:
             self._problem,
         )
         # TODO: Make it possible for the user to set this
-        self._solver.atol = 1e-8
-        self._solver.rtol = 1e-8
+        self._solver.atol = 1e-5
+        self._solver.rtol = 1e-5
         self._solver.convergence_criterion = "incremental"
         self._solver.report = True
         self._solver.max_it = 20
+
+        ksp = self._solver.krylov_solver
+        ksp.setType("preonly")
+        pc = ksp.getPC()
+        pc.setType("lu")
+        pc.setFactorSolverType("superlu_dist")
 
     def _external_work(self, u, v):
         F = kinematics.DeformationGradient(u)
