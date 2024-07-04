@@ -21,33 +21,25 @@ if not geodir.exists():
 
 # If the folder already exist, then we just load the geometry
 
-geometry = cardiac_geometries.geometry.Geometry.from_folder(
+geo = cardiac_geometries.geometry.Geometry.from_folder(
     comm=MPI.COMM_WORLD,
     folder=geodir,
 )
 
-# In order to use the geometry with `pulse` we can ether create a new geometry using the {py:class}`fenicsx_pulse.geometry.Geometry` or we can Monkey patch the missing attributes, which in this case are a volume and surface measure, the facet normal and facet tags (see the {py:class}`fenicsx_pulse.mechanicsproblem.Geometry` protocol).
+# In order to use the geometry with `pulse` we need to convert it to a `fenicsx_pulse.Geometry` object. We can do this by using the `from_cardiac_geometries` method. We also specify that we want to use a quadrature degree of 4
 #
 
-geometry.dx = ufl.Measure("dx", domain=geometry.mesh, metadata={"quadrature_degree": 4})
-geometry.ds = ufl.Measure(
-    "ds",
-    domain=geometry.mesh,
-    subdomain_data=geometry.ffun,
-    metadata={"quadrature_degree": 4},
-)
-geometry.facet_normal = ufl.FacetNormal(geometry.mesh)
-geometry.facet_tags = geometry.ffun
+geometry = fenicsx_pulse.Geometry.from_cardiac_geometries(geo, metadata={"quadrature_degree": 4})
 
 # Next we create the material object, and we will use the transversely isotropic version of the {py:class}`Holzapfel Ogden model <fenicsx_pulse.holzapfelogden.HolzapfelOgden>`
 
 material_params = fenicsx_pulse.HolzapfelOgden.transversely_isotropic_parameters()
-material = fenicsx_pulse.HolzapfelOgden(f0=geometry.f0, s0=geometry.s0, **material_params)  # type: ignore
+material = fenicsx_pulse.HolzapfelOgden(f0=geo.f0, s0=geo.s0, **material_params)  # type: ignore
 
 # We use an active stress approach with 30% transverse active stress (see {py:meth}`fenicsx_pulse.active_stress.transversely_active_stress`)
 
 Ta = dolfinx.fem.Constant(geometry.mesh, PETSc.ScalarType(0.0))
-active_model = fenicsx_pulse.ActiveStress(geometry.f0, activation=Ta, eta=0.3)
+active_model = fenicsx_pulse.ActiveStress(geo.f0, activation=Ta, eta=0.3)
 
 # We use an incompressible model
 

@@ -3,6 +3,8 @@ import numpy as np
 import pytest
 import ufl
 
+import cardiac_geometries
+
 
 def test_geometry_empty_initialization(mesh):
     geo = fenicsx_pulse.Geometry(mesh=mesh)
@@ -33,7 +35,7 @@ def test_geometry_with_boundary_and_metadata(mesh):
     assert geo._facet_indices.size == 36
     assert geo._facet_markers.size == 36
     assert geo._sorted_facets.size == 36
-    assert geo.markers == {"left": 1, "right": 2}
+    assert geo.markers == {"left": (1, 2), "right": (2, 2)}
 
     assert geo.dx == ufl.Measure("dx", domain=mesh, metadata=metadata)
     assert geo.ds == ufl.Measure(
@@ -60,3 +62,12 @@ def test_dump_mesh_tags_raises_MeshTagNotFoundError(tmp_path, mesh):
     geo = fenicsx_pulse.Geometry(mesh=mesh)
     with pytest.raises(fenicsx_pulse.exceptions.MeshTagNotFoundError):
         geo.dump_mesh_tags(tmp_path)
+
+
+def test_geometry_from_cardiac_geometries(tmp_path):
+    geo1 = cardiac_geometries.mesh.lv_ellipsoid(outdir=tmp_path)
+    geo2 = fenicsx_pulse.Geometry.from_cardiac_geometries(geo1)
+
+    assert geo1.mesh is geo2.mesh
+    assert geo1.markers is geo2.markers
+    assert geo1.ffun is geo2.facet_tags

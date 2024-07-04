@@ -29,23 +29,15 @@ if not geodir.exists():
 
 # If the folder exist we just load it
 
-geometry = cardiac_geometries.geometry.Geometry.from_folder(
+geo = cardiac_geometries.geometry.Geometry.from_folder(
     comm=MPI.COMM_WORLD,
     folder=geodir,
 )
 
-# In order to use the geometry with `pulse` we can ether create a new geometry using the {py:class}`fenicsx_pulse.geometry.Geometry` or we can Monkey patch the missing attributes, which in this case are a volume and surface measure, the facet normal and facet tags (see the {py:class}`fenicsx_pulse.mechanicsproblem.Geometry` protocol).
+# In order to use the geometry with `pulse` we need to convert it to a `fenicsx_pulse.Geometry` object. We can do this by using the `from_cardiac_geometries` method. We also specify that we want to use a quadrature degree of 4
 #
 
-geometry.dx = ufl.Measure("dx", domain=geometry.mesh, metadata={"quadrature_degree": 4})
-geometry.ds = ufl.Measure(
-    "ds",
-    domain=geometry.mesh,
-    subdomain_data=geometry.ffun,
-    metadata={"quadrature_degree": 4},
-)
-geometry.facet_normal = ufl.FacetNormal(geometry.mesh)
-geometry.facet_tags = geometry.ffun
+geometry = fenicsx_pulse.Geometry.from_cardiac_geometries(geo, metadata={"quadrature_degree": 4})
 
 # Next we create the material object, and we will use the transversely isotropic version of the {py:class}`Neo Hookean model <fenicsx_pulse.neo_hookean.NeoHookean>`
 
@@ -53,7 +45,7 @@ material = fenicsx_pulse.NeoHookean(mu=dolfinx.fem.Constant(geometry.mesh, dolfi
 # and use an active stress approach
 
 Ta = dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0))
-active_model = fenicsx_pulse.ActiveStress(geometry.f0, activation=Ta)
+active_model = fenicsx_pulse.ActiveStress(geo.f0, activation=Ta)
 
 # Now we will also implement two different versions, one where we use a compressible model and one where we use an incompressible model. To do this we will introduce a flag
 
