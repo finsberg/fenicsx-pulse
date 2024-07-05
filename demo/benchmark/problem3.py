@@ -11,8 +11,8 @@ import numpy as np
 import math
 import cardiac_geometries
 import fenicsx_pulse
-import shutil
-# Next we will create the geometry and save it in the folder called `lv_ellipsoid`.
+
+# Next we will create the geometry and save it in the folder called `lv_ellipsoid`. Now we will also generate fibers and use a sixth order quadrature space for the fibers
 
 geodir = Path("lv_ellipsoid-problem3")
 if not geodir.exists():
@@ -32,6 +32,7 @@ if not geodir.exists():
         fiber_angle_endo=90,
     )
     print("Done creating geometry.")
+
 # If the folder already exist, then we just load the geometry
 
 geo = cardiac_geometries.geometry.Geometry.from_folder(
@@ -54,6 +55,8 @@ material_params = {
 }
 material = fenicsx_pulse.Guccione(f0=geo.f0, s0=geo.s0, n0=geo.n0, **material_params)
 
+
+# We use an active stress approach with 60% transverse active stress
 
 Ta = dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0))
 active_model = fenicsx_pulse.ActiveStress(geo.f0, activation=Ta)
@@ -109,9 +112,12 @@ log.set_log_level(log.LogLevel.INFO)
 
 problem.solve()
 
+# Now we will solve the problem for a range of active contraction and traction values
 
 target_pressure = 15.0
 target_Ta = 60.0
+
+# Let us just gradually increase the active contraction and traction with a linear ramp of 40 steps
 
 N = 40
 
@@ -130,51 +136,51 @@ with dolfinx.io.VTXWriter(geometry.mesh.comm, "problem3.bp", [u], engine="BP4") 
     vtx.write(0.0)
 
 
-# try:
-#     import pyvista
-# except ImportError:
-#     print("Pyvista is not installed")
-# else:
-#     pyvista.start_xvfb()
-#     V = dolfinx.fem.functionspace(geometry.mesh, ("Lagrange", 1, (geometry.mesh.geometry.dim,)))
-#     uh = dolfinx.fem.Function(V)
-#     uh.interpolate(u)
-#     # Create plotter and pyvista grid
-#     p = pyvista.Plotter()
-#     topology, cell_types, geometry = dolfinx.plot.vtk_mesh(V)
-#     grid = pyvista.UnstructuredGrid(topology, cell_types, geometry)
+try:
+    import pyvista
+except ImportError:
+    print("Pyvista is not installed")
+else:
+    pyvista.start_xvfb()
+    V = dolfinx.fem.functionspace(geometry.mesh, ("Lagrange", 1, (geometry.mesh.geometry.dim,)))
+    uh = dolfinx.fem.Function(V)
+    uh.interpolate(u)
+    # Create plotter and pyvista grid
+    p = pyvista.Plotter()
+    topology, cell_types, geometry = dolfinx.plot.vtk_mesh(V)
+    grid = pyvista.UnstructuredGrid(topology, cell_types, geometry)
 
-#     # Attach vector values to grid and warp grid by vector
-#     grid["u"] = uh.x.array.reshape((geometry.shape[0], 3))
-#     actor_0 = p.add_mesh(grid, style="wireframe", color="k")
-#     warped = grid.warp_by_vector("u", factor=1.5)
-#     actor_1 = p.add_mesh(warped, show_edges=True)
-#     p.show_axes()
-#     if not pyvista.OFF_SCREEN:
-#         p.show()
-#     else:
-#         figure_as_array = p.screenshot("problem2.png")
+    # Attach vector values to grid and warp grid by vector
+    grid["u"] = uh.x.array.reshape((geometry.shape[0], 3))
+    actor_0 = p.add_mesh(grid, style="wireframe", color="k")
+    warped = grid.warp_by_vector("u", factor=1.5)
+    actor_1 = p.add_mesh(warped, show_edges=True)
+    p.show_axes()
+    if not pyvista.OFF_SCREEN:
+        p.show()
+    else:
+        figure_as_array = p.screenshot("problem2.png")
 
 
-# # FIXME: Need to figure out how to evaluate the displacement at the apex
-# # geometry.mesh.topology.create_connectivity(0, geometry.mesh.topology.dim)
-# # apex_endo = geo.vfun.find(geo.markers["ENDOPT"][0])
-# # endo_apex_coord = geo.mesh.geometry.x[apex_endo]
+# FIXME: Need to figure out how to evaluate the displacement at the apex
+# geometry.mesh.topology.create_connectivity(0, geometry.mesh.topology.dim)
+# apex_endo = geo.vfun.find(geo.markers["ENDOPT"][0])
+# endo_apex_coord = geo.mesh.geometry.x[apex_endo]
 
-# # dofs_endo_apex = dolfinx.fem.locate_dofs_topological(problem.state_space.sub(0), 0, apex_endo)
-# # u_endo_apex = u.x.array[dofs_endo_apex]
+# dofs_endo_apex = dolfinx.fem.locate_dofs_topological(problem.state_space.sub(0), 0, apex_endo)
+# u_endo_apex = u.x.array[dofs_endo_apex]
 
-# # endo_apex_pos = endo_apex_coord + u_endo_apex
+# endo_apex_pos = endo_apex_coord + u_endo_apex
 
-# # print(f"\nGet longitudinal position of endocardial apex: {endo_apex_pos[0, 0]:4f} mm")
+# print(f"\nGet longitudinal position of endocardial apex: {endo_apex_pos[0, 0]:4f} mm")
 
-# # apex_epi = geo.vfun.find(geo.markers["EPIPT"][0])
-# # epi_apex_coord = geo.mesh.geometry.x[apex_epi]
+# apex_epi = geo.vfun.find(geo.markers["EPIPT"][0])
+# epi_apex_coord = geo.mesh.geometry.x[apex_epi]
 
-# # geometry.mesh.topology.create_connectivity(0, geometry.mesh.topology.dim)
-# # dofs_epi_apex = dolfinx.fem.locate_dofs_topological(problem.state_space.sub(0), 0, apex_epi)
-# # u_epi_apex = u.x.array[dofs_epi_apex]
+# geometry.mesh.topology.create_connectivity(0, geometry.mesh.topology.dim)
+# dofs_epi_apex = dolfinx.fem.locate_dofs_topological(problem.state_space.sub(0), 0, apex_epi)
+# u_epi_apex = u.x.array[dofs_epi_apex]
 
-# # epi_apex_pos = epi_apex_coord + u_epi_apex
+# epi_apex_pos = epi_apex_coord + u_epi_apex
 
-# # print(f"\nGet longitudinal position of epicardial apex: {epi_apex_pos[0, 0]:.4f} mm")
+# print(f"\nGet longitudinal position of epicardial apex: {epi_apex_pos[0, 0]:.4f} mm")
