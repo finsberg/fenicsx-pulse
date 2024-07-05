@@ -49,11 +49,11 @@ material = fenicsx_pulse.Guccione(f0=f0, s0=s0, n0=n0, **material_params)
 
 active_model = fenicsx_pulse.active_model.Passive()
 
-# and the model should be incompressble
+# and the model should be incompressible
 
 comp_model = fenicsx_pulse.Incompressible()
 
-# We can now assemble the `CaridacModel`
+# We can now assemble the `CardiacModel`
 #
 
 model = fenicsx_pulse.CardiacModel(
@@ -120,8 +120,9 @@ tree = dolfinx.geometry.bb_tree(mesh, 3)
 cell_candidates = dolfinx.geometry.compute_collisions_points(tree, point)
 cell = dolfinx.geometry.compute_colliding_cells(mesh, cell_candidates, point)
 uz = mesh.comm.allreduce(u.eval(point, cell.array)[2], op=MPI.MAX)
-print(f"Get z-position of point {point}: {point[2] + uz:.2f} mm")
-
+result = point[2] + uz
+print(f"Get z-position of point {point}: {result:.2f} mm")
+assert np.isclose(result, 4.17, atol=1.0e-2)
 # Finally, let us plot the deflected beam using pyvista
 
 try:
