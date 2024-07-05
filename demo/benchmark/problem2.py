@@ -4,7 +4,6 @@
 
 from pathlib import Path
 from mpi4py import MPI
-import ufl
 from dolfinx import log
 import dolfinx
 import numpy as np
@@ -106,8 +105,8 @@ log.set_log_level(log.LogLevel.INFO)
 
 problem.solve()
 
-# Now step up the pressure to 10 kPa starting with an icreament of 1 kPa
-target_value = 1.0
+# Now step up the pressure to 10 kPa starting with an increment of 1 kPa
+target_value = 10.0
 incr = 1.0
 
 # Here we use a continuation strategy to speed up the convergence
@@ -149,3 +148,53 @@ log.set_log_level(log.LogLevel.INFO)
 u = problem.state.sub(0).collapse()
 with dolfinx.io.VTXWriter(geometry.mesh.comm, "problem2.bp", [u], engine="BP4") as vtx:
     vtx.write(0.0)
+
+
+try:
+    import pyvista
+except ImportError:
+    print("Pyvista is not installed")
+else:
+    pyvista.start_xvfb()
+    V = dolfinx.fem.functionspace(geometry.mesh, ("Lagrange", 1, (geometry.mesh.geometry.dim,)))
+    uh = dolfinx.fem.Function(V)
+    uh.interpolate(u)
+    # Create plotter and pyvista grid
+    p = pyvista.Plotter()
+    topology, cell_types, geometry = dolfinx.plot.vtk_mesh(V)
+    grid = pyvista.UnstructuredGrid(topology, cell_types, geometry)
+
+    # Attach vector values to grid and warp grid by vector
+    grid["u"] = uh.x.array.reshape((geometry.shape[0], 3))
+    actor_0 = p.add_mesh(grid, style="wireframe", color="k")
+    warped = grid.warp_by_vector("u", factor=1.5)
+    actor_1 = p.add_mesh(warped, show_edges=True)
+    p.show_axes()
+    if not pyvista.OFF_SCREEN:
+        p.show()
+    else:
+        figure_as_array = p.screenshot("problem2.png")
+
+
+# FIXME: Need to figure out how to evaluate the displacement at the apex
+# geometry.mesh.topology.create_connectivity(0, geometry.mesh.topology.dim)
+# apex_endo = geo.vfun.find(geo.markers["ENDOPT"][0])
+# endo_apex_coord = geo.mesh.geometry.x[apex_endo]
+
+# dofs_endo_apex = dolfinx.fem.locate_dofs_topological(problem.state_space.sub(0), 0, apex_endo)
+# u_endo_apex = u.x.array[dofs_endo_apex]
+
+# endo_apex_pos = endo_apex_coord + u_endo_apex
+
+# print(f"\nGet longitudinal position of endocardial apex: {endo_apex_pos[0, 0]:4f} mm")
+
+# apex_epi = geo.vfun.find(geo.markers["EPIPT"][0])
+# epi_apex_coord = geo.mesh.geometry.x[apex_epi]
+
+# geometry.mesh.topology.create_connectivity(0, geometry.mesh.topology.dim)
+# dofs_epi_apex = dolfinx.fem.locate_dofs_topological(problem.state_space.sub(0), 0, apex_epi)
+# u_epi_apex = u.x.array[dofs_epi_apex]
+
+# epi_apex_pos = epi_apex_coord + u_epi_apex
+
+# print(f"\nGet longitudinal position of epicardial apex: {epi_apex_pos[0, 0]:.4f} mm")
