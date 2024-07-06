@@ -26,7 +26,7 @@ jobs:
         run: python3 -m pip install -e .[benchmark]
 
       - name : Install codspeed
-        run: curl -fsSL https://github.com/CodSpeedHQ/runner/releases/download/v2.4.2/codspeed-runner-installer.sh | bash -s -- --quiet
+        run: curl -fsSL https://github.com/CodSpeedHQ/runner/releases/download/v2.4.2/codspeed-runner-installer.sh | bash -s
 
       - name: Run benchmarks
         run: codspeed-runner --token ${{ secrets.CODSPEED_TOKEN }} python3 -m pytest tests/ --codspeed
