@@ -12,7 +12,7 @@ on:
 jobs:
   benchmarks:
     runs-on: ubuntu-22.04
-    container: ghcr.io/fenics/dolfinx/dolfinx:nightly
+    container: ghcr.io/fenics/dolfinx/dolfinx:v0.8.0
     env:
       DEB_PYTHON_INSTALL_LAYOUT: deb_system
 
