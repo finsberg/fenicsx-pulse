@@ -30,4 +30,4 @@ jobs:
 
       - name: Run benchmarks
         run: |
-          $HOME/.cargo/bin/codspeed-runner --token ${{ secrets.CODSPEED_TOKEN }} python3 -m pytest tests/ --codspeed
+          $HOME/.cargo/bin/codspeed-runner --token ${{ secrets.CODSPEED_TOKEN }} "python3 -m pytest tests/ --codspeed"
