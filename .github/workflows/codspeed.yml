@@ -25,11 +25,8 @@ jobs:
       - name: Install package
         run: python3 -m pip install -e .[benchmark]
 
-      - name: Run benchmarks
-        uses: CodSpeedHQ/action@v2
-        env:
-            RUNNER_VERSION: "2.4.2"
-        with:
+      - name : Install codspeed
+        run: curl -fsSL https://github.com/CodSpeedHQ/runner/releases/download/v2.4.2/codspeed-runner-installer.sh | bash -s -- --quiet
 
-            token: ${{ secrets.CODSPEED_TOKEN }}
-            run: python3 -m pytest tests/ --codspeed
+      - name: Run benchmarks
+        run: codspeed-runner --token ${{ secrets.CODSPEED_TOKEN }} python3 -m pytest tests/ --codspeed
