@@ -1,0 +1,28 @@
+name: codspeed-benchmarks
+
+on:
+  push:
+    branches:
+      - "main" # or "master"
+  pull_request:
+  # `workflow_dispatch` allows CodSpeed to trigger backtest
+  # performance analysis in order to generate initial data.
+  workflow_dispatch:
+
+jobs:
+  benchmarks:
+    runs-on: ubuntu-22.04
+    container: ghcr.io/fenics/dolfinx/dolfinx:v0.8
+    env:
+      DEB_PYTHON_INSTALL_LAYOUT: deb_system
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run benchmarks
+        uses: CodSpeedHQ/action@v2
+        with:
+            run: python3 -m pytest tests/ --codspeed

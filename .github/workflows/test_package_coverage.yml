@@ -20,7 +20,7 @@ jobs:
         run: python3 -m pip install .[test]
 
       - name: Run tests
-        run: python3 -m pytest -v
+        run: python3 -m pytest -m "not benchmark"
 
       - name: Extract Coverage
         run: |
