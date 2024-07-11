@@ -36,7 +36,6 @@ docs = [
 benchmark = [
     "pytest-codspeed",
     "pytest-cov",
-    "cardiac-geometriesx",
 ]
 
 all = [
