@@ -35,7 +35,7 @@ docs = [
 ]
 benchmark = [
     "pytest-codspeed",
-    "pytest-cov",
+    "fenicsx_pulse[test]",
 ]
 
 all = [
