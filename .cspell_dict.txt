@@ -11,12 +11,14 @@ deviatoric
 dirichletbc
 dofs
 dolfinx
+endo
 fenics
 fenicsx
 fenicsx_pulse
 ffun
 finsberg
 functionspace
+geodir
 gradu
 Guccione
 Holzapfel
