@@ -30,6 +30,9 @@ jobs:
       - name : Install codspeed
         run: curl -fsSL https://github.com/CodSpeedHQ/runner/releases/download/v2.4.2/codspeed-runner-installer.sh | bash -s
 
+      - name: Fix git owner
+        run: git config --global --add safe.directory "*"
+
       - name: Run benchmarks
         run: |
           $HOME/.cargo/bin/codspeed-runner --token ${{ secrets.CODSPEED_TOKEN }} "python3 -m pytest tests/ --codspeed"
