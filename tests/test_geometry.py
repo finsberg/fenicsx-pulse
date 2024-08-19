@@ -1,9 +1,9 @@
-import fenicsx_pulse
 import numpy as np
 import pytest
 import ufl
 
 import cardiac_geometries
+import fenicsx_pulse
 
 
 def test_geometry_empty_initialization(mesh):

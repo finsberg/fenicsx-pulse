@@ -4,6 +4,7 @@ import dolfinx
 import numpy as np
 import pytest
 import ufl
+
 from fenicsx_pulse import kinematics
 from fenicsx_pulse.active_model import Passive
 from fenicsx_pulse.active_stress import ActiveStress
