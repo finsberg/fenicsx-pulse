@@ -1,10 +1,11 @@
 from mpi4py import MPI
 
 import dolfinx
-import fenicsx_pulse
 import numpy as np
 import pytest
 import ufl
+
+import fenicsx_pulse
 
 
 @pytest.mark.parametrize("element", [("P", 1), ("P", 2)])
