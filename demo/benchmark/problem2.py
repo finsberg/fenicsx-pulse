@@ -11,6 +11,8 @@ import math
 import cardiac_geometries
 import fenicsx_pulse
 
+
+
 # Next we will create the geometry and save it in the folder called `lv_ellipsoid`.
 
 geodir = Path("lv_ellipsoid")
@@ -176,25 +178,18 @@ else:
         figure_as_array = p.screenshot("problem2.png")
 
 
-# FIXME: Need to figure out how to evaluate the displacement at the apex
-# geometry.mesh.topology.create_connectivity(0, geometry.mesh.topology.dim)
-# apex_endo = geo.vfun.find(geo.markers["ENDOPT"][0])
-# endo_apex_coord = geo.mesh.geometry.x[apex_endo]
+# Finally we can extract the longitudinal position of the endocardial and epicardial apex
+# First we create a function to get the coordinates of the apex
 
-# dofs_endo_apex = dolfinx.fem.locate_dofs_topological(problem.state_space.sub(0), 0, apex_endo)
-# u_endo_apex = u.x.array[dofs_endo_apex]
+U = dolfinx.fem.Function(u.function_space)
+U.interpolate(lambda x: (x[0], x[1], x[2]))
 
-# endo_apex_pos = endo_apex_coord + u_endo_apex
+endo_apex_coord = fenicsx_pulse.utils.evaluate_at_vertex_tag(U, geo.vfun, geo.markers["ENDOPT"][0])
+u_endo_apex = fenicsx_pulse.utils.evaluate_at_vertex_tag(u, geo.vfun, geo.markers["ENDOPT"][0])
+endo_apex_pos = fenicsx_pulse.utils.gather_broadcast_array(geo.mesh.comm, endo_apex_coord + u_endo_apex)
+print(f"\nGet longitudinal position of endocardial apex: {endo_apex_pos[0, 0]:4f} mm")
 
-# print(f"\nGet longitudinal position of endocardial apex: {endo_apex_pos[0, 0]:4f} mm")
-
-# apex_epi = geo.vfun.find(geo.markers["EPIPT"][0])
-# epi_apex_coord = geo.mesh.geometry.x[apex_epi]
-
-# geometry.mesh.topology.create_connectivity(0, geometry.mesh.topology.dim)
-# dofs_epi_apex = dolfinx.fem.locate_dofs_topological(problem.state_space.sub(0), 0, apex_epi)
-# u_epi_apex = u.x.array[dofs_epi_apex]
-
-# epi_apex_pos = epi_apex_coord + u_epi_apex
-
-# print(f"\nGet longitudinal position of epicardial apex: {epi_apex_pos[0, 0]:.4f} mm")
+epi_apex_coord = fenicsx_pulse.utils.evaluate_at_vertex_tag(U, geo.vfun, geo.markers["EPIPT"][0])
+u_epi_apex = fenicsx_pulse.utils.evaluate_at_vertex_tag(u, geo.vfun, geo.markers["EPIPT"][0])
+epi_apex_pos = fenicsx_pulse.utils.gather_broadcast_array(geo.mesh.comm, epi_apex_coord + u_epi_apex)
+print(f"\nGet longitudinal position of epicardial apex: {epi_apex_pos[0, 0]:4f} mm")

@@ -4,11 +4,13 @@ argsort
 astype
 atol
 basix
+bcast
 cellname
 cofac
 Culloch
 deviatoric
 dirichletbc
+dofmap
 dofs
 dolfinx
 endo

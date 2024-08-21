@@ -22,6 +22,7 @@ from . import (
     material_model,
     material_models,
     mechanicsproblem,
+    utils,
 )
 from .active_stress import ActiveStress
 from .boundary_conditions import BoundaryConditions, NeumannBC, RobinBC
@@ -71,4 +72,5 @@ __all__ = [
     "BaseMechanicsProblem",
     "Compressibility",
     "Guccione",
+    "utils",
 ]
