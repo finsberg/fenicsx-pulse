@@ -1,10 +1,11 @@
 import math
 
 import dolfinx
-import fenicsx_pulse
 import pytest
 import ufl
 import utils
+
+import fenicsx_pulse
 
 
 @pytest.mark.parametrize("obj_str", ("float", "Constant", "Function"))
