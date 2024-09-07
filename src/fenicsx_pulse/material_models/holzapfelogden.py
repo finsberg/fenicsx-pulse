@@ -9,6 +9,14 @@ import ufl
 from .. import exceptions, functions, invariants
 from ..material_model import HyperElasticMaterial
 
+Invariant = typing.Callable[[ufl.core.expr.Expr], ufl.core.expr.Expr]
+
+
+def heaviside(x: ufl.core.expr.Expr, use_heaviside: bool) -> ufl.core.expr.Expr:
+    if use_heaviside:
+        return functions.heaviside(x)
+    return ufl.as_ufl(1.0)
+
 
 @dataclass(slots=True)
 class HolzapfelOgden(HyperElasticMaterial):
@@ -96,31 +104,31 @@ class HolzapfelOgden(HyperElasticMaterial):
     use_subplus: bool = field(default=True, repr=False)
     use_heaviside: bool = field(default=True, repr=False)
 
-    _W1_func: typing.Callable[[ufl.core.expr.Expr], ufl.core.expr.Expr] = field(
+    _W1_func: Invariant = field(
         init=False,
         repr=False,
     )
-    _W4f_func: typing.Callable[[ufl.core.expr.Expr], ufl.core.expr.Expr] = field(
+    _W4f_func: Invariant = field(
         init=False,
         repr=False,
     )
-    _W4s_func: typing.Callable[[ufl.core.expr.Expr], ufl.core.expr.Expr] = field(
+    _W4s_func: Invariant = field(
         init=False,
         repr=False,
     )
-    _W8fs_func: typing.Callable[[ufl.core.expr.Expr], ufl.core.expr.Expr] = field(
+    _W8fs_func: Invariant = field(
         init=False,
         repr=False,
     )
-    _I4f: typing.Callable[[ufl.core.expr.Expr], ufl.core.expr.Expr] = field(
+    _I4f: Invariant = field(
         init=False,
         repr=False,
     )
-    _I4s: typing.Callable[[ufl.core.expr.Expr], ufl.core.expr.Expr] = field(
+    _I4s: Invariant = field(
         init=False,
         repr=False,
     )
-    _I8fs: typing.Callable[[ufl.core.expr.Expr], ufl.core.expr.Expr] = field(
+    _I8fs: Invariant = field(
         init=False,
         repr=False,
     )
@@ -158,7 +166,7 @@ class HolzapfelOgden(HyperElasticMaterial):
         self._W4s_func = self._resolve_W4(a=self.a_s, b=self.b_s, required_attr="s0")
         self._W8fs_func = self._resolve_W8fs()
 
-    def _resolve_W1(self):
+    def _resolve_W1(self) -> Invariant:
         if exceptions.check_value_greater_than(self.a, 1e-10):
             if exceptions.check_value_greater_than(self.b, 1e-10):
                 return lambda I1: (self.a / (2.0 * self.b)) * (ufl.exp(self.b * (I1 - 3)) - 1.0)
@@ -167,9 +175,9 @@ class HolzapfelOgden(HyperElasticMaterial):
         else:
             return lambda I1: 0.0
 
-    def _resolve_W4(self, a, b, required_attr: str):
+    def _resolve_W4(self, a, b, required_attr: str) -> Invariant:
         subplus = functions.subplus if self.use_subplus else lambda x: x
-        heaviside = functions.heaviside if self.use_heaviside else lambda x: 1
+
         if exceptions.check_value_greater_than(a, 1e-10):
             a0 = getattr(self, required_attr)
             if a0 is None:
@@ -180,15 +188,19 @@ class HolzapfelOgden(HyperElasticMaterial):
             if exceptions.check_value_greater_than(b, 1e-10):
                 return (
                     lambda I4: (a / (2.0 * b))
-                    * heaviside(I4 - 1)
+                    * heaviside(I4 - 1, use_heaviside=self.use_heaviside)
                     * (ufl.exp(b * subplus(I4 - 1) ** 2) - 1.0)
                 )
             else:
-                return lambda I4: (a / 2.0) * heaviside(I4 - 1) * subplus(I4 - 1) ** 2
+                return (
+                    lambda I4: (a / 2.0)
+                    * heaviside(I4 - 1, use_heaviside=self.use_heaviside)
+                    * subplus(I4 - 1) ** 2
+                )
         else:
             return lambda I4: 0.0
 
-    def _resolve_W8fs(self):
+    def _resolve_W8fs(self) -> Invariant:
         if exceptions.check_value_greater_than(self.a_fs, 1e-10):
             if self.f0 is None or self.s0 is None:
                 raise exceptions.MissingModelAttribute(
