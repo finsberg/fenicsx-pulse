@@ -10,16 +10,20 @@ from typing import Protocol
 import dolfinx
 
 from . import kinematics
+from .viscoelasticity import NoneViscoElasticity
 
 
 class ActiveModel(Protocol):
     def strain_energy(self, F) -> dolfinx.fem.Form: ...
+
     def Fe(self, F) -> dolfinx.fem.Form: ...
 
 
 class Compressibility(Protocol):
     def strain_energy(self, J) -> dolfinx.fem.Form: ...
+
     def is_compressible(self) -> bool: ...
+
     def register(self, p: dolfinx.fem.Function | None) -> None: ...
 
 
@@ -27,11 +31,16 @@ class HyperElasticMaterial(Protocol):
     def strain_energy(self, F) -> dolfinx.fem.Form: ...
 
 
+class ViscoElasticity(Protocol):
+    def strain_energy(self, E_dot) -> dolfinx.fem.Form: ...
+
+
 @dataclass(frozen=True, slots=True)
 class CardiacModel:
     material: HyperElasticMaterial
     active: ActiveModel
     compressibility: Compressibility
+    viscoelasticity: ViscoElasticity = NoneViscoElasticity()
     decouple_deviatoric_volumetric: bool = True
 
     def strain_energy(self, F, p: dolfinx.fem.Function | None = None):
@@ -56,3 +65,6 @@ class CardiacModel:
             + self.active.strain_energy(Jm13 * F)
             + self.compressibility.strain_energy(J)
         )
+
+    def viscoelastic_strain_energy(self, E_dot):
+        return self.viscoelasticity.strain_energy(E_dot)

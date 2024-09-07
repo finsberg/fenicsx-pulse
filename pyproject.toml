@@ -23,15 +23,18 @@ dev = [
     "bump2version",
     "pre-commit",
 ]
+demo = [
+    "cardiac-geometriesx",
+    "fenicsx-ldrb",
+]
 docs = [
    "jupyter-book",
    "jupytext",
    "jupyter",
-   "cardiac-geometriesx",
-   "fenicsx-ldrb",
    "pyvista[all]>=0.43.0",
    "trame-vuetify",
    "ipywidgets",
+   "fenicsx_pulse[demo]",
 ]
 benchmark = [
     "pytest-codspeed",
@@ -39,9 +42,10 @@ benchmark = [
 ]
 
 all = [
-   "fenicsx_pulse[test]",
-   "fenicsx_pulse[docs]",
-   "fenicsx_pulse[dev]",
+    "fenicsx_pulse[test]",
+    "fenicsx_pulse[docs]",
+    "fenicsx_pulse[dev]",
+    "fenicsx_pulse[demo]",
 ]
 
 [tool.pytest.ini_options]

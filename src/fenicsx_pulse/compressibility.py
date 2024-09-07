@@ -88,3 +88,26 @@ class Compressible(Compressibility):
 
     def is_compressible(self) -> bool:
         return True
+
+
+@dataclass(slots=True)
+class Compressible2(Compressibility):
+    r"""Compressible material model
+
+    Strain energy density function is given by
+
+    .. math::
+        \Psi = \kappa (J^2 - 1 - 2 \ln(J))
+
+    """
+
+    kappa: float | dolfinx.fem.Function | dolfinx.fem.Constant = 1e3
+
+    def __str__(self) -> str:
+        return "\u03ba (J ** 2 - 1 - 2 ln(J))"
+
+    def strain_energy(self, J: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
+        return 0.25 * self.kappa * (J**2 - 1 - 2 * ufl.ln(J))
+
+    def is_compressible(self) -> bool:
+        return True

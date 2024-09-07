@@ -5,6 +5,7 @@ The mechanics problem is a combination of a cardiac model, a geometry, and bound
 
 """
 
+import abc
 import typing
 from dataclasses import dataclass, field
 
@@ -59,6 +60,12 @@ class BaseMechanicsProblem:
         self._dirichlet_bc = value
         self._set_dirichlet_bc()
         self._init_solver()
+
+    @abc.abstractmethod
+    def _init_space(self) -> None: ...
+
+    @abc.abstractmethod
+    def _init_form(self) -> None: ...
 
     def __post_init__(self):
         self._init_space()
