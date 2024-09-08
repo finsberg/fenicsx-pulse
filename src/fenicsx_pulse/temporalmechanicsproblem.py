@@ -319,13 +319,13 @@ class Problem:
     @staticmethod
     def default_parameters() -> typing.Dict[str, float | str]:
         return dict(
-            alpha_top=1.0,
-            alpha_epi=1e3,
-            beta_top=5e-2,
-            beta_epi=5e-2,
-            p=0.0,
-            rho=1e-3,
-            dt=1e-3,
+            alpha_top=1.0,  # kPa / cm
+            alpha_epi=1e3,  # kPa / cm
+            beta_top=5e-2,  # kPa s / cm
+            beta_epi=5e-2,  # kPa s / cm
+            p=0.0,  # kPa
+            rho=1e-3,  # kg / cm^3
+            dt=1e-3,  # s
             alpha_m=0.2,
             alpha_f=0.4,
             function_space="P_2",
