@@ -15,7 +15,7 @@ def subplus(x):
 def heaviside(
     x: ufl.Coefficient,
     k: float = 1.0,
-    use_exp: bool = False,
+    use_exp: bool = True,
 ) -> ufl.Coefficient:
     r"""
     Heaviside function

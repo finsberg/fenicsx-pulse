@@ -21,6 +21,7 @@ import ufl
 
 from .boundary_conditions import BoundaryConditions
 from .cardiac_model import CardiacModel
+from .units import Variable
 
 
 class Geometry(typing.Protocol):
@@ -64,8 +65,9 @@ def interpolate(x0: T, x1: T, alpha: float):
 class Problem:
     model: CardiacModel
     geometry: Geometry
-    parameters: dict[str, typing.Any] = field(default_factory=dict)
+    parameters: dict[str, Variable] = field(default_factory=dict)
     bcs: BoundaryConditions = field(default_factory=BoundaryConditions)
+    function_space: str = "P_2"
 
     def __post_init__(self):
         parameters = type(self).default_parameters()
@@ -78,7 +80,7 @@ class Problem:
         """Initialize function spaces"""
         mesh = self.geometry.mesh
 
-        family, degree = self.parameters["function_space"].split("_")
+        family, degree = self.function_space.split("_")
 
         element = basix.ufl.element(
             family=family,
@@ -96,7 +98,8 @@ class Problem:
         self.a_old = dolfinx.fem.Function(self.u_space)
 
     def _acceleration_form(self, a: dolfinx.fem.Function, w: ufl.TestFunction):
-        return ufl.inner(self.parameters["rho"] * a, w) * self.geometry.dx
+        rho = self.parameters["rho"].to_base_units()
+        return ufl.inner(rho * a, w) * self.geometry.dx
 
     def _first_piola(self, F: ufl.Coefficient, v: dolfinx.fem.Function):
         F_dot = ufl.grad(v)
@@ -112,11 +115,16 @@ class Problem:
     def _form(self, u: dolfinx.fem.Function, v: dolfinx.fem.Function, w: ufl.TestFunction):
         F = ufl.variable(ufl.grad(u) + ufl.Identity(3))
         P = self._first_piola(F, v)
-        epi = ufl.dot(self.parameters["alpha_epi"] * u, self.N) + ufl.dot(
-            self.parameters["beta_epi"] * v,
+        alpha_epi = self.parameters["alpha_epi"].to_base_units()
+        beta_epi = self.parameters["beta_epi"].to_base_units()
+        alpha_top = self.parameters["alpha_top"].to_base_units()
+        beta_top = self.parameters["beta_top"].to_base_units()
+
+        epi = ufl.dot(alpha_epi * u, self.N) + ufl.dot(
+            beta_epi * v,
             self.N,
         )
-        top = self.parameters["alpha_top"] * u + self.parameters["beta_top"] * v
+        top = alpha_top * u + beta_top * v
 
         return (
             ufl.inner(P, ufl.grad(w)) * self.geometry.dx
@@ -132,7 +140,8 @@ class Problem:
         external_work = []
 
         for neumann in self.bcs.neumann:
-            n = neumann.traction * ufl.det(F) * ufl.inv(F).T * N
+            t = neumann.traction.to_base_units()
+            n = t * ufl.det(F) * ufl.inv(F).T * N
             external_work.append(ufl.inner(w, n) * ds(neumann.marker))
         return sum(external_work)
 
@@ -162,7 +171,7 @@ class Problem:
         T
             The current velocity
         """
-        dt = self.parameters["dt"]
+        dt = self.parameters["dt"].to_base_units()
         return v_old + (1 - self._gamma) * dt * a_old + self._gamma * dt * a
 
     def a(
@@ -195,7 +204,7 @@ class Problem:
         T
             The current acceleration
         """
-        dt = self.parameters["dt"]
+        dt = self.parameters["dt"].to_base_units()
         dt2 = dt**2
         beta = self._beta
         return (u - (u_old + dt * v_old + (0.5 - beta) * dt2 * a_old)) / (beta * dt2)
@@ -204,12 +213,14 @@ class Problem:
         """Update old values of displacement, velocity
         and acceleration
         """
+
         a = self.a(
             u=self.u.x.array,
             u_old=self.u_old.x.array,
             v_old=self.v_old.x.array,
             a_old=self.a_old.x.array,
         )
+
         v = self.v(a=a, v_old=self.v_old.x.array, a_old=self.a_old.x.array)
 
         self.a_old.x.array[:] = a
@@ -239,8 +250,8 @@ class Problem:
         if self.geometry.markers is None:
             raise RuntimeError("Missing markers in geometry")
 
-        alpha_m = self.parameters["alpha_m"]
-        alpha_f = self.parameters["alpha_f"]
+        alpha_m = self.parameters["alpha_m"].to_base_units()
+        alpha_f = self.parameters["alpha_f"].to_base_units()
 
         a_new = self.a(u=self.u, u_old=self.u_old, v_old=self.v_old, a_old=self.a_old)
         v_new = self.v(a=a_new, v_old=self.v_old, a_old=self.a_old)
@@ -301,7 +312,9 @@ class Problem:
     @property
     def _gamma(self) -> float:
         """Parameter in the generalized alpha-method"""
-        return 0.5 + self.parameters["alpha_f"] - self.parameters["alpha_m"]
+        alpha_m = self.parameters["alpha_m"].to_base_units()
+        alpha_f = self.parameters["alpha_f"].to_base_units()
+        return 0.5 + alpha_f - alpha_m
 
     @property
     def _beta(self) -> float:
@@ -311,22 +324,19 @@ class Problem:
     def solve(self) -> bool:
         """Solve the system"""
         ret = self._solver.solve(self.u)
-        self.u.x.scatter_forward()
 
         self._update_fields()
         return ret
 
     @staticmethod
-    def default_parameters() -> typing.Dict[str, float | str]:
+    def default_parameters() -> typing.Dict[str, Variable]:
         return dict(
-            alpha_top=1.0,  # kPa / cm
-            alpha_epi=1e3,  # kPa / cm
-            beta_top=5e-2,  # kPa s / cm
-            beta_epi=5e-2,  # kPa s / cm
-            p=0.0,  # kPa
-            rho=1e-3,  # kg / cm^3
-            dt=1e-3,  # s
-            alpha_m=0.2,
-            alpha_f=0.4,
-            function_space="P_2",
+            alpha_top=Variable(1e5, "Pa/m"),
+            alpha_epi=Variable(1e8, "Pa/m"),
+            beta_top=Variable(5e3, "Pa s/m"),
+            beta_epi=Variable(5e3, "Pa s/m"),
+            rho=Variable(1e3, "kg/m^3"),
+            dt=Variable(1e-3, "s"),
+            alpha_m=Variable(0.2, "dimensionless"),
+            alpha_f=Variable(0.4, "dimensionless"),
         )

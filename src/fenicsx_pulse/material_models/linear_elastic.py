@@ -1,13 +1,16 @@
+import logging
 from dataclasses import dataclass
 
-import dolfinx
 import ufl
 
 from .. import exceptions, kinematics
 from ..material_model import Material
+from ..units import Variable
+
+logger = logging.getLogger(__name__)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class LinearElastic(Material):
     """Linear elastic material
 
@@ -21,12 +24,20 @@ class LinearElastic(Material):
         Poisson's ratio
     """
 
-    E: float | dolfinx.fem.Function | dolfinx.fem.Constant
-    nu: float | dolfinx.fem.Function | dolfinx.fem.Constant
+    E: Variable = Variable(10, "kPa")
+    nu: Variable = Variable(0.3, "dimensionless")
 
     def __post_init__(self):
+        if not isinstance(self.E, Variable):
+            unit = "kPa"
+            logger.warning("Setting mu to %s %s", self.E, unit)
+            self.E = Variable(self.E, unit)
+        if not isinstance(self.nu, Variable):
+            self.nu = Variable(self.nu, "dimensionless")
+
         # The poisson ratio has to be between -1.0 and 0.5
-        if not exceptions.check_value_between(self.nu, -1.0, 0.5):
+        nu = self.nu.to_base_units()
+        if not exceptions.check_value_between(nu, -1.0, 0.5):
             raise exceptions.InvalidRangeError(name="mu", expected_range=(-1.0, 0.5))
 
     def sigma(self, F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
@@ -49,4 +60,6 @@ class LinearElastic(Material):
         """
         e = kinematics.EngineeringStrain(F)
         I = kinematics.SecondOrderIdentity(F)
-        return (self.E / (1 + self.nu)) * (e + (self.nu / (1 - 2 * self.nu)) * ufl.tr(e) * I)
+        nu = self.nu.to_base_units()
+        E = self.E.to_base_units()
+        return (E / (1 + nu)) * (e + (nu / (1 - 2 * nu)) * ufl.tr(e) * I)

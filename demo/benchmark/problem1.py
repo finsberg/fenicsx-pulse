@@ -35,7 +35,7 @@ geo = fenicsx_pulse.Geometry(
 # The material model used in this benchmark is the {py:class}`Guccione <fenicsx_pulse.material_models.guccione.Guccione>` model.
 
 material_params = {
-    "C": dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(2.0)),
+    "C": fenicsx_pulse.Variable(dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(2.0)), "kPa"),
     "bf": dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(8.0)),
     "bt": dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(2.0)),
     "bfs": dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(4.0)),

@@ -121,11 +121,11 @@ target_Ta = 60.0
 
 N = 40
 
-for Ta_value, traction_value in zip(np.linspace(0, target_Ta, N), np.linspace(0, target_pressure, N)):
-    print(f"Solving problem for traction={traction_value} and active contraction={Ta_value}")
-    Ta.value = Ta_value
-    traction.value = traction_value
-    problem.solve()
+# for Ta_value, traction_value in zip(np.linspace(0, target_Ta, N), np.linspace(0, target_pressure, N)):
+#     print(f"Solving problem for traction={traction_value} and active contraction={Ta_value}")
+#     Ta.value = Ta_value
+#     traction.value = traction_value
+#     problem.solve()
 
 log.set_log_level(log.LogLevel.INFO)
 

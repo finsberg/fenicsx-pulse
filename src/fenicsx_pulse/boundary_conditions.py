@@ -11,19 +11,39 @@ on the boundary of the domain.
 The boundary conditions are collected in a `BoundaryConditions` object.
 """
 
+import logging
 import typing
+from dataclasses import dataclass
 
 import dolfinx
 
+from .units import Variable
 
-class NeumannBC(typing.NamedTuple):
-    traction: float | dolfinx.fem.Constant | dolfinx.fem.Function
+logger = logging.getLogger(__name__)
+
+
+@dataclass(slots=True)
+class NeumannBC:
+    traction: Variable
     marker: int
 
+    def __post_init__(self):
+        if not isinstance(self.traction, Variable):
+            unit = "kPa"
+            logger.warning("Traction is not a Variable, defaulting to kPa")
+            self.traction = Variable(self.traction, unit)
 
-class RobinBC(typing.NamedTuple):
-    value: float | dolfinx.fem.Constant | dolfinx.fem.Function
+
+@dataclass(slots=True)
+class RobinBC:
+    value: Variable
     marker: int
+
+    def __post_init__(self):
+        if not isinstance(self.value, Variable):
+            unit = "kPa / cm**2"
+            logger.warning("Value is not a Variable, defaulting to kPa")
+            self.value = Variable(self.value, unit)
 
 
 class BoundaryConditions(typing.NamedTuple):

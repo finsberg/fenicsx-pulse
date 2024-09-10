@@ -22,6 +22,7 @@ from . import (
     material_model,
     material_models,
     mechanicsproblem,
+    units,
     utils,
 )
 from .active_stress import ActiveStress
@@ -38,6 +39,7 @@ from .material_models import (
     SaintVenantKirchhoff,
 )
 from .mechanicsproblem import BaseMechanicsProblem, MechanicsProblem, MechanicsProblemMixed
+from .units import Variable, ureg
 
 __all__ = [
     "kinematics",
@@ -72,5 +74,8 @@ __all__ = [
     "BaseMechanicsProblem",
     "Compressibility",
     "Guccione",
+    "units",
+    "ureg",
     "utils",
+    "Variable",
 ]

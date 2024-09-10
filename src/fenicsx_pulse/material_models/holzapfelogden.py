@@ -1,3 +1,4 @@
+import logging
 import typing
 from dataclasses import dataclass, field
 from functools import partial
@@ -8,8 +9,11 @@ import ufl
 
 from .. import exceptions, functions, invariants
 from ..material_model import HyperElasticMaterial
+from ..units import Variable
 
 Invariant = typing.Callable[[ufl.core.expr.Expr], ufl.core.expr.Expr]
+
+logger = logging.getLogger(__name__)
 
 
 def heaviside(x: ufl.core.expr.Expr, use_heaviside: bool) -> ufl.core.expr.Expr:
@@ -93,14 +97,14 @@ class HolzapfelOgden(HyperElasticMaterial):
 
     f0: dolfinx.fem.Function | dolfinx.fem.Constant | None = None
     s0: dolfinx.fem.Function | dolfinx.fem.Constant | None = None
-    a: float | dolfinx.fem.Function | dolfinx.fem.Constant = dolfinx.default_scalar_type(0.0)
-    b: float | dolfinx.fem.Function | dolfinx.fem.Constant = dolfinx.default_scalar_type(0.0)
-    a_f: float | dolfinx.fem.Function | dolfinx.fem.Constant = dolfinx.default_scalar_type(0.0)
-    b_f: float | dolfinx.fem.Function | dolfinx.fem.Constant = dolfinx.default_scalar_type(0.0)
-    a_s: float | dolfinx.fem.Function | dolfinx.fem.Constant = dolfinx.default_scalar_type(0.0)
-    b_s: float | dolfinx.fem.Function | dolfinx.fem.Constant = dolfinx.default_scalar_type(0.0)
-    a_fs: float | dolfinx.fem.Function | dolfinx.fem.Constant = dolfinx.default_scalar_type(0.0)
-    b_fs: float | dolfinx.fem.Function | dolfinx.fem.Constant = dolfinx.default_scalar_type(0.0)
+    a: Variable = Variable(0.0, "kPa")
+    b: Variable = Variable(0.0, "dimensionless")
+    a_f: Variable = Variable(0.0, "kPa")
+    b_f: Variable = Variable(0.0, "dimensionless")
+    a_s: Variable = Variable(0.0, "kPa")
+    b_s: Variable = Variable(0.0, "dimensionless")
+    a_fs: Variable = Variable(0.0, "kPa")
+    b_fs: Variable = Variable(0.0, "dimensionless")
     use_subplus: bool = field(default=True, repr=False)
     use_heaviside: bool = field(default=True, repr=False)
 
@@ -136,8 +140,16 @@ class HolzapfelOgden(HyperElasticMaterial):
     def __post_init__(self):
         # Check that all values are positive
         for attr in ["a", "b", "a_f", "b_f", "a_s", "a_s", "a_fs", "b_fs"]:
+            p = getattr(self, attr)
+            if not isinstance(p, Variable):
+                unit = "dimensionless" if attr.startswith("b") else "kPa"
+                if attr.startswith("a"):
+                    logger.warning("Setting %s to %s %s", attr, p, unit)
+                p = Variable(p, unit)
+                setattr(self, attr, p)
+
             if not exceptions.check_value_greater_than(
-                getattr(self, attr),
+                getattr(self, attr).value,
                 0.0,
                 inclusive=True,
             ):
@@ -161,39 +173,48 @@ class HolzapfelOgden(HyperElasticMaterial):
         else:
             self._I8fs = lambda x: 0.0
 
+        a_f = self.a_f
+        b_f = self.b_f
+        a_s = self.a_s
+        b_s = self.b_s
+
         self._W1_func = self._resolve_W1()
-        self._W4f_func = self._resolve_W4(a=self.a_f, b=self.b_f, required_attr="f0")
-        self._W4s_func = self._resolve_W4(a=self.a_s, b=self.b_s, required_attr="s0")
+        self._W4f_func = self._resolve_W4(a=a_f, b=b_f, required_attr="f0")
+        self._W4s_func = self._resolve_W4(a=a_s, b=b_s, required_attr="s0")
         self._W8fs_func = self._resolve_W8fs()
 
     def _resolve_W1(self) -> Invariant:
-        if exceptions.check_value_greater_than(self.a, 1e-10):
-            if exceptions.check_value_greater_than(self.b, 1e-10):
-                return lambda I1: (self.a / (2.0 * self.b)) * (ufl.exp(self.b * (I1 - 3)) - 1.0)
+        a = self.a.to_base_units()
+        b = self.b.to_base_units()
+
+        if exceptions.check_value_greater_than(self.a.value, 1e-10):
+            if exceptions.check_value_greater_than(self.b.value, 1e-10):
+                return lambda I1: (a / (2.0 * b)) * (ufl.exp(b * (I1 - 3)) - 1.0)
             else:
-                return lambda I1: (self.a / 2.0) * (I1 - 3)
+                return lambda I1: (a / 2.0) * (I1 - 3)
         else:
             return lambda I1: 0.0
 
-    def _resolve_W4(self, a, b, required_attr: str) -> Invariant:
+    def _resolve_W4(self, a: Variable, b: Variable, required_attr: str) -> Invariant:
         subplus = functions.subplus if self.use_subplus else lambda x: x
 
-        if exceptions.check_value_greater_than(a, 1e-10):
+        if exceptions.check_value_greater_than(a.value, 1e-10):
             a0 = getattr(self, required_attr)
             if a0 is None:
                 raise exceptions.MissingModelAttribute(
                     attr=required_attr,
                     model=type(self).__name__,
                 )
-            if exceptions.check_value_greater_than(b, 1e-10):
+
+            if exceptions.check_value_greater_than(b.value, 1e-10):
                 return (
-                    lambda I4: (a / (2.0 * b))
+                    lambda I4: (a.to_base_units() / (2.0 * b.to_base_units()))
                     * heaviside(I4 - 1, use_heaviside=self.use_heaviside)
-                    * (ufl.exp(b * subplus(I4 - 1) ** 2) - 1.0)
+                    * (ufl.exp(b.to_base_units() * subplus(I4 - 1) ** 2) - 1.0)
                 )
             else:
                 return (
-                    lambda I4: (a / 2.0)
+                    lambda I4: (a.to_base_units() / 2.0)
                     * heaviside(I4 - 1, use_heaviside=self.use_heaviside)
                     * subplus(I4 - 1) ** 2
                 )
@@ -201,71 +222,73 @@ class HolzapfelOgden(HyperElasticMaterial):
             return lambda I4: 0.0
 
     def _resolve_W8fs(self) -> Invariant:
-        if exceptions.check_value_greater_than(self.a_fs, 1e-10):
+        a_fs = self.a_fs.to_base_units()
+        b_fs = self.b_fs.to_base_units()
+        if exceptions.check_value_greater_than(self.a_fs.value, 1e-10):
             if self.f0 is None or self.s0 is None:
                 raise exceptions.MissingModelAttribute(
                     attr="f0 and/or s0",
                     model=type(self).__name__,
                 )
-            if exceptions.check_value_greater_than(self.b_fs, 1e-10):
-                return lambda I8: self.a_fs / (2.0 * self.b_fs) * (ufl.exp(self.b_fs * I8**2) - 1.0)
+            if exceptions.check_value_greater_than(self.b_fs.value, 1e-10):
+                return lambda I8: a_fs / (2.0 * b_fs) * (ufl.exp(b_fs * I8**2) - 1.0)
             else:
-                return lambda I8: self.a_fs / 2.0 * I8**2
+                return lambda I8: a_fs / 2.0 * I8**2
         else:
             return lambda I8: 0.0
 
     @staticmethod
-    def transversely_isotropic_parameters() -> dict[str, float]:
+    def transversely_isotropic_parameters() -> dict[str, Variable]:
         """
         Material parameters for the Holzapfel Ogden model
         Taken from Table 1 row 3 in the main paper
         """
 
         return {
-            "a": 2.280,
-            "b": 9.726,
-            "a_f": 1.685,
-            "b_f": 15.779,
-            "a_s": 0.0,
-            "b_s": 0.0,
-            "a_fs": 0.0,
-            "b_fs": 0.0,
+            "a": Variable(2.280, "kPa"),
+            "b": Variable(9.726, "dimensionless"),
+            "a_f": Variable(1.685, "kPa"),
+            "b_f": Variable(15.779, "dimensionless"),
+            "a_s": Variable(0.0, "kPa"),
+            "b_s": Variable(0.0, "dimensionless"),
+            "a_fs": Variable(0.0, "kPa"),
+            "b_fs": Variable(0.0, "dimensionless"),
         }
 
     @staticmethod
-    def partly_orthotropic_parameters() -> dict[str, float]:
+    def partly_orthotropic_parameters() -> dict[str, Variable]:
         """
         Material parameters for the Holzapfel Ogden model
         Taken from Table 1 row 1 in the main paper
         """
 
         return {
-            "a": 0.057,
-            "b": 8.094,
-            "a_f": 21.503,
-            "b_f": 15.819,
-            "a_s": 6.841,
-            "b_s": 6.959,
-            "a_fs": 0.0,
-            "b_fs": 0.0,
+            "a": Variable(0.057, "kPa"),
+            "b": Variable(8.094, "dimensionless"),
+            "a_f": Variable(21.503, "kPa"),
+            "b_f": Variable(15.819, "dimensionless"),
+            "a_s": Variable(6.841, "kPa"),
+            "b_s": Variable(6.959, "dimensionless"),
+            "a_fs": Variable(0.0, "kPa"),
+            "b_fs": Variable(0.0, "dimensionless"),
         }
 
     @staticmethod
-    def orthotropic_parameters() -> dict[str, float]:
+    def orthotropic_parameters() -> dict[str, Variable]:
         """
         Material parameters for the Holzapfel Ogden model
         Taken from Table 1 row 2 in the main paper
         """
 
         return {
-            "a": 0.059,
-            "b": 8.023,
-            "a_f": 18.472,
-            "b_f": 16.026,
-            "a_s": 2.481,
-            "b_s": 11.120,
-            "a_fs": 0.216,
-            "b_fs": 11.436,
+            "a": Variable(0.059, "kPa"),
+            "b": Variable(8.023, "dimensionless"),
+            "a_f": Variable(18.472, "kPa"),
+            "b_f": Variable(16.026, "dimensionless"),
+            "a_s": Variable(2.481, "kPa"),
+            "b_s": Variable(11.120, "dimensionless"),
+            "a_fs": Variable(0.216, "kPa"),
+            "b_fs": Variable(11.436, "dimensionless"),
         }
 
     def _W1(self, I1: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
@@ -281,7 +304,8 @@ class HolzapfelOgden(HyperElasticMaterial):
         return self._W8fs_func(I8fs)
 
     def strain_energy(self, F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
-        I1 = invariants.I1(F)
+        J = ufl.det(F)
+        I1 = pow(J, -2 / 3) * invariants.I1(F)
         I4f = self._I4f(F)
         I4s = self._I4s(F)
         I8fs = self._I8fs(F)

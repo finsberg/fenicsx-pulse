@@ -1,9 +1,12 @@
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 
-import dolfinx
 import ufl
 
+from .units import Variable
 
+
+@dataclass
 class ViscoElasticity(ABC):
     @abstractmethod
     def strain_energy(self, E_dot) -> ufl.Form:
@@ -28,7 +31,8 @@ class NoneViscoElasticity(ViscoElasticity):
 
 
 class Viscous(ViscoElasticity):
-    eta: dolfinx.fem.Constant = dolfinx.default_scalar_type(0.1)
+    eta: Variable = Variable(1e2, "Pa s")
 
     def strain_energy(self, E_dot) -> ufl.Form:
-        return 0.5 * self.eta * ufl.tr(E_dot * E_dot)
+        eta = self.eta.to_base_units()
+        return 0.5 * eta * ufl.tr(E_dot * E_dot)

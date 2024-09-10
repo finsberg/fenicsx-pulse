@@ -99,11 +99,13 @@ class BaseMechanicsProblem:
         external_work = []
 
         for neumann in self.bcs.neumann:
-            n = neumann.traction * ufl.det(F) * ufl.inv(F).T * N
+            t = neumann.traction.to_base_units()
+            n = t * ufl.det(F) * ufl.inv(F).T * N
             external_work.append(ufl.inner(v, n) * ds(neumann.marker))
 
         for robin in self.bcs.robin:
-            external_work.append(ufl.inner(robin.value * u, v) * ds(robin.marker))
+            k = robin.value.to_base_units()
+            external_work.append(ufl.inner(k * u, v) * ds(robin.marker))
 
         for body_force in self.bcs.body_force:
             external_work.append(

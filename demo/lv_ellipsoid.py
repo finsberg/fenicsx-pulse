@@ -6,7 +6,6 @@
 
 from pathlib import Path
 from mpi4py import MPI
-from petsc4py import PETSc
 import dolfinx
 from dolfinx import log
 import fenicsx_pulse
@@ -38,7 +37,7 @@ material = fenicsx_pulse.HolzapfelOgden(f0=geo.f0, s0=geo.s0, **material_params)
 
 # We use an active stress approach with 30% transverse active stress (see {py:meth}`fenicsx_pulse.active_stress.transversely_active_stress`)
 
-Ta = dolfinx.fem.Constant(geometry.mesh, PETSc.ScalarType(0.0))
+Ta = fenicsx_pulse.Variable(dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0)), "kPa")
 active_model = fenicsx_pulse.ActiveStress(geo.f0, activation=Ta, eta=0.3)
 
 # We use an incompressible model
@@ -51,7 +50,6 @@ model = fenicsx_pulse.CardiacModel(
     material=material,
     active=active_model,
     compressibility=comp_model,
-    decouple_deviatoric_volumetric=False,
 )
 
 
@@ -76,7 +74,7 @@ def dirichlet_bc(
 
 # We apply a traction in endocardium
 
-traction = dolfinx.fem.Constant(geometry.mesh, PETSc.ScalarType(0.0))
+traction = fenicsx_pulse.Variable(dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0)), "kPa")
 neumann = fenicsx_pulse.NeumannBC(traction=traction, marker=geometry.markers["ENDO"][0])
 
 # and finally combine all the boundary conditions

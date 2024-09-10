@@ -159,3 +159,29 @@ for ta in [0.1] : #, 1.0, 5.0, 10.0]:
     i += 1
 
 vtx.close()
+
+
+# try:
+#     import pyvista
+# except ImportError:
+#     print("Pyvista is not installed")
+# else:
+#     pyvista.start_xvfb()
+#     V = dolfinx.fem.functionspace(geometry.mesh, ("Lagrange", 1, (geometry.mesh.geometry.dim,)))
+#     uh = dolfinx.fem.Function(V)
+#     uh.interpolate(u)
+#     # Create plotter and pyvista grid
+#     p = pyvista.Plotter()
+#     topology, cell_types, geometry = dolfinx.plot.vtk_mesh(V)
+#     grid = pyvista.UnstructuredGrid(topology, cell_types, geometry)
+
+#     # Attach vector values to grid and warp grid by vector
+#     grid["u"] = uh.x.array.reshape((geometry.shape[0], 3))
+#     actor_0 = p.add_mesh(grid, style="wireframe", color="k")
+#     warped = grid.warp_by_vector("u", factor=1.5)
+#     actor_1 = p.add_mesh(warped, show_edges=True)
+#     p.show_axes()
+#     if not pyvista.OFF_SCREEN:
+#         p.show()
+#     else:
+#         figure_as_array = p.screenshot("biv_ellipsoid_pressure.png")

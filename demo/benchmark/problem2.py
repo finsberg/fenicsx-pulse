@@ -15,24 +15,27 @@ import fenicsx_pulse
 
 # Next we will create the geometry and save it in the folder called `lv_ellipsoid`.
 
+comm = MPI.COMM_WORLD
 geodir = Path("lv_ellipsoid")
 if not geodir.exists():
+    comm.barrier()
     cardiac_geometries.mesh.lv_ellipsoid(
         outdir=geodir,
         r_short_endo=7.0,
         r_short_epi=10.0,
         r_long_endo=17.0,
         r_long_epi=20.0,
-        mu_apex_endo = -math.pi,
-        mu_base_endo = -math.acos(5 / 17),
-        mu_apex_epi = -math.pi,
-        mu_base_epi = -math.acos(5 / 20),
+        mu_apex_endo=-math.pi,
+        mu_base_endo=-math.acos(5 / 17),
+        mu_apex_epi=-math.pi,
+        mu_base_epi=-math.acos(5 / 20),
+        comm=comm,
     )
 
 # If the folder already exist, then we just load the geometry
 
 geo = cardiac_geometries.geometry.Geometry.from_folder(
-    comm=MPI.COMM_WORLD,
+    comm=comm,
     folder=geodir,
 )
 

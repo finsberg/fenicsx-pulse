@@ -1,11 +1,14 @@
+import logging
 from dataclasses import dataclass
 
-import dolfinx
 import numpy as np
 import ufl
 
 from .. import exceptions, invariants
 from ..material_model import HyperElasticMaterial
+from ..units import Variable
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -30,12 +33,16 @@ class NeoHookean(HyperElasticMaterial):
         If the material parameter is not positive
     """
 
-    mu: float | dolfinx.fem.Function | dolfinx.fem.Constant = dolfinx.default_scalar_type(15.0)
+    mu: Variable = Variable(15.0, "kPa")
 
     def __post_init__(self):
+        if not isinstance(self.mu, Variable):
+            unit = "kPa"
+            logger.warning("Setting mu to %s %s", self.mu, unit)
+            self.mu = Variable(self.mu, unit)
         # Check that all values are positive
         if not exceptions.check_value_greater_than(
-            self.mu,
+            self.mu.value,
             0.0,
             inclusive=True,
         ):
@@ -47,4 +54,5 @@ class NeoHookean(HyperElasticMaterial):
     def strain_energy(self, F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
         I1 = invariants.I1(F)
         dim = ufl.domain.find_geometric_dimension(F)
-        return 0.5 * self.mu * (I1 - dim)
+        mu = self.mu.to_base_units()
+        return 0.5 * mu * (I1 - dim)

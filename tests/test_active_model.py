@@ -30,7 +30,7 @@ def test_transversely_active_stress(eta, Ta, mesh, u) -> None:
     W = active_model.strain_energy(F)
 
     assert active_model.Fe(F) is F
-    active_model.activation.value = Ta
+    active_model.activation.assign(Ta)
 
     assert np.isclose(
         dolfinx.fem.assemble_scalar(dolfinx.fem.form(W * ufl.dx)),

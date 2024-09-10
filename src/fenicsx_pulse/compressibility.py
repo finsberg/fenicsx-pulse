@@ -20,6 +20,7 @@ import dolfinx
 import ufl
 
 from . import exceptions
+from .units import Variable
 
 
 class Compressibility(abc.ABC):
@@ -78,20 +79,21 @@ class Compressible(Compressibility):
 
     """
 
-    kappa: float | dolfinx.fem.Function | dolfinx.fem.Constant = 1e3
+    kappa: Variable = Variable(1e6, "Pa")
 
     def __str__(self) -> str:
         return "\u03ba (J ln(J) - J + 1)"
 
     def strain_energy(self, J: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
-        return self.kappa * (J * ufl.ln(J) - J + 1)
+        kappa = self.kappa.to_base_units()
+        return kappa * (J * ufl.ln(J) - J + 1)
 
     def is_compressible(self) -> bool:
         return True
 
 
 @dataclass(slots=True)
-class Compressible2(Compressibility):
+class Compressible2(Compressible):
     r"""Compressible material model
 
     Strain energy density function is given by
@@ -101,13 +103,11 @@ class Compressible2(Compressibility):
 
     """
 
-    kappa: float | dolfinx.fem.Function | dolfinx.fem.Constant = 1e3
+    kappa: Variable = Variable(1e6, "Pa")
 
     def __str__(self) -> str:
         return "\u03ba (J ** 2 - 1 - 2 ln(J))"
 
     def strain_energy(self, J: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
-        return 0.25 * self.kappa * (J**2 - 1 - 2 * ufl.ln(J))
-
-    def is_compressible(self) -> bool:
-        return True
+        kappa = self.kappa.to_base_units()
+        return 0.25 * kappa * (J**2 - 1 - 2 * ufl.ln(J))

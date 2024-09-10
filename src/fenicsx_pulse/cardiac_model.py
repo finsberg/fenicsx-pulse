@@ -50,19 +50,14 @@ class CardiacModel:
         Fe = self.active.Fe(F)
         J = kinematics.Jacobian(Fe)
 
-        # If model is compressible we need to to a
-        # deviatoric / volumetric split
-        if self.compressibility.is_compressible():
-            Jm13 = J ** (-1 / 3)
-        else:
-            if self.decouple_deviatoric_volumetric:
-                Jm13 = J ** (-1 / 3)
-            else:
-                Jm13 = 1.0
+        # if self.decouple_deviatoric_volumetric:
+        #     Jm13 = J ** (-1 / 3)
+        # else:
+        #     Jm13 = 1.0
 
         return (
-            self.material.strain_energy(Jm13 * Fe)
-            + self.active.strain_energy(Jm13 * F)
+            self.material.strain_energy(Fe)
+            + self.active.strain_energy(F)
             + self.compressibility.strain_energy(J)
         )
 
