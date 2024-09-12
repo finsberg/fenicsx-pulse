@@ -5,7 +5,7 @@ is used to compute the active stress given the deformation gradient.
 """
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 
 import dolfinx
@@ -52,7 +52,7 @@ class ActiveStress(ActiveModel):
     """
 
     f0: dolfinx.fem.Function | dolfinx.fem.Constant
-    activation: Variable = Variable(0.0, "kPa")
+    activation: Variable = field(default_factory=lambda: Variable(0.0, "kPa"))
     s0: dolfinx.fem.Function | dolfinx.fem.Constant | None = None
     n0: dolfinx.fem.Function | dolfinx.fem.Constant | None = None
     T_ref: dolfinx.fem.Constant = dolfinx.default_scalar_type(1.0)

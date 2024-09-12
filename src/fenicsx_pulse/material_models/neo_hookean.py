@@ -1,5 +1,5 @@
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 import ufl
@@ -33,14 +33,14 @@ class NeoHookean(HyperElasticMaterial):
         If the material parameter is not positive
     """
 
-    mu: Variable = Variable(15.0, "kPa")
+    mu: Variable = field(default_factory=lambda: Variable(15.0, "kPa"))
 
     def __post_init__(self):
         if not isinstance(self.mu, Variable):
             unit = "kPa"
             logger.warning("Setting mu to %s %s", self.mu, unit)
             self.mu = Variable(self.mu, unit)
-        # Check that all values are positive
+        # Check that value are positive
         if not exceptions.check_value_greater_than(
             self.mu.value,
             0.0,

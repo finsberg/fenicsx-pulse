@@ -4,7 +4,7 @@ The cardiac model is a combination of a material model,
 an active model, and a compressibility model.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol
 
 import dolfinx
@@ -40,7 +40,7 @@ class CardiacModel:
     material: HyperElasticMaterial
     active: ActiveModel
     compressibility: Compressibility
-    viscoelasticity: ViscoElasticity = NoneViscoElasticity()
+    viscoelasticity: ViscoElasticity = field(default_factory=NoneViscoElasticity)
     decouple_deviatoric_volumetric: bool = False
 
     def strain_energy(self, F, p: dolfinx.fem.Function | None = None):

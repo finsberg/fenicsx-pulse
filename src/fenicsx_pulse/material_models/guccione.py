@@ -1,5 +1,5 @@
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import dolfinx
 import numpy as np
@@ -59,10 +59,10 @@ class Guccione(HyperElasticMaterial):
     f0: dolfinx.fem.Function | dolfinx.fem.Constant | None = None
     s0: dolfinx.fem.Function | dolfinx.fem.Constant | None = None
     n0: dolfinx.fem.Function | dolfinx.fem.Constant | None = None
-    C: Variable = Variable(2.0, "kPa")
-    bf: Variable = Variable(8.0, "dimensionless")
-    bt: Variable = Variable(2.0, "dimensionless")
-    bfs: Variable = Variable(4.0, "dimensionless")
+    C: Variable = field(default_factory=lambda: Variable(2.0, "kPa"))
+    bf: Variable = field(default_factory=lambda: Variable(8.0, "dimensionless"))
+    bt: Variable = field(default_factory=lambda: Variable(2.0, "dimensionless"))
+    bfs: Variable = field(default_factory=lambda: Variable(4.0, "dimensionless"))
 
     def __post_init__(self):
         # Check that all values are positive

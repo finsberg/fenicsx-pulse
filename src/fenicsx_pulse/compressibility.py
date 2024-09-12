@@ -83,7 +83,7 @@ class Compressible(Compressibility):
 
     """
 
-    kappa: Variable = Variable(1e6, "Pa")
+    kappa: Variable = field(default_factory=lambda: Variable(1e6, "Pa"))
 
     def __post_init__(self):
         if not isinstance(self.kappa, Variable):
@@ -124,7 +124,7 @@ class Compressible2(Compressible):
 
     """
 
-    kappa: Variable = Variable(1e6, "Pa")
+    kappa: Variable = field(default_factory=lambda: Variable(1e6, "Pa"))
 
     def __str__(self) -> str:
         return "\u03ba (J ** 2 - 1 - 2 ln(J))"

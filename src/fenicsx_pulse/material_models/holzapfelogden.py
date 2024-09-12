@@ -97,14 +97,14 @@ class HolzapfelOgden(HyperElasticMaterial):
 
     f0: dolfinx.fem.Function | dolfinx.fem.Constant | None = None
     s0: dolfinx.fem.Function | dolfinx.fem.Constant | None = None
-    a: Variable = Variable(0.0, "kPa")
-    b: Variable = Variable(0.0, "dimensionless")
-    a_f: Variable = Variable(0.0, "kPa")
-    b_f: Variable = Variable(0.0, "dimensionless")
-    a_s: Variable = Variable(0.0, "kPa")
-    b_s: Variable = Variable(0.0, "dimensionless")
-    a_fs: Variable = Variable(0.0, "kPa")
-    b_fs: Variable = Variable(0.0, "dimensionless")
+    a: Variable = field(default_factory=lambda: Variable(0.0, "kPa"))
+    b: Variable = field(default_factory=lambda: Variable(0.0, "dimensionless"))
+    a_f: Variable = field(default_factory=lambda: Variable(0.0, "kPa"))
+    b_f: Variable = field(default_factory=lambda: Variable(0.0, "dimensionless"))
+    a_s: Variable = field(default_factory=lambda: Variable(0.0, "kPa"))
+    b_s: Variable = field(default_factory=lambda: Variable(0.0, "dimensionless"))
+    a_fs: Variable = field(default_factory=lambda: Variable(0.0, "kPa"))
+    b_fs: Variable = field(default_factory=lambda: Variable(0.0, "dimensionless"))
     use_subplus: bool = field(default=True, repr=False)
     use_heaviside: bool = field(default=True, repr=False)
 

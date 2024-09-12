@@ -1,5 +1,5 @@
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import ufl
 
@@ -24,8 +24,8 @@ class LinearElastic(Material):
         Poisson's ratio
     """
 
-    E: Variable = Variable(10, "kPa")
-    nu: Variable = Variable(0.3, "dimensionless")
+    E: Variable = field(default_factory=lambda: Variable(10, "kPa"))
+    nu: Variable = field(default_factory=lambda: Variable(0.3, "dimensionless"))
 
     def __post_init__(self):
         if not isinstance(self.E, Variable):

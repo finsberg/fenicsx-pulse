@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import ufl
 
@@ -31,7 +31,7 @@ class NoneViscoElasticity(ViscoElasticity):
 
 
 class Viscous(ViscoElasticity):
-    eta: Variable = Variable(1e2, "Pa s")
+    eta: Variable = field(default_factory=lambda: Variable(1e2, "Pa s"))
 
     def strain_energy(self, E_dot) -> ufl.Form:
         eta = self.eta.to_base_units()
