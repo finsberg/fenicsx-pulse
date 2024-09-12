@@ -107,7 +107,7 @@ class Problem:
         d = 0.5 * (l + l.T)  # Holzapfel 2.146
         E_dot = ufl.variable(F.T * d * F)  # Holzapfel 2.163
 
-        return ufl.diff(self.model.material.strain_energy(F), F) + F * ufl.diff(
+        return ufl.diff(self.model.strain_energy(F), F) + F * ufl.diff(
             self.model.viscoelastic_strain_energy(E_dot),
             E_dot,
         )

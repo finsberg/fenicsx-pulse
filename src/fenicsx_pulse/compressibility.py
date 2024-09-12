@@ -14,13 +14,17 @@ is a material parameter representing the bulk modulus. Higher values of
 """
 
 import abc
+import logging
 from dataclasses import dataclass, field
 
 import dolfinx
+import numpy as np
 import ufl
 
 from . import exceptions
 from .units import Variable
+
+logger = logging.getLogger(__name__)
 
 
 class Compressibility(abc.ABC):
@@ -80,6 +84,23 @@ class Compressible(Compressibility):
     """
 
     kappa: Variable = Variable(1e6, "Pa")
+
+    def __post_init__(self):
+        if not isinstance(self.kappa, Variable):
+            unit = "kPa"
+            logger.warning("Setting mu to %s %s", self.kappa, unit)
+            self.kappa = Variable(self.kappa, unit)
+
+        # Check that value are positive
+        if not exceptions.check_value_greater_than(
+            self.kappa.value,
+            0.0,
+            inclusive=True,
+        ):
+            raise exceptions.InvalidRangeError(
+                name="kappa",
+                expected_range=(0.0, np.inf),
+            )
 
     def __str__(self) -> str:
         return "\u03ba (J ln(J) - J + 1)"

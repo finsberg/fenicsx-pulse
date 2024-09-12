@@ -32,7 +32,6 @@ def test_MechanicsProblemMixed_and_boundary_conditions(mesh):
         material=material,
         active=active_model,
         compressibility=comp_model,
-        decouple_deviatoric_volumetric=False,
     )
 
     def dirichlet_bc(
@@ -69,7 +68,7 @@ def test_MechanicsProblemMixed_and_boundary_conditions(mesh):
 
     # With the HolzapfelOgden model the hydrostatic pressure
     # should equal the negative of the material parameter a
-    assert np.allclose(p.x.array, -material_params["a"])
+    assert np.allclose(p.x.array, -material_params["a"].to_base_units())
     # And with no external forces, there should be no displacement
     assert np.allclose(u.x.array, 0.0)
 
@@ -124,6 +123,7 @@ def test_MechanicsProblem_and_boundary_conditions(mesh):
         material=material,
         active=active_model,
         compressibility=comp_model,
+        decouple_deviatoric_volumetric=True,
     )
 
     def dirichlet_bc(

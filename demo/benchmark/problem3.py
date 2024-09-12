@@ -15,7 +15,9 @@ import fenicsx_pulse
 # Next we will create the geometry and save it in the folder called `lv_ellipsoid`. Now we will also generate fibers and use a sixth order quadrature space for the fibers
 
 geodir = Path("lv_ellipsoid-problem3")
+comm = MPI.COMM_WORLD
 if not geodir.exists():
+    comm.barrier()
     cardiac_geometries.mesh.lv_ellipsoid(
         outdir=geodir,
         r_short_endo=7.0,
@@ -30,13 +32,14 @@ if not geodir.exists():
         create_fibers=True,
         fiber_angle_epi=-90,
         fiber_angle_endo=90,
+        comm=comm,
     )
     print("Done creating geometry.")
 
 # If the folder already exist, then we just load the geometry
 
 geo = cardiac_geometries.geometry.Geometry.from_folder(
-    comm=MPI.COMM_WORLD,
+    comm=comm,
     folder=geodir,
 )
 
@@ -59,7 +62,7 @@ material = fenicsx_pulse.Guccione(f0=geo.f0, s0=geo.s0, n0=geo.n0, **material_pa
 # We use an active stress approach with 60% transverse active stress
 
 Ta = dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0))
-active_model = fenicsx_pulse.ActiveStress(geo.f0, activation=Ta)
+active_model = fenicsx_pulse.ActiveStress(geo.f0, activation=fenicsx_pulse.Variable(Ta, "kPa"))
 
 # and the model should be incompressible
 
@@ -97,7 +100,10 @@ def dirichlet_bc(
 # We apply a traction in endocardium
 
 traction = dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0))
-neumann = fenicsx_pulse.NeumannBC(traction=traction, marker=geo.markers["ENDO"][0])
+neumann = fenicsx_pulse.NeumannBC(
+    traction=fenicsx_pulse.Variable(traction, "kPa"),
+    marker=geo.markers["ENDO"][0],
+)
 
 # and finally combine all the boundary conditions
 
@@ -121,11 +127,11 @@ target_Ta = 60.0
 
 N = 40
 
-# for Ta_value, traction_value in zip(np.linspace(0, target_Ta, N), np.linspace(0, target_pressure, N)):
-#     print(f"Solving problem for traction={traction_value} and active contraction={Ta_value}")
-#     Ta.value = Ta_value
-#     traction.value = traction_value
-#     problem.solve()
+for Ta_value, traction_value in zip(np.linspace(0, target_Ta, N), np.linspace(0, target_pressure, N)):
+    print(f"Solving problem for traction={traction_value} and active contraction={Ta_value}")
+    Ta.value = Ta_value
+    traction.value = traction_value
+    problem.solve()
 
 log.set_log_level(log.LogLevel.INFO)
 

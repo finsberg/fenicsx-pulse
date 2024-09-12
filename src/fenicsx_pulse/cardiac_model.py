@@ -41,7 +41,7 @@ class CardiacModel:
     active: ActiveModel
     compressibility: Compressibility
     viscoelasticity: ViscoElasticity = NoneViscoElasticity()
-    decouple_deviatoric_volumetric: bool = True
+    decouple_deviatoric_volumetric: bool = False
 
     def strain_energy(self, F, p: dolfinx.fem.Function | None = None):
         self.compressibility.register(p)
@@ -50,14 +50,14 @@ class CardiacModel:
         Fe = self.active.Fe(F)
         J = kinematics.Jacobian(Fe)
 
-        # if self.decouple_deviatoric_volumetric:
-        #     Jm13 = J ** (-1 / 3)
-        # else:
-        #     Jm13 = 1.0
+        if self.decouple_deviatoric_volumetric:
+            Jm13 = J ** (-1 / 3)
+        else:
+            Jm13 = 1.0
 
         return (
-            self.material.strain_energy(Fe)
-            + self.active.strain_energy(F)
+            self.material.strain_energy(Jm13 * Fe)
+            + self.active.strain_energy(Jm13 * F)
             + self.compressibility.strain_energy(J)
         )
 

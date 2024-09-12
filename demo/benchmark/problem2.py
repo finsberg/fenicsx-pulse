@@ -95,7 +95,10 @@ def dirichlet_bc(
 # We apply a traction in endocardium
 
 traction = dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0))
-neumann = fenicsx_pulse.NeumannBC(traction=traction, marker=geo.markers["ENDO"][0])
+neumann = fenicsx_pulse.NeumannBC(
+    traction=fenicsx_pulse.Variable(traction, "kPa"),
+    marker=geo.markers["ENDO"][0],
+)
 
 # and finally combine all the boundary conditions
 
