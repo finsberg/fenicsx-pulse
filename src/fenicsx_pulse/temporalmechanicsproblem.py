@@ -275,6 +275,12 @@ class Problem:
             self._problem,
         )
 
+        self._solver.atol = 1e-8
+        self._solver.rtol = 1e-8
+        self._solver.convergence_criterion = "incremental"
+        self._solver.report = True
+        self._solver.max_it = 20
+
     def von_Mises(self) -> ufl.Coefficient:
         r"""Compute the von Mises stress tensor :math`\sigma_v`, with
 
