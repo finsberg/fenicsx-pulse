@@ -1,3 +1,5 @@
+import math
+
 import numpy as np
 import pytest
 import ufl
@@ -71,3 +73,78 @@ def test_geometry_from_cardiac_geometries(tmp_path):
     assert geo1.mesh is geo2.mesh
     assert geo1.markers is geo2.markers
     assert geo1.ffun is geo2.facet_tags
+
+
+def rotate_geo(geo, theta):
+    rotate = np.array(
+        [[np.cos(theta), -np.sin(theta), 0], [np.sin(theta), np.cos(theta), 0], [0, 0, 1]],
+    )
+    translate = geo.mesh.geometry.x.mean(axis=0)
+    geo.mesh.geometry.x[:] = geo.mesh.geometry.x - translate
+    geo.mesh.geometry.x[:] = geo.mesh.geometry.x @ rotate.T
+    geo.mesh.geometry.x[:] = geo.mesh.geometry.x + translate
+    return geo
+
+
+def test_HeartGeometry_lv(tmp_path):
+    geo1 = cardiac_geometries.mesh.lv_ellipsoid(
+        outdir=tmp_path,
+        r_short_endo=6.0,
+        r_short_epi=10.0,
+        r_long_endo=17.0,
+        r_long_epi=20.0,
+        psize_ref=3,
+        mu_apex_endo=-math.pi,
+        mu_base_endo=-math.acos(5 / 17),
+        mu_apex_epi=-math.pi,
+        mu_base_epi=-math.acos(5 / 20),
+    )
+    geo2 = fenicsx_pulse.HeartGeometry.from_cardiac_geometries(geo1)
+    assert np.allclose(geo2.base_centroid(), [5.0, 0.0, 0.0])
+    assert np.allclose(geo2.base_normal(), [1.0, 0.0, 0.0])
+    assert np.allclose(geo2.base_vector(), [0.0, -1.0, 0.0])
+
+    endo_volume = 1772.957048853601
+    assert np.isclose(geo2.volume("ENDO"), endo_volume)
+
+    # Now we rotate the geometry
+    rotate_geo(geo2, np.pi)
+
+    # Base normal now be opposite
+    assert np.allclose(geo2.base_normal(), [-1.0, 0.0, 0.0])
+    # But volume should be the same
+    assert np.isclose(geo2.volume("ENDO"), endo_volume)
+
+    rotate_geo(geo2, np.pi / 2)
+    assert np.allclose(geo2.base_normal(), [0.0, 1.0, 0.0])
+    assert np.isclose(geo2.volume("ENDO"), endo_volume)
+
+
+def test_HeartGeometry_biv(tmp_path):
+    geo1 = cardiac_geometries.mesh.biv_ellipsoid(
+        outdir=tmp_path,
+    )
+    geo2 = fenicsx_pulse.HeartGeometry.from_cardiac_geometries(geo1)
+
+    assert np.allclose(geo2.base_centroid(), [0.0, 0.32132, 0.0])
+    assert np.allclose(geo2.base_normal(), [1.0, 0.0, 0.0])
+    assert np.allclose(geo2.base_vector(), [0.0, -1.0, 0.0])
+
+    endo_lv_volume = 4.984208611265616
+    assert np.isclose(geo2.volume("ENDO_LV"), endo_lv_volume)
+    endo_rv_volume = 8.1843844475988
+    assert np.isclose(geo2.volume("ENDO_RV"), endo_rv_volume)
+
+    # Now we rotate the geometry
+    rotate_geo(geo2, np.pi)
+
+    # Base normal now be opposite
+    assert np.allclose(geo2.base_normal(), [-1.0, 0.0, 0.0])
+    # But volume should be the same
+    assert np.isclose(geo2.volume("ENDO_LV"), endo_lv_volume)
+    assert np.isclose(geo2.volume("ENDO_RV"), endo_rv_volume)
+
+    rotate_geo(geo2, np.pi / 2)
+    assert np.allclose(geo2.base_normal(), [0.0, 1.0, 0.0])
+    assert np.isclose(geo2.volume("ENDO_LV"), endo_lv_volume)
+    assert np.isclose(geo2.volume("ENDO_RV"), endo_rv_volume)
