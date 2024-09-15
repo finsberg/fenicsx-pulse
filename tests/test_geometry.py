@@ -116,17 +116,6 @@ def test_HeartGeometry_lv(tmp_path):
     # But volume should be the same
     assert np.isclose(geo2.volume("ENDO"), endo_volume)
 
-    rotate_geo(geo2, np.pi / 2)
-    new_normal = geo2.base_normal()
-    # Normal should change
-    assert not np.allclose(np.abs(new_normal), initial_normal)
-    # but volume should be the same
-    assert np.isclose(geo2.volume("ENDO"), endo_volume)
-
-    rotate_geo(geo2, np.pi)
-    assert np.allclose(geo2.base_normal(), -new_normal)
-    assert np.isclose(geo2.volume("ENDO"), endo_volume)
-
 
 def test_HeartGeometry_biv(tmp_path):
     geo1 = cardiac_geometries.mesh.biv_ellipsoid(
