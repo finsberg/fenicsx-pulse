@@ -145,3 +145,11 @@ class MissingModelAttribute(AttributeError, PulseException):
 class MeshTagNotFoundError(PulseException):
     def __str__(self) -> str:
         return "No mesh tags found"
+
+
+@dataclass
+class MarkerNotFoundError(PulseException):
+    marker: str
+
+    def __str__(self) -> str:
+        return f"Marker {self.marker} not found in geometry"
