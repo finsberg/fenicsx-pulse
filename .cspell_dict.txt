@@ -28,11 +28,13 @@ holzapfelogden
 Hookean
 hstack
 hyperelastic
+Intracomm
 isclose
 isochoric
 isscalar
 libgl
 libxrender
+linalg
 lmbda
 mechanicsproblem
 meshtags

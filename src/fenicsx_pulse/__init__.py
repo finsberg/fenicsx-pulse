@@ -28,7 +28,7 @@ from .active_stress import ActiveStress
 from .boundary_conditions import BoundaryConditions, NeumannBC, RobinBC
 from .cardiac_model import CardiacModel
 from .compressibility import Compressibility, Compressible, Incompressible
-from .geometry import Geometry, Marker
+from .geometry import Geometry, HeartGeometry, Marker
 from .material_model import HyperElasticMaterial
 from .material_models import (
     Guccione,
@@ -73,4 +73,5 @@ __all__ = [
     "Compressibility",
     "Guccione",
     "utils",
+    "HeartGeometry",
 ]
