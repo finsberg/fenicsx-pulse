@@ -258,9 +258,8 @@ class HeartGeometry(Geometry):
         """
         return self.base_data(base).normal
 
-    def volume_form(
+    def inner_volume_form(
         self,
-        marker: str,
         u: dolfinx.fem.Function | None = None,
         base="BASE",
     ) -> dolfinx.fem.forms.Form:
@@ -269,8 +268,6 @@ class HeartGeometry(Geometry):
 
         Parameters
         ----------
-        marker : str
-            Marker for the surface of the cavity
         u : dolfinx.fem.Function | None, optional
             Optional displacement field, by default None
         base : str, optional
@@ -286,22 +283,18 @@ class HeartGeometry(Geometry):
         exceptions.MarkerNotFoundError
             If the marker is not found in the geometry
         """
-        if marker not in self.markers:
-            raise exceptions.MarkerNotFoundError(marker)
-        marker_id = self.markers[marker][0]
 
         v = self.base_vector(base=base)
         X = ufl.as_vector([v[0] * self.X[0], v[1] * self.X[1], v[2] * self.X[2]])
+        # X = self.X
 
         if u is None:
-            return dolfinx.fem.form(ufl.dot(X, self.facet_normal) * self.ds(marker_id))
+            return ufl.dot(X, self.facet_normal)
         else:
             F = ufl.Identity(3) + ufl.grad(u)
             J = ufl.det(F)
 
-            return dolfinx.fem.form(
-                J * ufl.dot(X, ufl.inv(F).T * self.facet_normal) * self.ds(marker_id),
-            )
+            return J * ufl.dot(X + u, ufl.inv(F).T * self.facet_normal)
 
     def volume(
         self,
@@ -330,6 +323,9 @@ class HeartGeometry(Geometry):
         exceptions.MarkerNotFoundError
             If the marker is not found in the geometry
         """
+        if marker not in self.markers:
+            raise exceptions.MarkerNotFoundError(marker)
+        marker_id = self.markers[marker][0]
 
-        form = self.volume_form(marker=marker, u=u, base=base)
+        form = dolfinx.fem.form(self.inner_volume_form(u=u, base=base) * self.ds(marker_id))
         return dolfinx.fem.assemble_scalar(form)
