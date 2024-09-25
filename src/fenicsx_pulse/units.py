@@ -33,7 +33,6 @@ class Variable(Generic[T]):
     original_unit: pint.Unit = field(init=False, repr=False)
     original_value: T = field(init=False, repr=False)
     factor: float = field(init=False, repr=False)
-    _value: T = field(init=False, repr=False)
 
     def __post_init__(self):
         # Check unit

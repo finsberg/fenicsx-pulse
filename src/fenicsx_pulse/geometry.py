@@ -290,18 +290,23 @@ class HeartGeometry(Geometry):
             raise exceptions.MarkerNotFoundError(marker)
         marker_id = self.markers[marker][0]
 
-        v = self.base_vector(base=base)
-        X = ufl.as_vector([v[0] * self.X[0], v[1] * self.X[1], v[2] * self.X[2]])
-
+        d = ufl.as_vector(self.base_centroid(base))
+        # v = self.base_vector(base=base)
+        # X = ufl.as_vector([v[0] * self.X[0], v[1] * self.X[1], v[2] * self.X[2]])
+        X = self.X
         if u is None:
-            return dolfinx.fem.form(ufl.dot(X, self.facet_normal) * self.ds(marker_id))
+            F = ufl.Identity(3)
+
         else:
             F = ufl.Identity(3) + ufl.grad(u)
-            J = ufl.det(F)
+        J = ufl.det(F)
 
-            return dolfinx.fem.form(
-                J * ufl.dot(X, ufl.inv(F).T * self.facet_normal) * self.ds(marker_id),
-            )
+        return dolfinx.fem.form(
+            (-1 / 3)
+            * J
+            * ufl.dot(X + u - d, ufl.inv(F).T * self.facet_normal)
+            * self.ds(marker_id),
+        )
 
     def volume(
         self,
