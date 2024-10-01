@@ -98,6 +98,13 @@ class Geometry:
     def dim(self) -> int:
         return self.mesh.topology.dim
 
+    def surface_area(self, marker: str) -> float:
+        marker_id = self.markers[marker][0]
+        return self.mesh.comm.allreduce(
+            dolfinx.fem.assemble_scalar(dolfinx.fem.form(ufl.as_ufl(1.0) * self.ds(marker_id))),
+            op=MPI.SUM,
+        )
+
     def dump_mesh_tags(self, fname: str) -> None:
         if self.facet_tags.values.size == 0:
             raise exceptions.MeshTagNotFoundError
@@ -186,91 +193,47 @@ def compute_base_data(
 # Note slots doesn't work due to https://github.com/python/cpython/issues/90562
 @dataclass(kw_only=True)
 class HeartGeometry(Geometry):
-    def base_data(self, base: str = "BASE") -> BaseData:
-        """Return the centroid, vector and normal of the base
-
-        Parameters
-        ----------
-        base : str, optional
-            Maker for the base, by default "BASE"
-
-        Returns
-        -------
-        BaseData
-            NamedTuple containing the centroid, vector and normal of the base
-
-        Raises
-        ------
-        exceptions.MarkerNotFoundError
-            If the marker is not found in the geometry
-        """
-        # Assume that we have a marker for the base
-        # called "BASE" so that we can find out where
-        # the base is located
-        if base not in self.markers:
-            raise exceptions.MarkerNotFoundError(base)
-
-        base_marker = self.markers[base][0]
-        return compute_base_data(self.mesh, self.facet_tags, base_marker)
-
-    def base_centroid(self, base="BASE") -> npt.NDArray[np.float64]:
-        """Return the centroid of the base
-
-        Parameters
-        ----------
-        base : str, optional
-            Marker for the base, by default "BASE"
-
-        Returns
-        -------
-        npt.NDArray[np.float64]
-            Coordinates of the centroid of the base
-        """
-        return self.base_data(base).centroid
-
-    def base_vector(self, base="BASE") -> npt.NDArray[np.float64]:
-        """Return a vector in the plane of the base
-
-        Parameters
-        ----------
-        base : str, optional
-            Marker for the base, by default "BASE"
-
-        Returns
-        -------
-        npt.NDArray[np.float64]
-            Vector in the plane of the base
-        """
-        return self.base_data(base).vector
-
-    def base_normal(self, base="BASE") -> npt.NDArray[np.float64]:
+    def base_center(
+        self,
+        base: str = "BASE",
+        u: dolfinx.fem.Function | None = None,
+        dtype=np.float64,
+    ) -> npt.NDArray[np.float64]:
         """Return the normal of the base
 
         Parameters
         ----------
         base : str, optional
             Marker for the base, by default "BASE"
+        u : dolfinx.fem.Function | None, optional
+            Displacement field, by default None
 
         Returns
         -------
         npt.NDArray[np.float64]
             Normal of the base
         """
-        return self.base_data(base).normal
+        base_area = self.surface_area(base)
+        if u is None:
+            b_vec = [(self.X[i]) * self.ds(self.markers[base][0]) for i in range(3)]
+        else:
+            b_vec = [(self.X[i] + u[i]) * self.ds(self.markers[base][0]) for i in range(3)]
+
+        return np.array(
+            [dolfinx.fem.assemble_scalar(bi) / base_area for bi in dolfinx.fem.form(b_vec)],
+            dtype=dtype,
+        )
 
     def volume_form(
         self,
-        marker: str,
         u: dolfinx.fem.Function | None = None,
-        base="BASE",
+        b: ufl.Coefficient = ufl.as_vector([0.0, 0.0, 0.0]),
     ) -> dolfinx.fem.forms.Form:
         """Return the form for the volume of the cavity
         for a given marker
 
         Parameters
         ----------
-        marker : str
-            Marker for the surface of the cavity
         u : dolfinx.fem.Function | None, optional
             Optional displacement field, by default None
         base : str, optional
@@ -286,27 +249,14 @@ class HeartGeometry(Geometry):
         exceptions.MarkerNotFoundError
             If the marker is not found in the geometry
         """
-        if marker not in self.markers:
-            raise exceptions.MarkerNotFoundError(marker)
-        marker_id = self.markers[marker][0]
-
-        d = ufl.as_vector(self.base_centroid(base))
-        # v = self.base_vector(base=base)
-        # X = ufl.as_vector([v[0] * self.X[0], v[1] * self.X[1], v[2] * self.X[2]])
         X = self.X
-        if u is None:
-            F = ufl.Identity(3)
 
+        if u is None:
+            return (-1 / 3) * ufl.dot(X - b, self.facet_normal)
         else:
             F = ufl.Identity(3) + ufl.grad(u)
-        J = ufl.det(F)
-
-        return dolfinx.fem.form(
-            (-1 / 3)
-            * J
-            * ufl.dot(X + u - d, ufl.inv(F).T * self.facet_normal)
-            * self.ds(marker_id),
-        )
+            J = ufl.det(F)
+            return (-1 / 3) * J * ufl.dot(X + u - b, ufl.inv(F).T * self.facet_normal)
 
     def volume(
         self,
@@ -336,5 +286,10 @@ class HeartGeometry(Geometry):
             If the marker is not found in the geometry
         """
 
-        form = self.volume_form(marker=marker, u=u, base=base)
-        return dolfinx.fem.assemble_scalar(form)
+        if marker not in self.markers:
+            raise exceptions.MarkerNotFoundError(marker)
+        marker_id = self.markers[marker][0]
+        b = ufl.as_vector(self.base_center(base=base, u=u))
+
+        form = self.volume_form(u=u, b=b)
+        return dolfinx.fem.assemble_scalar(dolfinx.fem.form(form * self.ds(marker_id)))
