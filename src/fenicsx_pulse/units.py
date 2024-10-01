@@ -9,6 +9,10 @@ ureg = pint.UnitRegistry()
 T = TypeVar("T", bound=float | dolfinx.fem.Function | dolfinx.fem.Constant)
 
 
+def mesh_factor(mesh_unit: str) -> float:
+    return ureg(mesh_unit).to_base_units().magnitude
+
+
 def assign(variable: "Variable", value) -> None:
     if isinstance(variable.value, (float, int)) or np.isscalar(variable.value):
         variable.value = value
