@@ -8,8 +8,27 @@ import pytest
 
 import cardiac_geometries
 import fenicsx_pulse
-import fenicsx_pulse.static_problem
-from fenicsx_pulse.static_problem import BaseBC, StaticProblem
+import fenicsx_pulse.problem
+from fenicsx_pulse.problem import BaseBC, StaticProblem
+
+
+def get_geo_biv(geodir):
+    comm = MPI.COMM_WORLD
+
+    if not (geodir / "mesh.xdmf").exists():
+        comm.barrier()
+        cardiac_geometries.mesh.cardiac_geometries.mesh.biv_ellipsoid(
+            outdir=geodir,
+            create_fibers=True,
+            fiber_space="Quadrature_6",
+            comm=comm,
+            fiber_angle_epi=-60,
+            fiber_angle_endo=60,
+        )
+    return cardiac_geometries.geometry.Geometry.from_folder(
+        comm=comm,
+        folder=geodir,
+    )
 
 
 def get_geo_flat_base_mm(geodir):
@@ -133,7 +152,7 @@ def handle_control_lv(control, geometry, target_lvp, target_lvv, robin):
     elif control == "volume":
         initial_volume = comm.allreduce(geometry.volume("ENDO"), op=MPI.SUM)
         volume = dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(initial_volume))
-        cavity = fenicsx_pulse.static_problem.Cavity(marker="ENDO", volume=volume)
+        cavity = fenicsx_pulse.problem.Cavity(marker="ENDO", volume=volume)
         cavities = [cavity]
         bcs = fenicsx_pulse.BoundaryConditions(robin=robin)
 

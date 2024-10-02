@@ -21,7 +21,7 @@ from . import (
     kinematics,
     material_model,
     material_models,
-    mechanicsproblem,
+    problem,
     units,
     utils,
 )
@@ -30,7 +30,7 @@ from .boundary_conditions import BoundaryConditions, NeumannBC, RobinBC
 from .cardiac_model import CardiacModel
 from .compressibility import Compressibility, Compressible, Incompressible
 from .geometry import Geometry, HeartGeometry, Marker
-from .material_model import HyperElasticMaterial
+from .material_model import HyperElasticMaterial, Material
 from .material_models import (
     Guccione,
     HolzapfelOgden,
@@ -38,7 +38,9 @@ from .material_models import (
     NeoHookean,
     SaintVenantKirchhoff,
 )
-from .mechanicsproblem import BaseMechanicsProblem, MechanicsProblem, MechanicsProblemMixed
+
+# from .mechanicsproblem import BaseMechanicsProblem, MechanicsProblem, MechanicsProblemMixed
+from .problem import BaseBC, DynamicProblem, StaticProblem
 from .units import Variable, ureg
 
 __all__ = [
@@ -63,15 +65,11 @@ __all__ = [
     "NeumannBC",
     "RobinBC",
     "boundary_conditions",
-    "mechanicsproblem",
-    "MechanicsProblem",
     "BoundaryConditions",
     "Marker",
     "material_models",
     "NeoHookean",
     "SaintVenantKirchhoff",
-    "MechanicsProblemMixed",
-    "BaseMechanicsProblem",
     "Compressibility",
     "Guccione",
     "units",
@@ -79,4 +77,8 @@ __all__ = [
     "utils",
     "Variable",
     "HeartGeometry",
+    "problem",
+    "StaticProblem",
+    "DynamicProblem",
+    "BaseBC",
 ]

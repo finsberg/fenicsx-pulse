@@ -38,11 +38,12 @@ class NeumannBC:
 class RobinBC:
     value: Variable
     marker: int
+    damping: bool = False
 
     def __post_init__(self):
         if not isinstance(self.value, Variable):
-            unit = "kPa / cm**2"
-            logger.warning("Value is not a Variable, defaulting to kPa")
+            unit = "Pa / m" if self.damping else "Pa s / m"
+            logger.warning(f"Value is not a Variable, defaulting to {unit}")
             self.value = Variable(self.value, unit)
 
 
