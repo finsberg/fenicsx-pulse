@@ -26,6 +26,7 @@ dev = [
 demo = [
     "cardiac-geometriesx",
     "fenicsx-ldrb",
+    "circulation"
 ]
 docs = [
    "jupyter-book",

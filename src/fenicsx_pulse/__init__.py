@@ -24,6 +24,7 @@ from . import (
     problem,
     units,
     utils,
+    viscoelasticity,
 )
 from .active_stress import ActiveStress
 from .boundary_conditions import BoundaryConditions, NeumannBC, RobinBC
@@ -38,10 +39,9 @@ from .material_models import (
     NeoHookean,
     SaintVenantKirchhoff,
 )
-
-# from .mechanicsproblem import BaseMechanicsProblem, MechanicsProblem, MechanicsProblemMixed
 from .problem import BaseBC, DynamicProblem, StaticProblem
 from .units import Variable, ureg
+from .viscoelasticity import NoneViscoElasticity, ViscoElasticity, Viscous
 
 __all__ = [
     "kinematics",
@@ -81,4 +81,8 @@ __all__ = [
     "StaticProblem",
     "DynamicProblem",
     "BaseBC",
+    "viscoelasticity",
+    "NoneViscoElasticity",
+    "ViscoElasticity",
+    "Viscous",
 ]

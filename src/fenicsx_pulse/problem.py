@@ -12,6 +12,7 @@ import ufl
 
 from .boundary_conditions import BoundaryConditions
 from .cardiac_model import CardiacModel
+from .geometry import HeartGeometry
 from .units import Variable, mesh_factor
 
 T = typing.TypeVar("T", dolfinx.fem.Function, np.ndarray)
@@ -124,10 +125,18 @@ class StaticProblem:
         self.du = ufl.TrialFunction(self.u_space)
 
     def _init_base(self):
-        if hasattr(self.geometry, "base_center"):
+        if isinstance(self.geometry, HeartGeometry):
+            self._base_center_form = self.geometry.base_center_form(
+                base=self.parameters["base_marker"],
+                u=self.u,
+            )
+            self._base_area = self.geometry.surface_area(self.parameters["base_marker"])
+            base_center = np.array(
+                [dolfinx.fem.assemble_scalar(b) / self._base_area for b in self._base_center_form],
+            )
             self.base_center = dolfinx.fem.Constant(
                 self.geometry.mesh,
-                self.geometry.base_center(base=self.parameters["base_marker"]),
+                base_center,
             )
         else:
             self.base_center = dolfinx.fem.Constant(
@@ -136,10 +145,9 @@ class StaticProblem:
             )
 
     def update_base(self):
-        if hasattr(self.geometry, "base_center"):
-            self.base_center.value[:] = self.geometry.base_center(
-                base=self.parameters["base_marker"],
-                u=self.u,
+        if isinstance(self.geometry, HeartGeometry):
+            self.base_center.value[:] = np.array(
+                [dolfinx.fem.assemble_scalar(b) / self._base_area for b in self._base_center_form],
             )
 
     @property

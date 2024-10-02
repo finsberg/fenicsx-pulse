@@ -193,6 +193,32 @@ def compute_base_data(
 # Note slots doesn't work due to https://github.com/python/cpython/issues/90562
 @dataclass(kw_only=True)
 class HeartGeometry(Geometry):
+    def base_center_form(
+        self,
+        base: str = "BASE",
+        u: dolfinx.fem.Function | None = None,
+    ) -> list[dolfinx.fem.forms.Form]:
+        """Return the normal of the base
+
+        Parameters
+        ----------
+        base : str, optional
+            Marker for the base, by default "BASE"
+        u : dolfinx.fem.Function | None, optional
+            Displacement field, by default None
+
+        Returns
+        -------
+        npt.NDArray[np.float64]
+            Normal of the base
+        """
+        if u is None:
+            b_vec = [(self.X[i]) * self.ds(self.markers[base][0]) for i in range(3)]
+        else:
+            b_vec = [(self.X[i] + u[i]) * self.ds(self.markers[base][0]) for i in range(3)]
+
+        return dolfinx.fem.form(b_vec)
+
     def base_center(
         self,
         base: str = "BASE",
@@ -213,14 +239,10 @@ class HeartGeometry(Geometry):
         npt.NDArray[np.float64]
             Normal of the base
         """
+        forms = self.base_center_form(base=base, u=u)
         base_area = self.surface_area(base)
-        if u is None:
-            b_vec = [(self.X[i]) * self.ds(self.markers[base][0]) for i in range(3)]
-        else:
-            b_vec = [(self.X[i] + u[i]) * self.ds(self.markers[base][0]) for i in range(3)]
-
         return np.array(
-            [dolfinx.fem.assemble_scalar(bi) / base_area for bi in dolfinx.fem.form(b_vec)],
+            [dolfinx.assemble_scalar(bi) / base_area for bi in forms],
             dtype=dtype,
         )
 
