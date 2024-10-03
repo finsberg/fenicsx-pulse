@@ -88,8 +88,7 @@ class StaticProblem:
         self._init_base()
 
         self._init_cavity_pressure_spaces()
-        if self.parameters["rigid_body_constraint"]:
-            self._init_rigid_body()
+        self._init_rigid_body()
 
     def _init_p_space(self):
         if self.is_incompressible:
@@ -195,12 +194,26 @@ class StaticProblem:
                 self.cavity_pressures_trial.append(cavity_pressure_trial)
 
     def _init_rigid_body(self):
-        self.rigid_space = scifem.create_real_functionspace(self.geometry.mesh, value_shape=(6,))
-        self.r = dolfinx.fem.Function(self.rigid_space)
-        self.dr = ufl.TrialFunction(self.rigid_space)
-        self.q = ufl.TestFunction(self.rigid_space)
+        if self.parameters["rigid_body_constraint"]:
+            self.rigid_space = scifem.create_real_functionspace(
+                self.geometry.mesh,
+                value_shape=(6,),
+            )
+            self.r = dolfinx.fem.Function(self.rigid_space)
+            self.dr = ufl.TrialFunction(self.rigid_space)
+            self.q = ufl.TestFunction(self.rigid_space)
 
-    def _rigid_body_form(self, u: dolfinx.fem.Function):
+    def _create_residual_form(self, form: dolfinx.fem.Form) -> list[dolfinx.fem.Form]:
+        return [
+            ufl.derivative(form, f, f_test) for f, f_test in zip(self.states, self.test_functions)
+        ]
+
+    def _empty_form(self):
+        return [ufl.as_ufl(0.0) for _ in range(self.num_states)]
+
+    def _rigid_body_form(self, u: dolfinx.fem.Function) -> list[dolfinx.fem.Form]:
+        if not self.parameters["rigid_body_constraint"]:
+            return self._empty_form()
         X = ufl.SpatialCoordinate(self.geometry.mesh)
 
         RM = [
@@ -211,19 +224,21 @@ class StaticProblem:
             ufl.cross(X, ufl.as_vector((0, 1, 0))),
             ufl.cross(X, ufl.as_vector((0, 0, 1))),
         ]
-        return sum(ufl.inner(u, zi) * self.r[i] * ufl.dx for i, zi in enumerate(RM))
+        form = sum(ufl.inner(u, zi) * self.r[i] * ufl.dx for i, zi in enumerate(RM))
+        forms = self._create_residual_form(form)
+        return forms
 
     def _material_form(self, u: dolfinx.fem.Function, p: dolfinx.fem.Function):
         F = ufl.grad(u) + ufl.Identity(3)
         internal_energy = self.model.strain_energy(F, p=p) * self.geometry.dx
-        if self.is_incompressible:
-            return [
-                ufl.derivative(internal_energy, self.u, self.u_test),
-                ufl.derivative(internal_energy, self.p, self.p_test),
-            ]
-        return [ufl.derivative(internal_energy, self.u, self.u_test)]
 
-    def _robin_form(self, u: dolfinx.fem.Function, v: dolfinx.fem.Function | None = None):
+        return self._create_residual_form(internal_energy)
+
+    def _robin_form(
+        self,
+        u: dolfinx.fem.Function,
+        v: dolfinx.fem.Function | None = None,
+    ) -> list[dolfinx.fem.Form]:
         form = ufl.as_ufl(0.0)
         N = self.geometry.facet_normal
 
@@ -234,41 +249,49 @@ class StaticProblem:
             k = robin.value.to_base_units() * mesh_factor(str(self.parameters["mesh_unit"]))
             value = ufl.inner(k * u, N)
             form += ufl.inner(value * self.u_test, N) * self.geometry.ds(robin.marker)
-        return form
 
-    def _pressure_form(self, u: dolfinx.fem.Function):
-        forms = []
-        if hasattr(self.geometry, "volume_form"):
-            V_u = self.geometry.volume_form(u, b=self.base_center)
-            form = ufl.as_ufl(0.0)
-            for neumann in self.bcs.neumann:
-                t = neumann.traction.to_base_units()
-                form += -t * V_u * self.geometry.ds(neumann.marker)
-
-            if self.num_cavity_pressure_states > 0:
-                for i, (marker, cavity_volume) in enumerate(self.cavities):
-                    area = self.geometry.surface_area(marker)
-                    pendo = self.cavity_pressures[i]
-                    marker_id = self.geometry.markers[marker][0]
-                    form += pendo * (cavity_volume / area - V_u) * self.geometry.ds(marker_id)
-
-            for s, s_test in [(self.u, self.u_test)] + list(
-                zip(self.cavity_pressures, self.cavity_pressures_test),
-            ):
-                forms.append(ufl.derivative(form, s, s_test))
-        else:
-            F = ufl.grad(u) + ufl.Identity(3)
-            N = self.geometry.facet_normal
-            ds = self.geometry.ds
-
-            form = ufl.as_ufl(0.0)
-            for neumann in self.bcs.neumann:
-                t = neumann.traction.to_base_units()
-                n = t * ufl.det(F) * ufl.inv(F).T * N
-                form += ufl.inner(self.u_test, n) * ds(neumann.marker)
-            forms.append(form)
-
+        forms = self._empty_form()
+        forms[0] += form
         return forms
+
+    def _neumann_form(self, u: dolfinx.fem.Function) -> list[dolfinx.fem.Form]:
+        F = ufl.grad(u) + ufl.Identity(3)
+        N = self.geometry.facet_normal
+        ds = self.geometry.ds
+
+        form = ufl.as_ufl(0.0)
+        for neumann in self.bcs.neumann:
+            t = neumann.traction.to_base_units()
+            n = t * ufl.det(F) * ufl.inv(F).T * N
+            form += ufl.inner(self.u_test, n) * ds(neumann.marker)
+
+        forms = self._empty_form()
+        forms[0] += form
+        return forms
+
+    def _cavity_pressure_form(
+        self,
+        u: dolfinx.fem.Function,
+        cavity_pressures: list[dolfinx.fem.Function] | None = None,
+    ):
+        if self.num_cavity_pressure_states == 0:
+            return self._empty_form()
+
+        if not isinstance(self.geometry, HeartGeometry):
+            raise RuntimeError("Cavity pressures are only supported for HeartGeometry")
+
+        V_u = self.geometry.volume_form(u, b=self.base_center)
+        form = ufl.as_ufl(0.0)
+
+        assert cavity_pressures is not None
+        assert len(self.cavities) == self.num_cavity_pressure_states
+        for i, (marker, cavity_volume) in enumerate(self.cavities):
+            area = self.geometry.surface_area(marker)
+            pendo = cavity_pressures[i]
+            marker_id = self.geometry.markers[marker][0]
+            form += pendo * (cavity_volume / area - V_u) * self.geometry.ds(marker_id)
+
+        return self._create_residual_form(form)
 
     @property
     def base_dirichlet(self):
@@ -302,26 +325,20 @@ class StaticProblem:
     @property
     def R(self):
         # Order is always (u, cavity pressures, rigid body, p)
-        u = self.u
 
-        R = self._pressure_form(u)
-        R_mat = self._material_form(u, p=self.p)
-        R[0] += R_mat[0]
-        R[0] += self._robin_form(u)
+        R = self._empty_form()
+        R_material = self._material_form(self.u, p=self.p)
+        R_cavity = self._cavity_pressure_form(self.u, self.cavity_pressures)
+        R_robin = self._robin_form(self.u)
+        R_neumann = self._neumann_form(self.u)
+        R_rigid = self._rigid_body_form(self.u)
 
-        if self.parameters["rigid_body_constraint"]:
-            rigid_body = self._rigid_body_form(u)
-            R[0] += ufl.derivative(rigid_body, self.u, self.u_test)
-            for i in range(self.num_cavity_pressure_states):
-                R[i + 1] += ufl.derivative(
-                    rigid_body,
-                    self.cavity_pressures[i],
-                    self.cavity_pressures_test[i],
-                )
-            R += [ufl.derivative(rigid_body, self.r, self.q)]
-
-        if self.is_incompressible:
-            R += [R_mat[1]]
+        for i in range(self.num_states):
+            R[i] += R_material[i]
+            R[i] += R_cavity[i]
+            R[i] += R_robin[i]
+            R[i] += R_neumann[i]
+            R[i] += R_rigid[i]
 
         return R
 
@@ -336,19 +353,34 @@ class StaticProblem:
             u.append(self.p)
         return u
 
-    def K(self, R):
-        # Functions and trial functions
-        functions = [(self.u, self.du)]
+    @property
+    def test_functions(self):
+        u = [self.u_test]
         if self.num_cavity_pressure_states > 0:
-            functions += list(zip(self.cavity_pressures, self.cavity_pressures_trial))
+            u += self.cavity_pressures_test
         if self.parameters["rigid_body_constraint"]:
-            functions.append((self.r, self.dr))
+            u.append(self.q)
         if self.is_incompressible:
-            functions.append((self.p, self.dp))
+            u.append(self.p_test)
+        return u
 
+    @property
+    def trial_functions(self):
+        u = [self.du]
+        if self.num_cavity_pressure_states > 0:
+            u += self.cavity_pressures_trial
+        if self.parameters["rigid_body_constraint"]:
+            u.append(self.dr)
+        if self.is_incompressible:
+            u.append(self.dp)
+        return u
+
+    def K(self, R):
         K = []
         for i in range(self.num_states):
-            K_row = [ufl.derivative(R[i], f, df) for f, df in functions]
+            K_row = [
+                ufl.derivative(R[i], f, df) for f, df in zip(self.states, self.trial_functions)
+            ]
             K.append(K_row)
         return K
 
@@ -433,12 +465,15 @@ class DynamicProblem(StaticProblem):
 
     def _acceleration_form(self, a: dolfinx.fem.Function):
         rho = self.parameters["rho"].to_base_units()
-        return ufl.inner(rho * a, self.u_test) * self.geometry.dx
+        forms = self._empty_form()
+        forms[0] += ufl.inner(rho * a, self.u_test) * self.geometry.dx
+        return forms
 
     def _robin_form(self, u: dolfinx.fem.Function, v: dolfinx.fem.Function | None = None):
-        form = super()._robin_form(u)
+        forms = super()._robin_form(u)
 
         N = self.geometry.facet_normal
+
         for robin in self.bcs.robin:
             if not robin.damping:
                 # Should be applied to the velocity
@@ -446,9 +481,8 @@ class DynamicProblem(StaticProblem):
             assert v is not None
             k = robin.value.to_base_units() * mesh_factor(str(self.parameters["mesh_unit"]))
             value = ufl.inner(k * v, N)
-            form += ufl.inner(value * self.u_test, N) * self.geometry.ds(robin.marker)
-
-        return form
+            forms[0] += ufl.inner(value * self.u_test, N) * self.geometry.ds(robin.marker)
+        return forms
 
     @property
     def R(self):
@@ -464,30 +498,21 @@ class DynamicProblem(StaticProblem):
         v = interpolate(self.v_old, v_new, alpha_f)
         a = interpolate(self.a_old, a_new, alpha_m)
 
-        if self.is_incompressible:
-            p = interpolate(self.p_old, self.p, alpha_f)
-        else:
-            p = self.p
+        R = self._empty_form()
+        R_material = self._material_form(u=u, v=v, p=self.p)
+        R_cavity = self._cavity_pressure_form(u, self.cavity_pressures)
+        R_robin = self._robin_form(u=u, v=v)
+        R_neumann = self._neumann_form(u)
+        R_rigid = self._rigid_body_form(u)
+        R_acceleration = self._acceleration_form(a)
 
-        R = self._pressure_form(u)
-        R_mat = self._material_form(u, v, p)
-        R[0] += R_mat[0]
-        R[0] += self._robin_form(u, v)
-        R[0] += self._acceleration_form(a)
-
-        if self.parameters["rigid_body_constraint"]:
-            rigid_body = self._rigid_body_form(u)
-            R[0] += ufl.derivative(rigid_body, self.u, self.u_test)
-            for i in range(self.num_cavity_pressure_states):
-                R[i + 1] += ufl.derivative(
-                    rigid_body,
-                    self.cavity_pressures[i],
-                    self.cavity_pressures_test[i],
-                )
-            R += [ufl.derivative(rigid_body, self.r, self.q)]
-
-        if self.is_incompressible:
-            R += [R_mat[1]]
+        for i in range(self.num_states):
+            R[i] += R_material[i]
+            R[i] += R_cavity[i]
+            R[i] += R_robin[i]
+            R[i] += R_neumann[i]
+            R[i] += R_rigid[i]
+            R[i] += R_acceleration[i]
 
         return R
 

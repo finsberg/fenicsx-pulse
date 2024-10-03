@@ -87,31 +87,55 @@ model = fenicsx_pulse.CardiacModel(
 )
 
 alpha_epi = fenicsx_pulse.Variable(
-        dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(1e8)), "Pa / m",
+    dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(1e8)), "Pa / m",
 )
 robin_epi = fenicsx_pulse.RobinBC(value=alpha_epi, marker=geometry.markers["EPI"][0])
 alpha_base = fenicsx_pulse.Variable(
     dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(1e5)), "Pa / m",
 )
 robin_base = fenicsx_pulse.RobinBC(value=alpha_base, marker=geometry.markers["BASE"][0])
-bcs = fenicsx_pulse.BoundaryConditions(robin=(robin_epi, robin_base))
+
+
 
 
 initial_volume = geometry.volume("ENDO")
 Volume = dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(initial_volume))
 cavity = fenicsx_pulse.problem.Cavity(marker="ENDO", volume=Volume)
 parameters = {"base_bc": fenicsx_pulse.problem.BaseBC.free, "mesh_unit": "m"}
-problem = fenicsx_pulse.problem.StaticProblem(model=model, geometry=geometry, bcs=bcs, cavities=[cavity], parameters=parameters)
 
-# problem = fenicsx_pulse.MechanicsProblem(model=model, geometry=geometry, bcs=bcs)
+static = False
+
+
+if static:
+    outdir = Path("lv_ellipsoid_time_dependent_circulation_static")
+    bcs = fenicsx_pulse.BoundaryConditions(robin=(robin_epi, robin_base))
+    problem = fenicsx_pulse.problem.StaticProblem(model=model, geometry=geometry, bcs=bcs, cavities=[cavity], parameters=parameters)
+else:
+    outdir = Path("lv_ellipsoid_time_dependent_circulation_dynamic")
+    beta_epi = fenicsx_pulse.Variable(
+        dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(5e3)), "Pa s/ m",
+    )
+    robin_epi_v = fenicsx_pulse.RobinBC(value=beta_epi, marker=geometry.markers["EPI"][0], damping=True)
+    beta_base = fenicsx_pulse.Variable(
+        dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(5e3)), "Pa s/ m",
+    )
+    robin_base_v = fenicsx_pulse.RobinBC(value=beta_base, marker=geometry.markers["BASE"][0], damping=True)
+    bcs = fenicsx_pulse.BoundaryConditions(robin=(robin_epi, robin_epi_v, robin_base, robin_base_v))
+
+    problem = fenicsx_pulse.problem.DynamicProblem(model=model, geometry=geometry, bcs=bcs, cavities=[cavity], parameters=parameters)
+
+
+outdir.mkdir(exist_ok=True)
 
 # Now we can solve the problem
 
 log.set_log_level(log.LogLevel.INFO)
 problem.solve()
 
-# dt = problem.parameters["dt"].to_base_units()
-dt = 0.001
+if static:
+    dt = 0.001
+else:
+    dt = problem.parameters["dt"].to_base_units()
 times = np.arange(0.0, 1.0, dt)
 
 ode = gotranx.load_ode("TorOrdLand.ode")
@@ -119,27 +143,25 @@ ode = ode.remove_singularities()
 code = gotranx.cli.gotran2py.get_code(
     ode, scheme=[gotranx.schemes.Scheme.generalized_rush_larsen], shape=gotranx.codegen.base.Shape.single,
 )
-Path("model.py").write_text(code)
-import model as code
+Path("TorOrdLand.py").write_text(code)
+import TorOrdLand
 
-# model = {}
-# exec(code, model)
-model = code.__dict__
+TorOrdLand_model = TorOrdLand.__dict__
 
-Ta_index = model["monitor_index"]("Ta")
-y = model["init_state_values"]()
+Ta_index = TorOrdLand_model["monitor_index"]("Ta")
+y = TorOrdLand_model["init_state_values"]()
 # Get initial parameter values
-p = model["init_parameter_values"]()
+p = TorOrdLand_model["init_parameter_values"]()
 import numba
-fgr = numba.njit(model["generalized_rush_larsen"])
-mon = numba.njit(model["monitor_values"])
-V_index = model["state_index"]("v")
-Ca_index = model["state_index"]("cai")
+fgr = numba.njit(TorOrdLand_model["generalized_rush_larsen"])
+mon = numba.njit(TorOrdLand_model["monitor_values"])
+V_index = TorOrdLand_model["state_index"]("v")
+Ca_index = TorOrdLand_model["state_index"]("cai")
 
 # Time in milliseconds
 dt_cell = 0.1
 
-state_file = Path("state.npy")
+state_file = outdir / "state.npy"
 if not state_file.is_file():
 
     @numba.jit(nopython=True)
@@ -183,7 +205,7 @@ if not state_file.is_file():
     ax[2, 0].set_xlabel("Time [ms]")
     ax[2, 1].set_xlabel("Time [ms]")
 
-    fig.savefig("Ta_ORdLand.png")
+    fig.savefig(outdir / "Ta_ORdLand.png")
     np.save(state_file, y)
 
 
@@ -209,8 +231,6 @@ class ODEState:
 
 
 ode_state = ODEState(y, dt_cell, p)
-outdir = Path("lv_ellipsoid_time_dependent")
-
 
 @lru_cache
 def get_activation(t: float):
@@ -247,8 +267,6 @@ def callback(model, t: float, save=True):
         plt.close(fig)
 
 
-
-
 surface_area = geometry.surface_area("ENDO")
 initial_volume = geo.mesh.comm.allreduce(geometry.volume("ENDO", u=problem.u), op=MPI.SUM) * 1e6 * 1.0  # Increase the volume by 5%
 logger.info(f"Initial volume: {initial_volume}")
@@ -283,25 +301,5 @@ circulation_model_3D = circulation.regazzoni2020.Regazzoni2020(
     outdir=outdir,
     initial_state=init_state,
 )
-
-
-
-# circulation_model_0D.update_state(state=init_state)
-# circulation_model_0D.print_info()
-# history = circulation_model_0D.solve(num_cycles=50, dt=dt)
-# fig, ax = plt.subplots(1, 2, sharex=True, sharey=True, figsize=(10, 5))
-# ax[0].plot(history["V_LV"], history["p_LV"])
-# ax[0].set_xlabel("V [mL]")
-# ax[0].set_ylabel("p [mmHg]")
-# ax[0].set_title("All beats")
-# ax[1].plot(history["V_LV"][-1000:], history["p_LV"][-1000:])
-# ax[1].set_title("Last beat")
-# ax[1].set_xlabel("V [mL]")
-# fig.savefig(outdir / "pv_loop_0D.png")
-
-
-circulation_model_3D.solve(num_cycles=20, initial_state=init_state, dt=dt)
+circulation_model_3D.solve(num_cycles=5, initial_state=init_state, dt=dt)
 circulation_model_3D.print_info()
-
-# circulation_model_3D.solve(num_cycles=20, initial_state=circulation_model_0D.state, dt=dt)
-# circulation_model_3D.print_info()
