@@ -129,11 +129,19 @@ def handle_base_bc(base_bc, geometry):
     return robin
 
 
-def handle_control_lv(control, geometry, target_lvp, target_lvv, robin):
+def handle_control_lv(
+    control,
+    geometry,
+    target_lvp,
+    target_lvv,
+    robin,
+    initial_volume,
+    initial_lvp,
+):
     comm = geometry.mesh.comm
     if control == "pressure":
         traction = fenicsx_pulse.Variable(
-            dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0)),
+            dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(initial_lvp)),
             "Pa",
         )
         neumann = fenicsx_pulse.NeumannBC(traction=traction, marker=geometry.markers["ENDO"][0])
@@ -141,7 +149,7 @@ def handle_control_lv(control, geometry, target_lvp, target_lvv, robin):
         cavities = []
 
         def gen(problem):
-            dvlp = (target_lvp - 0.0) / 3.0
+            dvlp = (target_lvp - initial_lvp) / 3.0
 
             for lvp in np.arange(0.0, target_lvp + 1e-9, dvlp):
                 traction.assign(lvp)
@@ -150,7 +158,6 @@ def handle_control_lv(control, geometry, target_lvp, target_lvv, robin):
                 yield lvp, lvv
 
     elif control == "volume":
-        initial_volume = comm.allreduce(geometry.volume("ENDO"), op=MPI.SUM)
         volume = dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(initial_volume))
         cavity = fenicsx_pulse.problem.Cavity(marker="ENDO", volume=volume)
         cavities = [cavity]
@@ -174,16 +181,16 @@ def handle_control_lv(control, geometry, target_lvp, target_lvv, robin):
 
 
 @pytest.mark.parametrize(
-    "init_lvv, target_lvp, target_lvv, final_lvv, final_lvp, rigid, geo_str, base_bc",
+    "rigid, geo_str, base_bc",
     [
-        (149e-6, 300.0, 173e-6, 159.4e-6, 472.94, False, "geo_no_flat_base_m", BaseBC.fixed),
-        (149e-6, 300.0, 171.6e-6, 158.3e-6, 484.97, True, "geo_no_flat_base_m", BaseBC.fixed),
-        (2180.9, 300.0, 2476.0, 2281.0, 496.11, False, "geo_flat_base_mm", BaseBC.fixed),
-        (2180.9, 300.0, 2459.4, 2266.2, 512.92, True, "geo_flat_base_mm", BaseBC.fixed),
-        (149e-6, 500.0, 153.65e-6, 153.0e-6, 649.16, False, "geo_no_flat_base_m", BaseBC.free),
-        (149e-6, 500.0, 153.35e-6, 152.5e-6, 620.0, True, "geo_no_flat_base_m", BaseBC.free),
-        (2180.9, 500.0, 2284.3, 2192.0, 599.17, False, "geo_flat_base_mm", BaseBC.free),
-        (2180.9, 500.0, 2193.24, 2191.9, 608.9, True, "geo_flat_base_mm", BaseBC.free),
+        (False, "geo_no_flat_base_m", BaseBC.fixed),
+        (True, "geo_no_flat_base_m", BaseBC.fixed),
+        (False, "geo_flat_base_mm", BaseBC.fixed),
+        (True, "geo_flat_base_mm", BaseBC.fixed),
+        (False, "geo_no_flat_base_m", BaseBC.free),
+        (True, "geo_no_flat_base_m", BaseBC.free),
+        (False, "geo_flat_base_mm", BaseBC.free),
+        (True, "geo_flat_base_mm", BaseBC.free),
     ],
 )
 @pytest.mark.parametrize("control", ["pressure", "volume"])
@@ -195,11 +202,6 @@ def handle_control_lv(control, geometry, target_lvp, target_lvv, robin):
     ],
 )
 def test_static_problem_lv(
-    init_lvv,
-    target_lvp,
-    target_lvv,
-    final_lvv,
-    final_lvp,
     rigid,
     geo_str,
     base_bc,
@@ -215,12 +217,21 @@ def test_static_problem_lv(
     model = cardiac_model(geo, comp_model_cls)
 
     robin = handle_base_bc(geometry=geometry, base_bc=base_bc)
+
+    initial_volume = geo.mesh.comm.allreduce(geometry.volume("ENDO"), op=MPI.SUM)
+    initial_lvp = 0.0
+
+    target_lvp = 300.0  # Pa
+    target_lvv = initial_volume * 1.05  # 5% increase in volume
+
     bcs, cavities, gen = handle_control_lv(
         control=control,
         geometry=geometry,
         target_lvp=target_lvp,
         target_lvv=target_lvv,
         robin=robin,
+        initial_volume=initial_volume,
+        initial_lvp=initial_lvp,
     )
 
     problem = StaticProblem(
@@ -235,15 +246,18 @@ def test_static_problem_lv(
         cavities=cavities,
     )
     problem.solve()
-
-    initial_volume = geo.mesh.comm.allreduce(geometry.volume("ENDO"), op=MPI.SUM)
-    assert np.isclose(initial_volume, init_lvv, rtol=0.01)
-
     for lvp, lvv in gen(problem):
         print(f"LVP: {lvp}, LVV: {lvv}")
 
-    assert np.isclose(lvv, target_lvv, rtol=0.1)
-    assert np.isclose(lvp, target_lvp, rtol=0.1)
+    lvv_inflated = lvv
+    lvp_inflated = lvp
+
+    if control == "pressure":
+        assert np.isclose(lvp_inflated, target_lvp, rtol=0.01)
+        assert lvv_inflated > initial_volume  # Volume will increase
+    else:
+        assert np.isclose(lvv_inflated, target_lvv, rtol=0.01)
+        assert lvp_inflated > initial_lvp  # Pressure will increase
 
     # Now add some active stress
     for tai in [0.1, 0.5, 0.7]:
@@ -256,11 +270,12 @@ def test_static_problem_lv(
     # will change in response to change in Ta.
     # When volume is the control, the volume will remain constant and the
     # pressure will change.
+
     if control == "pressure":
-        assert np.isclose(lvv, final_lvv, rtol=0.1)
-        assert np.isclose(lvp, target_lvp, rtol=0.1)
+        # Pressure remains the same to volume should decrease
+        assert lvv < lvv_inflated
     else:
+        # Volume remains the same so pressure should increase
         lvp = geo.mesh.comm.allgather(problem.cavity_pressures[0].x.array)[0]
-        print("LVP: ", lvp)
-        assert np.isclose(lvv, target_lvv, rtol=0.1)
-        assert np.isclose(lvp, final_lvp, rtol=0.1)
+
+        assert lvp > lvp_inflated

@@ -242,7 +242,7 @@ class HeartGeometry(Geometry):
         forms = self.base_center_form(base=base, u=u)
         base_area = self.surface_area(base)
         return np.array(
-            [dolfinx.assemble_scalar(bi) / base_area for bi in forms],
+            [dolfinx.fem.assemble_scalar(bi) / base_area for bi in forms],
             dtype=dtype,
         )
 
