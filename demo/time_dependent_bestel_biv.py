@@ -1,29 +1,30 @@
 # # BiV ellipsoid with time dependent pressure and activation
 
-# In this example we will solve a time dependent mechanics problem for the left ventricle ellipsoid geometry. The pressure and activation will be time dependent.
-# We use the Bestel pressure model and the Bestel activation model
+# This example is very similar to the [LV example](time_dependent_bestel_lv.py), only that we now will use a biventricular geometry, meaning that there are two different pressure boundary conditions, one for the left ventricle and one for the right ventricle. We will also use different parameters for the Bestel pressure model for the left and right ventricle.
+# The reader are referred to the [LV example](time_dependent_bestel_lv.py) for more details on the models used.
 
 from pathlib import Path
 import logging
-import fenicsx_pulse.problem
-import fenicsx_pulse.viscoelasticity
+import os
+import numpy as np
+import matplotlib.pyplot as plt
 from mpi4py import MPI
 import dolfinx
-import math
 from dolfinx import log
-import numpy as np
-import circulation.bestel
 from scipy.integrate import solve_ivp
-import fenicsx_pulse
+import circulation.bestel
 import cardiac_geometries
 import cardiac_geometries.geometry
+import fenicsx_pulse
 
 
 logging.basicConfig(level=logging.INFO)
 comm = MPI.COMM_WORLD
 
+outdir = Path("time-dependent-bestel-biv")
+outdir.mkdir(parents=True, exist_ok=True)
 
-geodir = Path("biv-ellipsoid-bestel")
+geodir = outdir / "geometry"
 if not geodir.exists():
     comm.barrier()
     cardiac_geometries.mesh.biv_ellipsoid(
@@ -31,39 +32,32 @@ if not geodir.exists():
         create_fibers=True,
         fiber_space="Quadrature_6",
         comm=comm,
+        char_length=1.0,
         fiber_angle_epi=-60,
         fiber_angle_endo=60,
     )
-
 
 geo = cardiac_geometries.geometry.Geometry.from_folder(
     comm=comm,
     folder=geodir,
 )
 
-# Convert mesh to a realistic size in m
+# In this case we scale the geometry to be in meters
+
 geo.mesh.geometry.x[:] *= 3e-2
+
+# We create the geometry object and print the volumes of the LV and RV cavities
 
 geometry = fenicsx_pulse.HeartGeometry.from_cardiac_geometries(geo, metadata={"quadrature_degree": 6})
 print(geometry.volume("ENDO_LV") * 1e6, geometry.volume("ENDO_RV") * 1e6)
 
-# Next we create the material object, and we will use the transversely isotropic version of the {py:class}`Holzapfel Ogden model <fenicsx_pulse.holzapfelogden.HolzapfelOgden>`
-
 material_params = fenicsx_pulse.HolzapfelOgden.orthotropic_parameters()
 material = fenicsx_pulse.HolzapfelOgden(f0=geo.f0, s0=geo.s0, **material_params)  # type: ignore
-# material = fenicsx_pulse.material_models.Guccione(f0=geo.f0, s0=geo.s0, n0=geo.n0)
 
 Ta = fenicsx_pulse.Variable(dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0)), "Pa")
 active_model = fenicsx_pulse.ActiveStress(geo.f0, activation=Ta)
-
-# We use an incompressible model
-
 comp_model = fenicsx_pulse.compressibility.Compressible2()
-
 viscoeleastic_model = fenicsx_pulse.viscoelasticity.Viscous()
-
-# and assembles the `CardiacModel`
-
 model = fenicsx_pulse.CardiacModel(
     material=material,
     active=active_model,
@@ -71,12 +65,15 @@ model = fenicsx_pulse.CardiacModel(
     viscoelasticity=viscoeleastic_model,
 )
 
+# One difference with the LV example is that we now have two different pressure boundary conditions, one for the LV and one for the RV
+
 traction_lv = fenicsx_pulse.Variable(dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0)), "Pa")
 neumann_lv = fenicsx_pulse.NeumannBC(traction=traction_lv, marker=geometry.markers["ENDO_LV"][0])
 
 traction_rv = fenicsx_pulse.Variable(dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0)), "Pa")
 neumann_rv = fenicsx_pulse.NeumannBC(traction=traction_rv, marker=geometry.markers["ENDO_RV"][0])
 
+# Otherwize we have the same Robin boundary conditions as in the LV example
 
 alpha_epi = fenicsx_pulse.Variable(
     dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(1e8)), "Pa / m",
@@ -97,18 +94,16 @@ beta_base = fenicsx_pulse.Variable(
 robin_base_v = fenicsx_pulse.RobinBC(value=beta_base, marker=geometry.markers["BASE"][0], damping=True)
 
 bcs = fenicsx_pulse.BoundaryConditions(neumann=(neumann_lv, neumann_rv), robin=(robin_epi_u, robin_epi_v, robin_base_u, robin_base_v))
-
-
 problem = fenicsx_pulse.problem.DynamicProblem(model=model, geometry=geometry, bcs=bcs)
 
-
-# Now we can solve the problem
 
 log.set_log_level(log.LogLevel.INFO)
 problem.solve()
 
 dt = problem.parameters["dt"].to_base_units()
 times = np.arange(0.0, 1.0, dt)
+
+# We now solve the Bestel pressure model using different parameters for the LV and RV
 
 lv_pressure_model = circulation.bestel.BestelPressure(
     parameters=dict(
@@ -164,19 +159,28 @@ res = solve_ivp(
     method="Radau",
 )
 # Convert the pressure from Pa to kPa
-outdir = Path("biv_ellipsoid_time_dependent_bestel")
 activation = res.y[0]
-vtx = dolfinx.io.VTXWriter(geometry.mesh.comm, outdir / "displacement_bench.bp", [problem.u], engine="BP4")
+
+
+fig, ax = plt.subplots(2, 1, sharex=True, figsize=(10, 10))
+ax[0].plot(times, lv_pressure, label="LV")
+ax[0].plot(times, rv_pressure, label="RV")
+ax[0].set_title("Pressure")
+ax[0].legend()
+ax[1].plot(times, activation)
+ax[1].set_title("Activation")
+fig.savefig(outdir / "pressure_activation.png")
+
+
+vtx = dolfinx.io.VTXWriter(geometry.mesh.comm, outdir / "displacement.bp", [problem.u], engine="BP4")
 vtx.write(0.0)
 
 volume_form = geometry.volume_form(u=problem.u)
-
-import matplotlib.pyplot as plt
+lv_volume_form = dolfinx.fem.form(volume_form * geometry.ds(geometry.markers["ENDO_LV"][0]))
+rv_volume_form = dolfinx.fem.form(volume_form * geometry.ds(geometry.markers["ENDO_RV"][0]))
 
 lv_volumes = []
 rv_volumes = []
-
-
 for i, (tai, plv, prv, ti) in enumerate(zip(activation, lv_pressure, rv_pressure, times)):
     print(f"Solving for time {ti}, activation {tai}, lv pressure {plv} and rv pressure {prv}")
     traction_lv.assign(plv)
@@ -185,22 +189,27 @@ for i, (tai, plv, prv, ti) in enumerate(zip(activation, lv_pressure, rv_pressure
     problem.solve()
     vtx.write((i + 1) * dt)
 
-    lv_volumes.append(dolfinx.fem.assemble_scalar(dolfinx.fem.form(volume_form * geometry.ds(geometry.markers["ENDO_LV"][0]))))
-    rv_volumes.append(dolfinx.fem.assemble_scalar(dolfinx.fem.form(volume_form * geometry.ds(geometry.markers["ENDO_RV"][0]))))
+    lv_volumes.append(dolfinx.fem.assemble_scalar(lv_volume_form))
+    rv_volumes.append(dolfinx.fem.assemble_scalar(rv_volume_form))
 
-    fig,  ax = plt.subplots(4, 1, figsize=(10, 10))
-    ax[0].plot(times[:i + 1], lv_pressure[:i + 1], label="LV")
-    ax[0].plot(times[:i + 1], rv_pressure[:i + 1], label="RV")
-    ax[0].set_title("Pressure")
-    ax[1].plot(times[:i + 1], activation[:i + 1])
-    ax[1].set_title("Activation")
-    ax[2].plot(times[:i + 1], lv_volumes, label="LV")
-    ax[2].plot(times[:i + 1], rv_volumes, label="RV")
-    ax[2].set_title("Volume")
-    ax[3].plot(lv_volumes, lv_pressure[:i + 1], label="LV")
-    ax[3].plot(rv_volumes, rv_pressure[:i + 1], label="RV")
+    if geo.mesh.comm.rank == 0:
+        fig, ax = plt.subplots(4, 1, figsize=(10, 10))
+        ax[0].plot(times[:i + 1], lv_pressure[:i + 1], label="LV")
+        ax[0].plot(times[:i + 1], rv_pressure[:i + 1], label="RV")
+        ax[0].set_title("Pressure")
+        ax[1].plot(times[:i + 1], activation[:i + 1], label="Activation")
+        ax[1].set_title("Activation")
+        ax[2].plot(times[:i + 1], lv_volumes, label="LV")
+        ax[2].plot(times[:i + 1], rv_volumes, label="RV")
+        ax[2].set_title("Volume")
+        ax[3].plot(lv_volumes, lv_pressure[:i + 1], label="LV")
+        ax[3].plot(rv_volumes, rv_pressure[:i + 1], label="RV")
 
-    for a in ax:
-        a.legend()
-    fig.savefig(outdir / "biv_ellipsoid_time_dependent_bestel.png")
-    plt.close(fig)
+        for a in ax:
+            a.legend()
+        fig.savefig(outdir / "biv_ellipsoid_time_dependent_bestel.png")
+        plt.close(fig)
+
+    if os.getenv("CI") and i > 2:
+        # Early stopping for CI
+        break

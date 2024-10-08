@@ -52,7 +52,17 @@
 # \end{align*}
 # $$
 #
-# $v_{i+1},a_{i+1}$ given by {eq}`N_v` - {eq}`N_a`, and
+# $v_{i+1},a_{i+1}$ given by
+#
+# $$
+# v_{i+1} = v_i + (1-\gamma) \Delta t ~ a_i + \gamma \Delta t ~ a_{i+1}
+# $$ (N_v)
+#
+# $$
+# a_{i+1} = \frac{u_{i+1} - (u_i + \Delta t ~ v_i + (0.5 - \beta) \Delta t^2 ~ a_i)}{\beta \Delta t^2}
+# $$ (N_a)
+#
+# and
 #
 # $$
 # \begin{align*}
@@ -119,7 +129,7 @@
 #
 # ## Constitutive model
 #
-# We will use a nearly incompressible, orthotropic and viscoelastic version of the Holzapfel Ogden model. The material parameters are taken from {cite}`holzapfel2000constitutive`. The anistropic material strain energy function is given by
+# We will use a nearly incompressible, orthotropic and viscoelastic version of the Holzapfel Ogden model. The material parameters are taken from {cite}`holzapfel2009constitutive`. The anistropic material strain energy function is given by
 #
 # $$
 # \Psi_{\text{aniso}} = \frac{a}{2 b} \left( e^{ b (I_1 - 3)}  -1 \right)
@@ -174,13 +184,10 @@ from dolfinx import log
 import numpy as np
 from scipy.integrate import solve_ivp
 import matplotlib.pyplot as plt
-import pyvista
 import circulation.bestel
 import cardiac_geometries
 import cardiac_geometries.geometry
 import fenicsx_pulse
-import fenicsx_pulse.problem
-import fenicsx_pulse.viscoelasticity
 
 # Next we set up the logging and the MPI communicator
 
@@ -335,7 +342,7 @@ fig.savefig(outdir / "pressure_activation.png")
 # New let us write the displacement to a file using the `VTXWriter` from dolfinx
 #
 
-vtx = dolfinx.io.VTXWriter(geometry.mesh.comm, outdir / "displacement_bench.bp", [problem.u], engine="BP4")
+vtx = dolfinx.io.VTXWriter(geometry.mesh.comm, outdir / "displacement.bp", [problem.u], engine="BP4")
 vtx.write(0.0)
 
 # We can also calculate the volume of the left ventricle at each time step, so let us first define the volume form
@@ -375,5 +382,6 @@ for i, (tai, pi, ti) in enumerate(zip(activation, pressure, times)):
         break
 
 
+# # References
 # ```{bibliography}
 # ```

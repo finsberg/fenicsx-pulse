@@ -5,6 +5,7 @@
 #
 # First let us do the necessary imports
 
+from pathlib import Path
 from mpi4py import MPI
 from petsc4py import PETSc
 
@@ -108,35 +109,35 @@ log.set_log_level(log.LogLevel.WARNING)
 # We can get the solution (displacement)
 
 u = problem.u
+outdir = Path("unit_cube")
+outdir.mkdir(exist_ok=True)
 
-with dolfinx.io.VTXWriter(mesh.comm, "unit_cube_displacement.bp", [u], engine="BP4") as vtx:
+with dolfinx.io.VTXWriter(mesh.comm, outdir / "unit_cube_displacement.bp", [u], engine="BP4") as vtx:
     vtx.write(0.0)
 
 # and visualize it using pyvista
 
-# try:
-#     import pyvista
-# except ImportError:
-#     print("Pyvista is not installed")
-# else:
+try:
+    import pyvista
+except ImportError:
+    print("Pyvista is not installed")
+else:
 
-#     pyvista.start_xvfb()
+    pyvista.start_xvfb()
 
-#     # Create plotter and pyvista grid
-#     p = pyvista.Plotter()
+    # Create plotter and pyvista grid
+    p = pyvista.Plotter()
 
-#     topology, cell_types, geometry = dolfinx.plot.vtk_mesh(
-#         problem.state_space.sub(0).collapse()[0],
-#     )
-#     grid = pyvista.UnstructuredGrid(topology, cell_types, geometry)
+    topology, cell_types, geometry = dolfinx.plot.vtk_mesh(problem.u_space)
+    grid = pyvista.UnstructuredGrid(topology, cell_types, geometry)
 
-#     # Attach vector values to grid and warp grid by vectora
-#     grid["u"] = u.x.array.reshape((geometry.shape[0], 3))
-#     actor_0 = p.add_mesh(grid, style="wireframe", color="k")
-#     warped = grid.warp_by_vector("u", factor=1.5)
-#     actor_1 = p.add_mesh(warped, show_edges=True)
-#     p.show_axes()
-#     if not pyvista.OFF_SCREEN:
-#         p.show()
-#     else:
-#         figure_as_array = p.screenshot("unit_cube_displacement.png")
+    # Attach vector values to grid and warp grid by vectora
+    grid["u"] = u.x.array.reshape((geometry.shape[0], 3))
+    actor_0 = p.add_mesh(grid, style="wireframe", color="k")
+    warped = grid.warp_by_vector("u", factor=1.5)
+    actor_1 = p.add_mesh(warped, show_edges=True)
+    p.show_axes()
+    if not pyvista.OFF_SCREEN:
+        p.show()
+    else:
+        figure_as_array = p.screenshot(outdir / "unit_cube_displacement.png")

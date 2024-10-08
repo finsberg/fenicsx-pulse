@@ -14,7 +14,9 @@ import cardiac_geometries.geometry
 
 # Next we will create the geometry and save it in the folder called `lv_ellipsoid`. We also make sure to generate fibers which can be done analytically and use a second order Lagrange space for the fibers
 
-geodir = Path("lv_ellipsoid")
+outdir = Path("lv_ellipsoid")
+outdir.mkdir(parents=True, exist_ok=True)
+geodir = outdir / "geometry"
 if not geodir.exists():
     cardiac_geometries.mesh.lv_ellipsoid(outdir=geodir, create_fibers=True, fiber_space="P_2")
 
@@ -73,7 +75,7 @@ problem.solve()
 
 # And save the displacement to a file that we can view in Paraview
 
-vtx = dolfinx.io.VTXWriter(geometry.mesh.comm, "lv_displacement.bp", [problem.u], engine="BP4")
+vtx = dolfinx.io.VTXWriter(geometry.mesh.comm, outdir / "lv_displacement.bp", [problem.u], engine="BP4")
 vtx.write(0.0)
 
 i = 1
@@ -111,7 +113,7 @@ else:
     if not pyvista.OFF_SCREEN:
         p.show()
     else:
-        figure_as_array = p.screenshot("lv_ellipsoid_pressure.png")
+        figure_as_array = p.screenshot(outdir / "lv_ellipsoid_pressure.png")
 
 
 for ta in [0.1]: #, 0.5, 1.0]:
@@ -139,4 +141,4 @@ else:
     if not pyvista.OFF_SCREEN:
         p.show()
     else:
-        figure_as_array = p.screenshot("lv_ellipsoid_active.png")
+        figure_as_array = p.screenshot(outdir / "lv_ellipsoid_active.png")
