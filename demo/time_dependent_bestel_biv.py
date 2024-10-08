@@ -213,3 +213,9 @@ for i, (tai, plv, prv, ti) in enumerate(zip(activation, lv_pressure, rv_pressure
     if os.getenv("CI") and i > 2:
         # Early stopping for CI
         break
+
+# <video controls loop autoplay muted>
+#   <source src="../_static/time_dependent_bestel_biv.mp4" type="video/mp4">
+#   <p>Video showing the motion of the BiV.</p>
+# </video>
+#
