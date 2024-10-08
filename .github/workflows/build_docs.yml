@@ -9,6 +9,7 @@ on:
 env:
   DEB_PYTHON_INSTALL_LAYOUT: deb_system
   DISPLAY: ":99.0"
+  CI: 1
 
 jobs:
 

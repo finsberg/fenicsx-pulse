@@ -32,6 +32,7 @@ parse:
 sphinx:
   config:
     html_last_updated_fmt: "%b %d, %Y"
+    bibtex_bibfiles: ["docs/refs.bib"]
     nb_execution_show_tb: True
     nb_custom_formats:  # https://jupyterbook.org/en/stable/file-types/jupytext.html#file-types-custom
         .py:
@@ -45,5 +46,6 @@ sphinx:
   - 'sphinx.ext.autodoc'
   - 'sphinx.ext.napoleon'
   - 'sphinx.ext.viewcode'
+  - 'sphinxcontrib.bibtex'
 
 exclude_patterns: [".pytest_cache/*", ".github/*", ".tox/*", "third_party/*"]

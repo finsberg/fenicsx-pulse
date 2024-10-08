@@ -309,3 +309,11 @@ class HolzapfelOgden(HyperElasticMaterial):
         I4s = self._I4s(F)
         I8fs = self._I8fs(F)
         return self._W1(I1) + self._W4f(I4f) + self._W4s(I4s) + self._W8fs(I8fs)
+
+    def __str__(self) -> str:
+        return (
+            "a/2b (exp(b(I1 - 3)) - 1) + "
+            "af/2bf H(I4f - 1) (exp(bf (I4f - 1)_+^2) - 1) + "
+            "as/2bs H(I4s - 1) (exp(bs (I4s - 1)_+^2) - 1) + "
+            "afs/2bfs (exp(bfs I8fs^2) - 1)"
+        )

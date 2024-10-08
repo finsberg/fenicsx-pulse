@@ -1,4 +1,4 @@
-# # LV ellipsoid with time dependent pressure and activation
+# # BiV ellipsoid with time dependent pressure and activation
 
 # In this example we will solve a time dependent mechanics problem for the left ventricle ellipsoid geometry. The pressure and activation will be time dependent.
 # We use the Bestel pressure model and the Bestel activation model
@@ -45,7 +45,6 @@ geo = cardiac_geometries.geometry.Geometry.from_folder(
 geo.mesh.geometry.x[:] *= 3e-2
 
 geometry = fenicsx_pulse.HeartGeometry.from_cardiac_geometries(geo, metadata={"quadrature_degree": 6})
-
 print(geometry.volume("ENDO_LV") * 1e6, geometry.volume("ENDO_RV") * 1e6)
 
 # Next we create the material object, and we will use the transversely isotropic version of the {py:class}`Holzapfel Ogden model <fenicsx_pulse.holzapfelogden.HolzapfelOgden>`

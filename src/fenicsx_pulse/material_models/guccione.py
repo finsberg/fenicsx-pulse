@@ -143,3 +143,6 @@ class Guccione(HyperElasticMaterial):
     def strain_energy(self, F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
         C = self.C.to_base_units()
         return 0.5 * C * (ufl.exp(self._Q(F)) - 1.0)
+
+    def __str__(self):
+        return "0.5C (exp(Q) - 1)"

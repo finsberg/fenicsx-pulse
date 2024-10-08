@@ -12,6 +12,7 @@ parts:
       - file: "demo/benchmark/problem1"
       - file: "demo/benchmark/problem2"
       - file: "demo/benchmark/problem3"
+    - file: "demo/time_dependent_bestel_lv"
   - caption: Community
     chapters:
       - file: "CONTRIBUTING"

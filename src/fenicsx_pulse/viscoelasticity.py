@@ -46,3 +46,6 @@ class Viscous(ViscoElasticity):
     def strain_energy(self, E_dot) -> ufl.Form:
         eta = self.eta.to_base_units()
         return 0.5 * eta * ufl.tr(E_dot * E_dot)
+
+    def __str__(self):
+        return "0.5\u03b7 tr (E_dot E_dot)"

@@ -115,6 +115,9 @@ class ActiveStress(ActiveModel):
         else:
             raise NotImplementedError
 
+    def __str__(self) -> str:
+        return "Ta (I4f - 1 + \u03b7 ((I1 - 3) - (I4f - 1)))"
+
 
 def transversely_active_stress(Ta, C, f0, eta=0.0):
     r"""

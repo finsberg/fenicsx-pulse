@@ -56,3 +56,6 @@ class NeoHookean(HyperElasticMaterial):
         dim = ufl.domain.find_geometric_dimension(F)
         mu = self.mu.to_base_units()
         return 0.5 * mu * (I1 - dim)
+
+    def __str__(self):
+        return "0.5\u03bc (I1 - 3)"

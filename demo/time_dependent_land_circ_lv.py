@@ -5,7 +5,6 @@
 
 from pathlib import Path
 import fenicsx_pulse.problem
-import fenicsx_pulse.viscoelasticity
 from mpi4py import MPI
 import dolfinx
 import logging
@@ -57,7 +56,6 @@ geo = cardiac_geometries.geometry.Geometry.from_folder(
     folder=geodir,
 )
 
-
 geometry = fenicsx_pulse.HeartGeometry.from_cardiac_geometries(geo, metadata={"quadrature_degree": 6})
 
 # Next we create the material object, and we will use the transversely isotropic version of the {py:class}`Holzapfel Ogden model <fenicsx_pulse.holzapfelogden.HolzapfelOgden>`
@@ -75,15 +73,12 @@ active_model = fenicsx_pulse.ActiveStress(geo.f0, activation=Ta)
 
 comp_model = fenicsx_pulse.compressibility.Compressible2()
 
-viscoeleastic_model = fenicsx_pulse.viscoelasticity.Viscous()
-
 # and assembles the `CardiacModel`
 
 model = fenicsx_pulse.CardiacModel(
     material=material,
     active=active_model,
     compressibility=comp_model,
-    viscoelasticity=viscoeleastic_model,
 )
 
 alpha_epi = fenicsx_pulse.Variable(
@@ -96,14 +91,12 @@ alpha_base = fenicsx_pulse.Variable(
 robin_base = fenicsx_pulse.RobinBC(value=alpha_base, marker=geometry.markers["BASE"][0])
 
 
-
-
 initial_volume = geometry.volume("ENDO")
 Volume = dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(initial_volume))
 cavity = fenicsx_pulse.problem.Cavity(marker="ENDO", volume=Volume)
 parameters = {"base_bc": fenicsx_pulse.problem.BaseBC.free, "mesh_unit": "m"}
 
-static = False
+static = True
 
 
 if static:
@@ -223,7 +216,7 @@ class ODEState:
         for t_cell in np.arange(self.t, t, self.dt_cell):
             self.y[:] = fgr(self.y, t_cell, self.dt_cell, self.p)
         self.t = t
-        return self.y
+        return self.y[:]
 
     def Ta(self, t):
         monitor = mon(t, self.y, p)
