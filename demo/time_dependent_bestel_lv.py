@@ -389,4 +389,5 @@ for i, (tai, pi, ti) in enumerate(zip(activation, pressure, times)):
 #
 # # References
 # ```{bibliography}
+# :filter: docname in docnames
 # ```

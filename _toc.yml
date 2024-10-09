@@ -14,6 +14,7 @@ parts:
       - file: "demo/benchmark/problem3"
     - file: "demo/time_dependent_bestel_lv"
     - file: "demo/time_dependent_bestel_biv"
+    - file: "demo/time_dependent_land_circ_lv"
   - caption: Community
     chapters:
       - file: "CONTRIBUTING"
