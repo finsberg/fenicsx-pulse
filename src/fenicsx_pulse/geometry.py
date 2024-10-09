@@ -318,4 +318,3 @@ class HeartGeometry(Geometry):
 
         form = self.volume_form(u=u, b=b)
         return dolfinx.fem.assemble_scalar(dolfinx.fem.form(form * self.ds(marker_id)))
-
