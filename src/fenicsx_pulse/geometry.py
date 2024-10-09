@@ -246,7 +246,7 @@ class HeartGeometry(Geometry):
             dtype=dtype,
         )
 
-    def inner_volume_form(
+    def volume_form(
         self,
         u: dolfinx.fem.Function | None = None,
         b: ufl.Coefficient = ufl.as_vector([0.0, 0.0, 0.0]),
