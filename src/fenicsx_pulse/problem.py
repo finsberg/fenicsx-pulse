@@ -49,11 +49,9 @@ class Geometry(typing.Protocol):
     markers: dict[str, tuple[int, int]]
 
     @property
-    def facet_normal(self) -> ufl.FacetNormal:
-        ...
+    def facet_normal(self) -> ufl.FacetNormal: ...
 
-    def surface_area(self, marker: str) -> float:
-        ...
+    def surface_area(self, marker: str) -> float: ...
 
 
 @dataclass
