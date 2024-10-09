@@ -8,10 +8,11 @@ on:
 jobs:
   test-code:
     name: Test on ${{ matrix.container }}
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     container: ${{ matrix.container }}
     env:
       DEB_PYTHON_INSTALL_LAYOUT: deb_system
+
     strategy:
       fail-fast: false
       matrix:

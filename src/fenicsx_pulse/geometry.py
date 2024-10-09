@@ -246,7 +246,7 @@ class HeartGeometry(Geometry):
             dtype=dtype,
         )
 
-    def volume_form(
+    def inner_volume_form(
         self,
         u: dolfinx.fem.Function | None = None,
         b: ufl.Coefficient = ufl.as_vector([0.0, 0.0, 0.0]),
@@ -307,6 +307,9 @@ class HeartGeometry(Geometry):
         exceptions.MarkerNotFoundError
             If the marker is not found in the geometry
         """
+        if marker not in self.markers:
+            raise exceptions.MarkerNotFoundError(marker)
+        marker_id = self.markers[marker][0]
 
         if marker not in self.markers:
             raise exceptions.MarkerNotFoundError(marker)
@@ -315,3 +318,4 @@ class HeartGeometry(Geometry):
 
         form = self.volume_form(u=u, b=b)
         return dolfinx.fem.assemble_scalar(dolfinx.fem.form(form * self.ds(marker_id)))
+

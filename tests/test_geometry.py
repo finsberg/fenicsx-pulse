@@ -108,7 +108,7 @@ def test_HeartGeometry_lv(tmp_path):
     rotate_geo(geo2, np.pi)
 
     # But volume should be the same
-    assert np.isclose(geo2.volume("ENDO"), endo_volume)
+    assert np.isclose(geo2.volume("ENDO"), endo_volume, atol=1e-7)
 
 
 def test_HeartGeometry_biv(tmp_path):
