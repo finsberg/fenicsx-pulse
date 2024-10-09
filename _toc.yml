@@ -15,6 +15,7 @@ parts:
     - file: "demo/time_dependent_bestel_lv"
     - file: "demo/time_dependent_bestel_biv"
     - file: "demo/time_dependent_land_circ_lv"
+    - file: "demo/time_dependent_land_circ_biv"
   - caption: Community
     chapters:
       - file: "CONTRIBUTING"
