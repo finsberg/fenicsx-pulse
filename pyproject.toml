@@ -29,6 +29,7 @@ demo = [
     "circulation",
     "gotranx",
     "adios4dolfinx",
+    "scipy",
 ]
 docs = [
    "jupyter-book",
