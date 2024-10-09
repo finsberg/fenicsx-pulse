@@ -24,7 +24,7 @@ python3 -m pip install fenicsx-pulse
 ```
 We also provide a pre-built docker image with FEniCSx and `fenicsx_pulse` installed. You pull this image using the command
 ```
-docker pull ghcr.io/finsberg/fenicsx-pulse:v0.1.9
+docker pull ghcr.io/finsberg/fenicsx-pulse:v0.2.0
 ```
 
 ## Getting started
