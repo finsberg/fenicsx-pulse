@@ -6,7 +6,6 @@
 
 from pathlib import Path
 from mpi4py import MPI
-from petsc4py import PETSc
 import dolfinx
 from dolfinx import log
 import fenicsx_pulse
@@ -15,7 +14,9 @@ import cardiac_geometries.geometry
 
 # Next we will create the geometry and save it in the folder called `lv_ellipsoid`. We also make sure to generate fibers which can be done analytically and use a second order Lagrange space for the fibers
 
-geodir = Path("lv_ellipsoid")
+outdir = Path("lv_ellipsoid")
+outdir.mkdir(parents=True, exist_ok=True)
+geodir = outdir / "geometry"
 if not geodir.exists():
     cardiac_geometries.mesh.lv_ellipsoid(outdir=geodir, create_fibers=True, fiber_space="P_2")
 
@@ -38,7 +39,7 @@ material = fenicsx_pulse.HolzapfelOgden(f0=geo.f0, s0=geo.s0, **material_params)
 
 # We use an active stress approach with 30% transverse active stress (see {py:meth}`fenicsx_pulse.active_stress.transversely_active_stress`)
 
-Ta = dolfinx.fem.Constant(geometry.mesh, PETSc.ScalarType(0.0))
+Ta = fenicsx_pulse.Variable(dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0)), "kPa")
 active_model = fenicsx_pulse.ActiveStress(geo.f0, activation=Ta, eta=0.3)
 
 # We use an incompressible model
@@ -51,41 +52,20 @@ model = fenicsx_pulse.CardiacModel(
     material=material,
     active=active_model,
     compressibility=comp_model,
-    decouple_deviatoric_volumetric=False,
 )
-
-
-# Next we need to apply some boundary conditions. For the Dirichlet BC we can supply a function that takes as input the state space and returns a list of `DirichletBC`. We will fix the base in all directions. Note that the displacement is in the first subspace since we use an incompressible model. The hydrostatic pressure is in the second subspace
-
-def dirichlet_bc(
-    state_space: dolfinx.fem.FunctionSpace,
-) -> list[dolfinx.fem.bcs.DirichletBC]:
-    V, _ = state_space.sub(0).collapse()
-    facets = geometry.facet_tags.find(
-        geometry.markers["BASE"][0],
-    )  # Specify the marker used on the boundary
-    geometry.mesh.topology.create_connectivity(
-        geometry.mesh.topology.dim - 1,
-        geometry.mesh.topology.dim,
-    )
-    dofs = dolfinx.fem.locate_dofs_topological((state_space.sub(0), V), 2, facets)
-    u_fixed = dolfinx.fem.Function(V)
-    u_fixed.x.array[:] = 0.0
-    return [dolfinx.fem.dirichletbc(u_fixed, dofs, state_space.sub(0))]
-
 
 # We apply a traction in endocardium
 
-traction = dolfinx.fem.Constant(geometry.mesh, PETSc.ScalarType(0.0))
+traction = fenicsx_pulse.Variable(dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0)), "kPa")
 neumann = fenicsx_pulse.NeumannBC(traction=traction, marker=geometry.markers["ENDO"][0])
 
 # and finally combine all the boundary conditions
 
-bcs = fenicsx_pulse.BoundaryConditions(dirichlet=(dirichlet_bc,), neumann=(neumann,))
+bcs = fenicsx_pulse.BoundaryConditions(neumann=(neumann,))
 
 # and create a Mixed problem
 
-problem = fenicsx_pulse.MechanicsProblemMixed(model=model, geometry=geometry, bcs=bcs)
+problem = fenicsx_pulse.StaticProblem(model=model, geometry=geometry, bcs=bcs, parameters={"base_bc": fenicsx_pulse.BaseBC.fixed})
 
 # Now we can solve the problem
 
@@ -95,8 +75,7 @@ problem.solve()
 
 # And save the displacement to a file that we can view in Paraview
 
-u = problem.state.sub(0).collapse()
-vtx = dolfinx.io.VTXWriter(geometry.mesh.comm, "lv_displacement.bp", [u], engine="BP4")
+vtx = dolfinx.io.VTXWriter(geometry.mesh.comm, outdir / "lv_displacement.bp", [problem.u], engine="BP4")
 vtx.write(0.0)
 
 i = 1
@@ -104,7 +83,7 @@ for plv in [0.1]: #, 0.5, 1.0]:
     print(f"plv: {plv}")
     traction.value = plv
     problem.solve()
-    u = problem.state.sub(0).collapse()
+
     vtx.write(float(i))
     i += 1
 
@@ -119,7 +98,7 @@ else:
     pyvista.start_xvfb()
     V = dolfinx.fem.functionspace(geometry.mesh, ("Lagrange", 1, (geometry.mesh.geometry.dim,)))
     uh = dolfinx.fem.Function(V)
-    uh.interpolate(u)
+    uh.interpolate(problem.u)
     # Create plotter and pyvista grid
     p = pyvista.Plotter()
     topology, cell_types, geometry = dolfinx.plot.vtk_mesh(V)
@@ -134,15 +113,13 @@ else:
     if not pyvista.OFF_SCREEN:
         p.show()
     else:
-        figure_as_array = p.screenshot("lv_ellipsoid_pressure.png")
-
+        figure_as_array = p.screenshot(outdir / "lv_ellipsoid_pressure.png")
 
 
 for ta in [0.1]: #, 0.5, 1.0]:
     print(f"ta: {ta}")
     Ta.value = ta
     problem.solve()
-    u = problem.state.sub(0).collapse()
     vtx.write(float(i))
     i += 1
 
@@ -164,4 +141,4 @@ else:
     if not pyvista.OFF_SCREEN:
         p.show()
     else:
-        figure_as_array = p.screenshot("lv_ellipsoid_active.png")
+        figure_as_array = p.screenshot(outdir / "lv_ellipsoid_active.png")

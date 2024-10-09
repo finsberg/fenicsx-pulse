@@ -21,15 +21,17 @@ from . import (
     kinematics,
     material_model,
     material_models,
-    mechanicsproblem,
+    problem,
+    units,
     utils,
+    viscoelasticity,
 )
 from .active_stress import ActiveStress
 from .boundary_conditions import BoundaryConditions, NeumannBC, RobinBC
 from .cardiac_model import CardiacModel
 from .compressibility import Compressibility, Compressible, Incompressible
 from .geometry import Geometry, HeartGeometry, Marker
-from .material_model import HyperElasticMaterial
+from .material_model import HyperElasticMaterial, Material
 from .material_models import (
     Guccione,
     HolzapfelOgden,
@@ -37,7 +39,9 @@ from .material_models import (
     NeoHookean,
     SaintVenantKirchhoff,
 )
-from .mechanicsproblem import BaseMechanicsProblem, MechanicsProblem, MechanicsProblemMixed
+from .problem import BaseBC, DynamicProblem, StaticProblem
+from .units import Variable, ureg
+from .viscoelasticity import NoneViscoElasticity, ViscoElasticity, Viscous
 
 __all__ = [
     "kinematics",
@@ -61,17 +65,24 @@ __all__ = [
     "NeumannBC",
     "RobinBC",
     "boundary_conditions",
-    "mechanicsproblem",
-    "MechanicsProblem",
     "BoundaryConditions",
     "Marker",
     "material_models",
     "NeoHookean",
     "SaintVenantKirchhoff",
-    "MechanicsProblemMixed",
-    "BaseMechanicsProblem",
     "Compressibility",
     "Guccione",
+    "units",
+    "ureg",
     "utils",
+    "Variable",
     "HeartGeometry",
+    "problem",
+    "StaticProblem",
+    "DynamicProblem",
+    "BaseBC",
+    "viscoelasticity",
+    "NoneViscoElasticity",
+    "ViscoElasticity",
+    "Viscous",
 ]

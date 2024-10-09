@@ -1,4 +1,5 @@
-from dataclasses import dataclass
+import logging
+from dataclasses import dataclass, field
 
 import dolfinx
 import numpy as np
@@ -6,6 +7,9 @@ import ufl
 
 from .. import exceptions, kinematics
 from ..material_model import HyperElasticMaterial
+from ..units import Variable
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -55,16 +59,25 @@ class Guccione(HyperElasticMaterial):
     f0: dolfinx.fem.Function | dolfinx.fem.Constant | None = None
     s0: dolfinx.fem.Function | dolfinx.fem.Constant | None = None
     n0: dolfinx.fem.Function | dolfinx.fem.Constant | None = None
-    C: float | dolfinx.fem.Function | dolfinx.fem.Constant = dolfinx.default_scalar_type(2.0)
-    bf: float | dolfinx.fem.Function | dolfinx.fem.Constant = dolfinx.default_scalar_type(8.0)
-    bt: float | dolfinx.fem.Function | dolfinx.fem.Constant = dolfinx.default_scalar_type(2.0)
-    bfs: float | dolfinx.fem.Function | dolfinx.fem.Constant = dolfinx.default_scalar_type(4.0)
+    C: Variable = field(default_factory=lambda: Variable(2.0, "kPa"))
+    bf: Variable = field(default_factory=lambda: Variable(8.0, "dimensionless"))
+    bt: Variable = field(default_factory=lambda: Variable(2.0, "dimensionless"))
+    bfs: Variable = field(default_factory=lambda: Variable(4.0, "dimensionless"))
 
     def __post_init__(self):
         # Check that all values are positive
         for attr in ["C", "bf", "bt", "bfs"]:
+            p = getattr(self, attr)
+            if not isinstance(p, Variable):
+                unit = "dimensionless" if attr.startswith("b") else "kPa"
+                if attr == "C":
+                    logger.warning("Setting %s to %s %s", attr, p, unit)
+
+                p = Variable(p, unit)
+                setattr(self, attr, p)
+
             if not exceptions.check_value_greater_than(
-                getattr(self, attr),
+                getattr(self, attr).value,
                 0.0,
                 inclusive=True,
             ):
@@ -74,21 +87,33 @@ class Guccione(HyperElasticMaterial):
                 )
 
     @staticmethod
-    def default_parameters() -> dict:
-        return {"C": 2.0, "bf": 8.0, "bt": 2.0, "bfs": 4.0}
+    def default_parameters() -> dict[str, Variable]:
+        return {
+            "C": Variable(2.0, "kPa"),
+            "bf": Variable(8.0, "dimensionless"),
+            "bt": Variable(2.0, "dimensionless"),
+            "bfs": Variable(4.0, "dimensionless"),
+        }
 
     def is_isotropic(self) -> bool:
         """
         Return True if the material is isotropic.
         """
+        bt = self.bt.to_base_units()
+        bf = self.bf.to_base_units()
+        bfs = self.bfs.to_base_units()
 
         try:
-            return float(self.bt) == 1.0 and float(self.bf) == 1.0 and float(self.bfs) == 1.0
+            return float(bt) == 1.0 and float(bf) == 1.0 and float(bfs) == 1.0
         except TypeError:
             return False
 
     def _Q(self, F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
         E = kinematics.GreenLagrangeStrain(F)
+
+        bt = self.bt.to_base_units()
+        bf = self.bf.to_base_units()
+        bfs = self.bfs.to_base_units()
 
         if self.is_isotropic():
             # isotropic case
@@ -112,10 +137,12 @@ class Guccione(HyperElasticMaterial):
             )
 
             return (
-                self.bf * E11**2
-                + self.bt * (E22**2 + E33**2 + 2 * E23**2)
-                + self.bfs * (2 * E12**2 + 2 * E13**2)
+                bf * E11**2 + bt * (E22**2 + E33**2 + 2 * E23**2) + bfs * (2 * E12**2 + 2 * E13**2)
             )
 
     def strain_energy(self, F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
-        return 0.5 * self.C * (ufl.exp(self._Q(F)) - 1.0)
+        C = self.C.to_base_units()
+        return 0.5 * C * (ufl.exp(self._Q(F)) - 1.0)
+
+    def __str__(self):
+        return "0.5C (exp(Q) - 1)"

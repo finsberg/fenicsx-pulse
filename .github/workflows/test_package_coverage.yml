@@ -17,10 +17,9 @@ jobs:
       fail-fast: false
       matrix:
         container: [
-          "ghcr.io/fenics/dolfinx/dolfinx:stable",
+          "ghcr.io/fenics/dolfinx/dolfinx:v0.9.0",
           "ghcr.io/fenics/dolfinx/dolfinx:nightly"
         ]
-
 
     steps:
       - uses: actions/checkout@v4
@@ -39,20 +38,8 @@ jobs:
           echo "total=$TOTAL" >> $GITHUB_ENV
 
       - name: Upload HTML report.
+        if: ${{ matrix.container == 'ghcr.io/fenics/dolfinx/dolfinx:v0.9.0' }}
         uses: actions/upload-artifact@v4
         with:
           name: html-report
           path: htmlcov
-
-      - name: Create coverage Badge
-        if: github.ref == 'refs/heads/main'
-        uses: schneegans/dynamic-badges-action@v1.7.0
-        with:
-          auth: ${{ secrets.GIST_SECRET }}
-          gistID: a7290de789564f03eb6b1ee122fce423
-          filename: fenicsx-pulse-coverage.json
-          label: Coverage
-          message: ${{ env.total }}%
-          minColorRange: 50
-          maxColorRange: 90
-          valColorRange: ${{ env.total }}

@@ -2,13 +2,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-import dolfinx
+import numpy as np
 import ufl
 
+from .. import exceptions
 from ..material_model import HyperElasticMaterial
+from ..units import Variable
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class SaintVenantKirchhoff(HyperElasticMaterial):
     r"""
     Class for Saint Venant-Kirchhoff material
@@ -33,13 +35,33 @@ class SaintVenantKirchhoff(HyperElasticMaterial):
 
     """
 
-    mu: float | dolfinx.fem.Function | dolfinx.fem.Constant
-    lmbda: float | dolfinx.fem.Function | dolfinx.fem.Constant
+    mu: Variable
+    lmbda: Variable
+
+    def __post_init__(self):
+        # Check that all values are positive
+        if not isinstance(self.mu, Variable):
+            self.mu = Variable(self.mu, "dimensionless")
+        if not isinstance(self.lmbda, Variable):
+            self.lmbda = Variable(self.lmbda, "dimensionless")
+
+        if not exceptions.check_value_greater_than(
+            self.mu.value,
+            0.0,
+            inclusive=True,
+        ):
+            raise exceptions.InvalidRangeError(
+                name="mu",
+                expected_range=(0.0, np.inf),
+            )
 
     def strain_energy(self, F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
         dim = ufl.domain.find_geometric_dimension(F)
         gradu = F - ufl.Identity(dim)
         epsilon = 0.5 * (gradu + gradu.T)
-        return self.lmbda / 2 * (ufl.tr(epsilon) ** 2) + self.mu * ufl.tr(
+        mu = self.mu.to_base_units()
+        lmbda = self.lmbda.to_base_units()
+
+        return lmbda / 2 * (ufl.tr(epsilon) ** 2) + mu * ufl.tr(
             epsilon * epsilon,
         )
