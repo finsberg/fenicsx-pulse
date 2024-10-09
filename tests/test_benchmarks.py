@@ -63,20 +63,19 @@ def test_problem1():
     )
 
     def dirichlet_bc(
-        state_space: dolfinx.fem.FunctionSpace,
+        V: dolfinx.fem.FunctionSpace,
     ) -> list[dolfinx.fem.bcs.DirichletBC]:
-        V, _ = state_space.sub(0).collapse()
         facets = geo.facet_tags.find(left)  # Specify the marker used on the boundary
         mesh.topology.create_connectivity(mesh.topology.dim - 1, mesh.topology.dim)
-        dofs = dolfinx.fem.locate_dofs_topological((state_space.sub(0), V), 2, facets)
+        dofs = dolfinx.fem.locate_dofs_topological(V, 2, facets)
         u_fixed = dolfinx.fem.Function(V)
         u_fixed.x.array[:] = 0.0
-        return [dolfinx.fem.dirichletbc(u_fixed, dofs, state_space.sub(0))]
+        return [dolfinx.fem.dirichletbc(u_fixed, dofs)]
 
     traction = dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(0.0))
     neumann = fenicsx_pulse.NeumannBC(traction=traction, marker=bottom)
     bcs = fenicsx_pulse.BoundaryConditions(dirichlet=(dirichlet_bc,), neumann=(neumann,))
-    problem = fenicsx_pulse.MechanicsProblemMixed(model=model, geometry=geo, bcs=bcs)
+    problem = fenicsx_pulse.StaticProblem(model=model, geometry=geo, bcs=bcs)
 
     log.set_log_level(log.LogLevel.INFO)
 

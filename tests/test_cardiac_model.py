@@ -25,7 +25,6 @@ def test_CardiacModel_HolzapfelOgden(comp_model, isotropy, mesh, u):
         material=material,
         active=active_model,
         compressibility=comp_model,
-        decouple_deviatoric_volumetric=False,
     )
     u.interpolate(lambda x: x / 10.0)
     F = fenicsx_pulse.kinematics.DeformationGradient(u)
@@ -33,9 +32,9 @@ def test_CardiacModel_HolzapfelOgden(comp_model, isotropy, mesh, u):
     value = dolfinx.fem.assemble_scalar(dolfinx.fem.form(psi * ufl.dx))
 
     if isinstance(comp_model, fenicsx_pulse.compressibility.Incompressible):
-        assert math.isclose(value, 53.977812460748154)
+        assert math.isclose(value, 53647.14346074856)
     else:
-        assert math.isclose(value, 49.57354795865461)
+        assert math.isclose(value, 103220.36041941364)
 
 
 @pytest.mark.parametrize("isotropy", (fenicsx_pulse.active_stress.ActiveStressModels.transversely,))
@@ -53,7 +52,6 @@ def test_CardiacModel_NeoHookean(comp_model, isotropy, mesh, u):
         material=material,
         active=active_model,
         compressibility=comp_model,
-        decouple_deviatoric_volumetric=False,
     )
     u.interpolate(lambda x: x / 10.0)
     F = fenicsx_pulse.kinematics.DeformationGradient(u)
@@ -61,9 +59,9 @@ def test_CardiacModel_NeoHookean(comp_model, isotropy, mesh, u):
     value = dolfinx.fem.assemble_scalar(dolfinx.fem.form(psi * ufl.dx))
 
     if isinstance(comp_model, fenicsx_pulse.compressibility.Incompressible):
-        assert math.isclose(value, 5.056)
+        assert math.isclose(value, 4725.331000000082)
     else:
-        assert math.isclose(value, 49.57354795865461)
+        assert math.isclose(value, 54298.54795867078)
 
 
 @pytest.mark.parametrize("isotropy", (fenicsx_pulse.active_stress.ActiveStressModels.transversely,))
@@ -82,7 +80,6 @@ def test_CardiacModel_Guccione(comp_model, isotropy, mesh, u):
         material=material,
         active=active_model,
         compressibility=comp_model,
-        decouple_deviatoric_volumetric=False,
     )
     u.interpolate(lambda x: x / 10.0)
     F = fenicsx_pulse.kinematics.DeformationGradient(u)
@@ -90,6 +87,6 @@ def test_CardiacModel_Guccione(comp_model, isotropy, mesh, u):
     value = dolfinx.fem.assemble_scalar(dolfinx.fem.form(psi * ufl.dx))
 
     if isinstance(comp_model, fenicsx_pulse.compressibility.Incompressible):
-        assert math.isclose(value, 0.47245070311801096)
+        assert math.isclose(value, 141.78170311802802)
     else:
-        assert math.isclose(value, 49.57354795865461)
+        assert math.isclose(value, 49714.998661786354)

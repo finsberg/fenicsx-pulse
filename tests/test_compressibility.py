@@ -34,7 +34,7 @@ def test_Compressible(u) -> None:
     F = fenicsx_pulse.kinematics.DeformationGradient(u)
     J = fenicsx_pulse.kinematics.Jacobian(F)
     kappa = 1234
-    comp = fenicsx_pulse.compressibility.Compressible(kappa=kappa)
+    comp = fenicsx_pulse.compressibility.Compressible(kappa=fenicsx_pulse.Variable(kappa, "Pa"))
     psi = comp.strain_energy(J)
     value = dolfinx.fem.assemble_scalar(dolfinx.fem.form(psi * ufl.dx))
     assert math.isclose(value, kappa * (8 * math.log(8) - 8 + 1))

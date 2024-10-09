@@ -35,7 +35,7 @@ geo = fenicsx_pulse.Geometry(
 # The material model used in this benchmark is the {py:class}`Guccione <fenicsx_pulse.material_models.guccione.Guccione>` model.
 
 material_params = {
-    "C": dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(2.0)),
+    "C": fenicsx_pulse.Variable(dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(2.0)), "kPa"),
     "bf": dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(8.0)),
     "bt": dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(2.0)),
     "bfs": dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(4.0)),
@@ -66,15 +66,14 @@ model = fenicsx_pulse.CardiacModel(
 # Next we define the Dirichlet BC
 
 def dirichlet_bc(
-    state_space: dolfinx.fem.FunctionSpace,
+    V: dolfinx.fem.FunctionSpace,
 ) -> list[dolfinx.fem.bcs.DirichletBC]:
-    V, _ = state_space.sub(0).collapse()
     facets = geo.facet_tags.find(left)  # Specify the marker used on the boundary
     mesh.topology.create_connectivity(mesh.topology.dim - 1, mesh.topology.dim)
-    dofs = dolfinx.fem.locate_dofs_topological((state_space.sub(0), V), 2, facets)
+    dofs = dolfinx.fem.locate_dofs_topological(V, 2, facets)
     u_fixed = dolfinx.fem.Function(V)
     u_fixed.x.array[:] = 0.0
-    return [dolfinx.fem.dirichletbc(u_fixed, dofs, state_space.sub(0))]
+    return [dolfinx.fem.dirichletbc(u_fixed, dofs)]
 
 
 # and the traction force
@@ -88,7 +87,7 @@ bcs = fenicsx_pulse.BoundaryConditions(dirichlet=(dirichlet_bc,), neumann=(neuma
 
 # and create a mechanics problem
 
-problem = fenicsx_pulse.MechanicsProblemMixed(model=model, geometry=geo, bcs=bcs)
+problem = fenicsx_pulse.StaticProblem(model=model, geometry=geo, bcs=bcs)
 
 # Now let us turn on some more logging
 
@@ -105,12 +104,8 @@ for t in [0.0, 0.001, 0.002, 0.003, 0.004]:
 
 log.set_log_level(log.LogLevel.WARNING)
 
-# We get the displacement
-
-u = problem.state.sub(0).collapse()
-
-# save it to a file
-with dolfinx.io.VTXWriter(mesh.comm, "problem1_displacement.bp", [u], engine="BP4") as vtx:
+# Save the displacement to a file
+with dolfinx.io.VTXWriter(mesh.comm, "problem1_displacement.bp", [problem.u], engine="BP4") as vtx:
     vtx.write(0.0)
 
 # and we find the deflection of the given point in the benchmark
@@ -119,7 +114,7 @@ point = np.array([10.0, 0.5, 1.0])
 tree = dolfinx.geometry.bb_tree(mesh, 3)
 cell_candidates = dolfinx.geometry.compute_collisions_points(tree, point)
 cell = dolfinx.geometry.compute_colliding_cells(mesh, cell_candidates, point)
-uz = mesh.comm.allreduce(u.eval(point, cell.array)[2], op=MPI.MAX)
+uz = mesh.comm.allreduce(problem.u.eval(point, cell.array)[2], op=MPI.MAX)
 result = point[2] + uz
 print(f"Get z-position of point {point}: {result:.2f} mm")
 assert np.isclose(result, 4.17, atol=1.0e-2)
@@ -133,7 +128,7 @@ else:
     pyvista.start_xvfb()
     V = dolfinx.fem.functionspace(mesh, ("Lagrange", 1, (mesh.geometry.dim,)))
     uh = dolfinx.fem.Function(V)
-    uh.interpolate(u)
+    uh.interpolate(problem.u)
     # Create plotter and pyvista grid
     p = pyvista.Plotter()
     topology, cell_types, geometry = dolfinx.plot.vtk_mesh(V)

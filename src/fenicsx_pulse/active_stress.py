@@ -4,13 +4,18 @@ the active contraction of the heart. The active stress model
 is used to compute the active stress given the deformation gradient.
 """
 
-from dataclasses import dataclass
+import logging
+from dataclasses import dataclass, field
 from enum import Enum
 
 import dolfinx
+import numpy as np
 import ufl
 
 from .active_model import ActiveModel
+from .units import Variable
+
+logger = logging.getLogger(__name__)
 
 
 class ActiveStressModels(str, Enum):
@@ -47,7 +52,7 @@ class ActiveStress(ActiveModel):
     """
 
     f0: dolfinx.fem.Function | dolfinx.fem.Constant
-    activation: dolfinx.fem.Function | dolfinx.fem.Constant = None
+    activation: Variable = field(default_factory=lambda: Variable(0.0, "kPa"))
     s0: dolfinx.fem.Function | dolfinx.fem.Constant | None = None
     n0: dolfinx.fem.Function | dolfinx.fem.Constant | None = None
     T_ref: dolfinx.fem.Constant = dolfinx.default_scalar_type(1.0)
@@ -55,10 +60,23 @@ class ActiveStress(ActiveModel):
     isotropy: ActiveStressModels = ActiveStressModels.transversely
 
     def __post_init__(self) -> None:
-        if self.activation is None:
-            self.activation = dolfinx.fem.Constant(
-                ufl.domain.extract_unique_domain(self.f0),
-                dolfinx.default_scalar_type(0.0),
+        if not isinstance(self.activation, Variable):
+            unit = "kPa"
+            logger.warning("Activation is not a Variable, defaulting to kPa")
+            self.activation = Variable(self.activation, unit)
+
+        Ta = self.activation.to_base_units()
+
+        if Ta is None:
+            Ta = 0.0
+
+        if isinstance(Ta, (float, int)) or np.isscalar(Ta):
+            self.activation = Variable(
+                dolfinx.fem.Constant(
+                    ufl.domain.extract_unique_domain(self.f0),
+                    dolfinx.default_scalar_type(Ta),
+                ),
+                self.activation.unit,
             )
 
         self.T_ref = dolfinx.fem.Constant(ufl.domain.extract_unique_domain(self.f0), self.T_ref)
@@ -67,7 +85,8 @@ class ActiveStress(ActiveModel):
     @property
     def Ta(self) -> ufl.core.expr.Expr:
         """The active stress"""
-        return self.T_ref * self.activation
+        Ta = self.activation.to_base_units()
+        return self.T_ref * Ta
 
     def Fe(self, F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
         return F
@@ -95,6 +114,9 @@ class ActiveStress(ActiveModel):
             return transversely_active_stress(Ta=self.Ta, C=C, f0=self.f0, eta=self.eta)
         else:
             raise NotImplementedError
+
+    def __str__(self) -> str:
+        return "Ta (I4f - 1 + \u03b7 ((I1 - 3) - (I4f - 1)))"
 
 
 def transversely_active_stress(Ta, C, f0, eta=0.0):

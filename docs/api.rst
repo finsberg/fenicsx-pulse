@@ -38,6 +38,10 @@ material_model
     :members:
     :inherited-members:
 
+.. automodule:: fenicsx_pulse.material_models.saint_venant_kirchhoff
+    :members:
+    :inherited-members:
+
 
 active_model
 ------------
@@ -56,6 +60,13 @@ compressibility
     :members:
     :inherited-members:
 
+viscoelasticity
+---------------
+
+.. automodule:: fenicsx_pulse.viscoelasticity
+    :members:
+    :inherited-members:
+
 cardiac_model
 -------------
 .. automodule:: fenicsx_pulse.cardiac_model
@@ -69,8 +80,30 @@ geometry
     :inherited-members:
 
 
-mechanicsproblem
+problem
 ----------------
-.. automodule:: fenicsx_pulse.mechanicsproblem
+.. automodule:: fenicsx_pulse.problem
+    :members:
+    :inherited-members:
+
+
+boundary conditions
+-------------------
+
+.. automodule:: fenicsx_pulse.boundary_conditions
+    :members:
+    :inherited-members:
+
+units
+-----
+
+.. automodule:: fenicsx_pulse.units
+    :members:
+    :inherited-members:
+
+utils
+-----
+
+.. automodule:: fenicsx_pulse.utils
     :members:
     :inherited-members:

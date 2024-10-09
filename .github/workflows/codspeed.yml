@@ -10,7 +10,7 @@ jobs:
   benchmarks:
     runs-on: ubuntu-22.04
     container:
-      image: ghcr.io/fenics/dolfinx/dolfinx:v0.8.0
+      image: ghcr.io/fenics/dolfinx/dolfinx:v0.9.0
       options: --privileged
     env:
       DEB_PYTHON_INSTALL_LAYOUT: deb_system
