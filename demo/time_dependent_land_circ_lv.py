@@ -104,11 +104,15 @@ alpha_base = fenicsx_pulse.Variable(
 )
 robin_base = fenicsx_pulse.RobinBC(value=alpha_base, marker=geometry.markers["BASE"][0])
 
+# For the pressure we use a Lagrange multiplier method to enforce a given volume. The resulting Lagrange multiplier will be the pressure in the cavity.
+# To do this we create a `Cavity` object with a given volume, and specify which marker to use for the boundary condition.
 
 initial_volume = geometry.volume("ENDO")
 volume = dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(initial_volume))
 cavity = fenicsx_pulse.problem.Cavity(marker="ENDO", volume=volume, pressure_name="p_LV", volume_name="V_LV", scale_volume=1e6, scale_pressure=0.0075)
 parameters = {"base_bc": fenicsx_pulse.problem.BaseBC.free, "mesh_unit": "m"}
+
+# Next we set up the problem. We can choose between a static and a dynamic problem by setting the `static` variable to `True` or `False`. Currently the dynamic problem is not working (when coupled to a circulation model), so we will use the static problem for now.
 
 static = True
 
@@ -137,6 +141,8 @@ outdir.mkdir(exist_ok=True)
 
 log.set_log_level(log.LogLevel.INFO)
 problem.solve()
+
+# Next we will load the 0D cell model and run it to steady state. Here we use `gotranx` to load the ode, remove potential singularities and convert it to Python code. We then run the model for 200 beats and save the state of the model at the end of the simulation. We also plot the results. Note also that we extract the index of the active tension (`Ta`) which will be used to drive the 3D model.
 
 ode = gotranx.load_ode("TorOrdLand.ode")
 ode = ode.remove_singularities()
