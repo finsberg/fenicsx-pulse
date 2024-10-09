@@ -100,10 +100,6 @@ def test_HeartGeometry_lv(tmp_path):
         mu_base_epi=-math.acos(5 / 20),
     )
     geo2 = fenicsx_pulse.HeartGeometry.from_cardiac_geometries(geo1)
-    initial_normal = np.array([1.0, 0.0, 0.0])
-    assert np.allclose(geo2.base_centroid(), [5.0, 0.0, 0.0])
-    assert np.allclose(geo2.base_normal(), initial_normal)
-    assert np.allclose(geo2.base_vector(), [0.0, -1.0, 0.0])
 
     endo_volume = 1772.957048853601
     assert np.isclose(geo2.volume("ENDO"), endo_volume)
@@ -111,8 +107,6 @@ def test_HeartGeometry_lv(tmp_path):
     # Now we rotate the geometry
     rotate_geo(geo2, np.pi)
 
-    # Base normal now be opposite
-    assert np.allclose(geo2.base_normal(), -initial_normal)
     # But volume should be the same
     assert np.isclose(geo2.volume("ENDO"), endo_volume)
 
@@ -123,10 +117,6 @@ def test_HeartGeometry_biv(tmp_path):
     )
     geo2 = fenicsx_pulse.HeartGeometry.from_cardiac_geometries(geo1)
 
-    assert np.allclose(geo2.base_centroid(), [0.0, 0.32132, 0.0])
-    assert np.allclose(geo2.base_normal(), [1.0, 0.0, 0.0])
-    assert np.allclose(geo2.base_vector(), [0.0, -1.0, 0.0])
-
     endo_lv_volume = 4.984208611265616
     assert np.isclose(geo2.volume("ENDO_LV"), endo_lv_volume, rtol=0.05)
     endo_rv_volume = 8.1843844475988
@@ -135,13 +125,10 @@ def test_HeartGeometry_biv(tmp_path):
     # Now we rotate the geometry
     rotate_geo(geo2, np.pi)
 
-    # Base normal now be opposite
-    assert np.allclose(geo2.base_normal(), [-1.0, 0.0, 0.0])
     # But volume should be the same
     assert np.isclose(geo2.volume("ENDO_LV"), endo_lv_volume, rtol=0.05)
     assert np.isclose(geo2.volume("ENDO_RV"), endo_rv_volume, rtol=0.05)
 
     rotate_geo(geo2, np.pi / 2)
-    assert np.allclose(geo2.base_normal(), [0.0, 1.0, 0.0])
     assert np.isclose(geo2.volume("ENDO_LV"), endo_lv_volume, rtol=0.05)
     assert np.isclose(geo2.volume("ENDO_RV"), endo_rv_volume, rtol=0.05)

@@ -28,6 +28,7 @@ demo = [
     "fenicsx-ldrb",
     "circulation",
     "gotranx",
+    "adios4dolfinx",
 ]
 docs = [
    "jupyter-book",

@@ -269,6 +269,15 @@ class StaticProblem:
         forms[0] += form
         return forms
 
+    def _body_force_form(self, u: dolfinx.fem.Function) -> list[dolfinx.fem.Form]:
+        form = ufl.as_ufl(0.0)
+        for body_force in self.bcs.body_force:
+            form += -ufl.derivative(ufl.inner(body_force, u) * self.geometry.dx, u, self.u_test)
+
+        forms = self._empty_form()
+        forms[0] += form
+        return forms
+
     def _cavity_pressure_form(
         self,
         u: dolfinx.fem.Function,
@@ -332,6 +341,7 @@ class StaticProblem:
         R_robin = self._robin_form(self.u)
         R_neumann = self._neumann_form(self.u)
         R_rigid = self._rigid_body_form(self.u)
+        R_body_force = self._body_force_form(self.u)
 
         for i in range(self.num_states):
             R[i] += R_material[i]
@@ -339,6 +349,7 @@ class StaticProblem:
             R[i] += R_robin[i]
             R[i] += R_neumann[i]
             R[i] += R_rigid[i]
+            R[i] += R_body_force[i]
 
         return R
 

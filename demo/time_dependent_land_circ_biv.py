@@ -8,9 +8,10 @@ from pathlib import Path
 from mpi4py import MPI
 import dolfinx
 import logging
-import circulation
-
+import os
 from functools import lru_cache
+
+import circulation
 from dolfinx import log
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
@@ -18,9 +19,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import gotranx
 import adios4dolfinx
-import fenicsx_pulse
 import cardiac_geometries
 import cardiac_geometries.geometry
+import fenicsx_pulse
 
 circulation.log.setup_logging(logging.INFO)
 logger = logging.getLogger("pulse")
@@ -279,12 +280,6 @@ def callback(model, t: float, save=True):
         fig.savefig(outdir / "pv_loop_incremental.png")
         plt.close(fig)
 
-surface_area_lv = geometry.surface_area("ENDO_LV")
-lvv_init = geo.mesh.comm.allreduce(geometry.volume("ENDO_LV", u=problem.u), op=MPI.SUM) * 1e6 * 1.0  # Increase the volume by 5%
-surface_area_rv = geometry.surface_area("ENDO_RV")
-rvv_init = geo.mesh.comm.allreduce(geometry.volume("ENDO_RV", u=problem.u), op=MPI.SUM) * 1e6 * 1.0  # Increase the volume by 5%
-logger.info(f"Initial volume (LV): {lvv_init} mL and (RV): {rvv_init} mL")
-
 
 def p_BiV_func(V_LV, V_RV, t):
     print("Calculating pressure at time", t)
@@ -304,6 +299,11 @@ def p_BiV_func(V_LV, V_RV, t):
 
 mL = circulation.units.ureg("mL")
 add_units = False
+surface_area_lv = geometry.surface_area("ENDO_LV")
+lvv_init = geo.mesh.comm.allreduce(geometry.volume("ENDO_LV", u=problem.u), op=MPI.SUM) * 1e6 * 1.0  # Increase the volume by 5%
+surface_area_rv = geometry.surface_area("ENDO_RV")
+rvv_init = geo.mesh.comm.allreduce(geometry.volume("ENDO_RV", u=problem.u), op=MPI.SUM) * 1e6 * 1.0  # Increase the volume by 5%
+logger.info(f"Initial volume (LV): {lvv_init} mL and (RV): {rvv_init} mL")
 init_state = {"V_LV": lvv_initial * 1e6 * mL, "V_RV": rvv_initial * 1e6 * mL}
 
 
@@ -316,7 +316,9 @@ circulation_model_3D = circulation.regazzoni2020.Regazzoni2020(
     outdir=outdir,
     initial_state=init_state,
 )
-circulation_model_3D.solve(num_cycles=5, initial_state=init_state, dt=dt)
+# Set end time for early stopping if running in CI
+end_time = 2 * dt if os.getenv("CI") else None
+circulation_model_3D.solve(num_cycles=5, initial_state=init_state, dt=dt, T=end_time)
 circulation_model_3D.print_info()
 
 
