@@ -426,7 +426,7 @@ class StaticProblem:
 
     def solve(self) -> bool:
         """Solve the system"""
-        ret = self._solver.solve()
+        ret = self._solver.solve(rtol=1e-6, atol=1e-6)
         self.update_base()
         self.update_fields()
 
