@@ -85,7 +85,6 @@ class StaticProblem:
         """Initialize function spaces"""
         self._init_u_space()
         self._init_p_space()
-        self._init_base()
 
         self._init_cavity_pressure_spaces()
         self._init_rigid_body()
@@ -123,32 +122,6 @@ class StaticProblem:
         self.u_test = ufl.TestFunction(self.u_space)
         self.du = ufl.TrialFunction(self.u_space)
 
-    def _init_base(self):
-        if isinstance(self.geometry, HeartGeometry):
-            self._base_center_form = self.geometry.base_center_form(
-                base=self.parameters["base_marker"],
-                u=self.u,
-            )
-            self._base_area = self.geometry.surface_area(self.parameters["base_marker"])
-            base_center = np.array(
-                [dolfinx.fem.assemble_scalar(b) / self._base_area for b in self._base_center_form],
-            )
-            self.base_center = dolfinx.fem.Constant(
-                self.geometry.mesh,
-                base_center,
-            )
-        else:
-            self.base_center = dolfinx.fem.Constant(
-                self.geometry.mesh,
-                np.zeros(self.geometry.mesh.geometry.dim),
-            )
-
-    def update_base(self):
-        if isinstance(self.geometry, HeartGeometry):
-            self.base_center.value[:] = np.array(
-                [dolfinx.fem.assemble_scalar(b) / self._base_area for b in self._base_center_form],
-            )
-
     @property
     def is_incompressible(self):
         return not self.model.compressibility.is_compressible()
@@ -168,10 +141,6 @@ class StaticProblem:
                 "pc_factor_mat_solver_type": "mumps",
             },
         }
-
-    @property
-    def top(self):
-        return self.geometry.markers[self.parameters["base_marker"]][0]
 
     @property
     def num_cavity_pressure_states(self):
@@ -289,7 +258,7 @@ class StaticProblem:
         if not isinstance(self.geometry, HeartGeometry):
             raise RuntimeError("Cavity pressures are only supported for HeartGeometry")
 
-        V_u = self.geometry.volume_form(u, b=self.base_center)
+        V_u = self.geometry.volume_form(u)
         form = ufl.as_ufl(0.0)
 
         assert cavity_pressures is not None
@@ -308,7 +277,8 @@ class StaticProblem:
 
         # First add boundary conditions for the base
         if self.parameters["base_bc"] == BaseBC.fixed:
-            base_facets = self.geometry.facet_tags.find(self.top)
+            marker = self.geometry.markers[self.parameters["base_marker"]][0]
+            base_facets = self.geometry.facet_tags.find(marker)
             dofs_base = dolfinx.fem.locate_dofs_topological(self.u_space, 2, base_facets)
             u_bc_base = dolfinx.fem.Function(self.u_space)
             u_bc_base.x.array[:] = 0
@@ -426,8 +396,7 @@ class StaticProblem:
 
     def solve(self) -> bool:
         """Solve the system"""
-        ret = self._solver.solve(rtol=1e-6, atol=1e-6)
-        self.update_base()
+        ret = self._solver.solve(rtol=1e-10, atol=1e-6)
         self.update_fields()
 
         return ret
