@@ -454,7 +454,7 @@ regazzoni_bleed.print_info()
 # Pressures
 # ```
 #
-# ```{figure} ../_static/bleeding_biv_flows.png
+# ```{figure} ../_static/bleeding_biv_flow.png
 # ---
 # name: bleeding_biv_flows
 # ---
