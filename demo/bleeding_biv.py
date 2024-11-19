@@ -1,7 +1,6 @@
-# # Bleeding BiV to a 0D circulatory model and a 0D cell model
+# # Bleeding BiV
 
-# This example is similar to the [BiV example](time_dependent_land_circ_biv.py). However, in this example we also simulate a bleeding of the BiV by draining the
-
+# In this example we will take the [BiV example](time_dependent_land_circ_biv.py) from the other tutorial and drain the veins with 2 liter of blood. To model the the effect of bleeding we will use the Zenker model `` to find the new heart rate and the Regazzoni model to simulate the bleeding. We will also use the OpenCOR model of the ORdLand model to compute the activation of the heart.
 
 from pathlib import Path
 
