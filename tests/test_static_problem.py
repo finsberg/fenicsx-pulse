@@ -152,6 +152,7 @@ def handle_control_lv(
             dvlp = (target_lvp - initial_lvp) / 3.0
 
             for lvp in np.arange(0.0, target_lvp + 1e-9, dvlp):
+                print(f"Solve Pressure: {lvp}")
                 traction.assign(lvp)
                 problem.solve()
                 lvv = comm.allreduce(geometry.volume("ENDO", u=problem.u), op=MPI.SUM)
@@ -164,9 +165,10 @@ def handle_control_lv(
         bcs = fenicsx_pulse.BoundaryConditions(robin=robin)
 
         def gen(problem):
-            dlv = (target_lvv - initial_volume) / 3.0
+            dlv = (target_lvv - initial_volume) / 4.0
 
             for lvv in np.arange(initial_volume, target_lvv + 1e-9, dlv):
+                print("Solve Volume: ", lvv)
                 volume.value = lvv
                 problem.solve()
                 new_lvv = comm.allreduce(geometry.volume("ENDO", u=problem.u), op=MPI.SUM)

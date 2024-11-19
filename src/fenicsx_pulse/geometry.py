@@ -249,7 +249,6 @@ class HeartGeometry(Geometry):
     def volume_form(
         self,
         u: dolfinx.fem.Function | None = None,
-        b: ufl.Coefficient = ufl.as_vector([0.0, 0.0, 0.0]),
     ) -> dolfinx.fem.forms.Form:
         """Return the form for the volume of the cavity
         for a given marker
@@ -258,8 +257,6 @@ class HeartGeometry(Geometry):
         ----------
         u : dolfinx.fem.Function | None, optional
             Optional displacement field, by default None
-        base : str, optional
-            Marker for the base, by default "BASE"
 
         Returns
         -------
@@ -274,17 +271,16 @@ class HeartGeometry(Geometry):
         X = self.X
 
         if u is None:
-            return (-1 / 3) * ufl.dot(X - b, self.facet_normal)
+            return (-1 / 3) * ufl.dot(X, self.facet_normal)
         else:
             F = ufl.Identity(3) + ufl.grad(u)
             J = ufl.det(F)
-            return (-1 / 3) * J * ufl.dot(X + u - b, ufl.inv(F).T * self.facet_normal)
+            return (-1 / 3) * J * ufl.dot(X + u, ufl.inv(F).T * self.facet_normal)
 
     def volume(
         self,
         marker: str,
         u: dolfinx.fem.Function | None = None,
-        base: str = "BASE",
     ) -> float:
         """Return the volume of the cavity for a given marker
 
@@ -294,8 +290,6 @@ class HeartGeometry(Geometry):
             Marker for the surface of the cavity
         u : dolfinx.fem.Function | None, optional
             Optional displacement field, by default None
-        base : str, optional
-            Marker for the base, by default "BASE"
 
         Returns
         -------
@@ -314,7 +308,6 @@ class HeartGeometry(Geometry):
         if marker not in self.markers:
             raise exceptions.MarkerNotFoundError(marker)
         marker_id = self.markers[marker][0]
-        b = ufl.as_vector(self.base_center(base=base, u=u))
 
-        form = self.volume_form(u=u, b=b)
+        form = self.volume_form(u=u)
         return dolfinx.fem.assemble_scalar(dolfinx.fem.form(form * self.ds(marker_id)))
