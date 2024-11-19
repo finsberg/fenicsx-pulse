@@ -11,6 +11,7 @@ def check_value_greater_than(
     f: float | dolfinx.fem.Function | dolfinx.fem.Constant | np.ndarray,
     bound: float,
     inclusive: bool = False,
+    disable_check: bool = False,
 ) -> bool:
     """Check that the value of f is greater than the given bound
 
@@ -40,6 +41,9 @@ def check_value_greater_than(
             bound,
         )
 
+    if disable_check:
+        return True
+
     raise PulseException(  # pragma: no cover
         f"Invalid type for f: {type(f)}. Expected 'float', "
         "'dolfinx.fem.Constant', 'numpy array' or 'dolfinx.fem.Function'",
@@ -50,6 +54,7 @@ def check_value_lower_than(
     f: float | dolfinx.fem.Function | dolfinx.fem.Constant,
     bound: float,
     inclusive: bool = False,
+    disable_check: bool = False,
 ) -> bool:
     """Check that the value of f is lower than the given bound
 
@@ -79,6 +84,9 @@ def check_value_lower_than(
             bound,
         )
 
+    if disable_check:
+        return True
+
     raise PulseException(  # pragma: no cover
         f"Invalid type for f: {type(f)}. Expected 'float', "
         "'dolfinx.fem.Constant', 'numpy array' or 'dolfinx.fem.Function'",
@@ -90,6 +98,7 @@ def check_value_between(
     lower_bound: float,
     upper_bound: float,
     inclusive: bool = False,
+    disable_check: bool = False,
 ) -> bool:
     """Check if value of `f` is between lower and upper bound
 
@@ -114,7 +123,13 @@ def check_value_between(
         f,
         lower_bound,
         inclusive=inclusive,
-    ) and check_value_lower_than(f, upper_bound, inclusive=inclusive)
+        disable_check=disable_check,
+    ) and check_value_lower_than(
+        f,
+        upper_bound,
+        inclusive=inclusive,
+        disable_check=disable_check,
+    )
 
 
 class PulseException(Exception):
