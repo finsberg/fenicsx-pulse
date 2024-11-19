@@ -42,7 +42,7 @@ class RobinBC:
 
     def __post_init__(self):
         if not isinstance(self.value, Variable):
-            unit = "Pa / m" if self.damping else "Pa s / m"
+            unit = "Pa s / m" if self.damping else "Pa / m"
             logger.warning(f"Value is not a Variable, defaulting to {unit}")
             self.value = Variable(self.value, unit)
 
