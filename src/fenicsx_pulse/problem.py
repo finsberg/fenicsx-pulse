@@ -140,6 +140,13 @@ class StaticProblem:
                 "pc_type": "lu",
                 "pc_factor_mat_solver_type": "mumps",
             },
+            "solver_options": {
+                "convergence_criterion": "incremental",
+                "max_it": 25,
+                "atol": 1e-6,
+                "rtol": 1e-9,
+                "relaxation_parameter": 1.0,
+            },
         }
 
     @property
@@ -382,21 +389,26 @@ class StaticProblem:
 
         bcs = self.base_dirichlet
 
-        self._solver = scifem.NewtonSolver(
-            R,
-            K,
-            u,
+        self._solver = scifem.BlockedNewtonSolver(
+            F=R,
+            J=K,
+            u=u,
             bcs=bcs,
-            max_iterations=25,
             petsc_options=self.parameters["petsc_options"],
         )
+        opts = self.parameters["solver_options"]
+        self._solver.convergence_criterion = opts["convergence_criterion"]
+        self._solver.max_it = opts["max_it"]
+        self._solver.atol = opts["atol"]
+        self._solver.rtol = opts["rtol"]
+        self._solver.relaxation_parameter = opts["relaxation_parameter"]
 
     def update_fields(self):
         pass
 
     def solve(self) -> bool:
         """Solve the system"""
-        ret = self._solver.solve(rtol=1e-10, atol=1e-6)
+        ret = self._solver.solve()
         self.update_fields()
 
         return ret
