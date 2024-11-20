@@ -54,9 +54,66 @@ class Geometry(typing.Protocol):
     def surface_area(self, marker: str) -> float: ...
 
 
-class Cavity(typing.NamedTuple):
+@dataclass
+class Cavity:
     marker: str
     volume: dolfinx.fem.Constant
+    alpha: float = 1.0
+    pressure_name: str | None = None
+    volume_name: str | None = None
+    scale_volume: float = 1.0  # Potential scaling of volume e.g from mm^3 to mL
+    scale_pressure: float = 1.0  # Potential scaling of pressure e.g from Pa to mmHg
+    _volume_index: int = field(default=-1, repr=False)
+    _pressure_index: int = field(default=-1, repr=False)
+
+    def __post_init__(self):
+        self._old_volume = dolfinx.fem.Constant(self.volume.ufl_domain(), self.volume.value.copy())
+
+    @property
+    def scaled_volume(self):
+        return self.volume.value
+
+    @property
+    def volume_index(self):
+        if self._volume_index == -1:
+            raise ValueError("volume_Index not set")
+
+        return self._volume_index
+
+    @volume_index.setter
+    def volume_index(self, value):
+        self._volume_index = value
+
+    def register_volume(self, states: list[str]):
+        for index, state_name in enumerate(states):
+            if self.volume_name == state_name:
+                self.volume_index = index
+                break
+        else:
+            raise ValueError(f"Could not find state {self.volume_name} in model")
+
+    @property
+    def pressure_index(self):
+        if self._pressure_index == -1:
+            raise ValueError("pressure_index not set")
+
+        return self._pressure_index
+
+    @pressure_index.setter
+    def pressure_index(self, value):
+        self._pressure_index = value
+
+    def register_pressure(self, states: list[str]):
+        for index, state_name in enumerate(states):
+            if self.pressure_name == state_name:
+                self.pressure_index = index
+                break
+        else:
+            raise ValueError(f"Could not find state {self.pressure_name} in model")
+
+    @property
+    def current_volume(self):
+        return self.volume * self.scale_volume
 
 
 class BaseBC(str, Enum):
@@ -78,6 +135,12 @@ class StaticProblem:
         parameters = type(self).default_parameters()
         parameters.update(self.parameters)
         self.parameters = parameters
+        self.t = dolfinx.fem.Constant(self.geometry.mesh, 0.0)
+        # Just make sure we have units on dt
+        for key, default_unit in [("dt", "s")]:
+            if not isinstance(self.parameters[key], Variable):
+                self.parameters[key] = Variable(self.parameters[key], default_unit)
+
         self._init_spaces()
         self._init_forms()
 
@@ -129,6 +192,7 @@ class StaticProblem:
     @staticmethod
     def default_parameters():
         return {
+            "dt": Variable(1e-3, "s"),
             "u_space": "P_2",
             "p_space": "P_1",
             "base_bc": BaseBC.free,
@@ -263,13 +327,142 @@ class StaticProblem:
 
         assert cavity_pressures is not None
         assert len(self.cavities) == self.num_cavity_pressure_states
-        for i, (marker, cavity_volume) in enumerate(self.cavities):
-            area = self.geometry.surface_area(marker)
+        for i, cavity in enumerate(self.cavities):
+            area = self.geometry.surface_area(cavity.marker)
             pendo = cavity_pressures[i]
-            marker_id = self.geometry.markers[marker][0]
-            form += pendo * (cavity_volume / area - V_u) * self.geometry.ds(marker_id)
+            marker_id = self.geometry.markers[cavity.marker][0]
+            form += pendo * (cavity.current_volume / area - V_u) * self.geometry.ds(marker_id)
 
         return self._create_residual_form(form)
+
+    def update_var(self):
+        if not hasattr(self, "circulation_model"):
+            return
+
+        # self.circulation_model.print_info()
+
+        V_LA = self.circulation_y[0]
+        # V_LV = self.circulation_y[1]
+        V_RA = self.circulation_y[2]
+        V_RV = self.circulation_y[3]
+        p_AR_SYS = self.circulation_y[4]
+        # p_VEN_SYS = self.circulation_y[5]
+        p_AR_PUL = self.circulation_y[6]
+        # p_VEN_PUL = self.circulation_y[7]
+        # Q_AR_SYS = self.circulation_y[8]
+        # Q_VEN_SYS = self.circulation_y[9]
+        # Q_AR_PUL = self.circulation_y[10]
+        # Q_VEN_PUL = self.circulation_y[11]
+
+        self.var[0] = self.circulation_model.p_LA(V_LA, self.t.value)
+        self.var[1] = (
+            self.cavity_pressures[0] * self.cavities[0].scale_pressure
+        )  # self.circulation_model.p_LV(V_LV, self.t.value)
+        self.var[2] = self.circulation_model.p_RA(V_RA, self.t.value)
+        self.var[3] = self.circulation_model.p_RV(V_RV, self.t.value)
+        self.var[4] = self.circulation_model.flux_through_valve(
+            self.var[0],
+            self.var[1],
+            self.circulation_model.R_MV,
+        )
+        self.var[5] = self.circulation_model.flux_through_valve(
+            self.var[1],
+            p_AR_SYS,
+            self.circulation_model.R_AV,
+        )
+        self.var[6] = self.circulation_model.flux_through_valve(
+            self.var[2],
+            self.var[3],
+            self.circulation_model.R_TV,
+        )
+        self.var[7] = self.circulation_model.flux_through_valve(
+            self.var[3],
+            p_AR_PUL,
+            self.circulation_model.R_PV,
+        )
+        self.var[8] = 0.0  # base.external_blood(**self.parameters["circulation"]["external"], t=t)
+
+        self.pressures.append(self.cavity_pressures[0].x.array[0])
+        self.volumes.append(self.circulation_y.x.array[1])
+        import matplotlib.pyplot as plt
+
+        fig, ax = plt.subplots()
+        ax.plot(self.volumes, self.pressures)
+        fig.savefig("pv_loop.png")
+
+    def register_circulation_model(self, Model, **kwargs):
+        initial_state = Model.default_initial_conditions()
+        var_names = Model.var_names()
+
+        self.pressures = []
+        self.volumes = []
+
+        for cavity in self.cavities:
+            cavity.register_volume(initial_state.keys())
+            cavity.register_pressure(var_names)
+            try:
+                unit = initial_state[cavity.volume_name].units
+            except AttributeError:
+                unit = 1.0
+            initial_state[cavity.volume_name] = cavity.scaled_volume * unit
+
+        # class CirculationModel(Model):
+        #     def update_static_variables_external(self_, t: float, y: np.ndarray):
+        #         print("update_static_variables_external")
+        #         for i, cavity in enumerate(self.cavities):
+        #             self_.var[cavity.pressure_index] = (
+        #                 self.cavity_pressures[i] * cavity.scale_pressure
+        #             )
+        # breakpoint()
+
+        self.circulation_model = Model(
+            initial_state=initial_state,
+            add_units=False,
+            comm=self.geometry.mesh.comm,
+            **kwargs,
+        )
+
+        self.circulation_model.dy = list(self.circulation_model.dy)
+
+        self.circulation_space = scifem.create_real_functionspace(
+            self.geometry.mesh,
+            value_shape=(len(initial_state),),
+        )
+        self.circulation_dy = dolfinx.fem.Function(self.circulation_space)
+        self.circulation_y = dolfinx.fem.Function(self.circulation_space)
+        self.circulation_y_old = dolfinx.fem.Function(self.circulation_space)
+        self.circulation_test = ufl.TestFunction(self.circulation_space)
+        self.circulation_trial = ufl.TrialFunction(self.circulation_space)
+
+        # Now load the values from the model
+        self.circulation_y.x.array[:] = self.circulation_model.state[:]
+        self.circulation_y_old.x.array[:] = self.circulation_model.state[:]
+        # and set the state as the array of the function
+        self.circulation_model.state = self.circulation_y
+
+        for cavity in self.cavities:
+            cavity.volume = self.circulation_model.state[cavity.volume_index]
+
+        self.var = list(self.circulation_model.var)
+        self.update_var()
+        self.circulation_model.var = self.var
+
+        self._init_forms()
+
+        # breakpoint()
+
+    def _circulation_form(self):
+        if not hasattr(self, "circulation_model"):
+            return self._empty_form()
+
+        dt = self.parameters["dt"].to_base_units()
+        dy_dt = self.circulation_y - self.circulation_y_old
+        f = ufl.as_vector(self.circulation_model.rhs(self.t.value, self.circulation_y, self.var))
+
+        forms = self._empty_form()
+        # Circulation model is always the last state
+        forms[-1] = ufl.inner(dy_dt - dt * f, self.circulation_test) * ufl.dx
+        return forms
 
     @property
     def base_dirichlet(self):
@@ -299,6 +492,7 @@ class StaticProblem:
             + self.num_cavity_pressure_states
             + int(self.parameters["rigid_body_constraint"])
             + int(self.is_incompressible)
+            + int(hasattr(self, "circulation_model"))
         )
 
     @property
@@ -312,6 +506,7 @@ class StaticProblem:
         R_neumann = self._neumann_form(self.u)
         R_rigid = self._rigid_body_form(self.u)
         R_body_force = self._body_force_form(self.u)
+        R_circulation = self._circulation_form()
 
         for i in range(self.num_states):
             R[i] += R_material[i]
@@ -320,6 +515,7 @@ class StaticProblem:
             R[i] += R_neumann[i]
             R[i] += R_rigid[i]
             R[i] += R_body_force[i]
+            R[i] += R_circulation[i]
 
         return R
 
@@ -332,6 +528,8 @@ class StaticProblem:
             u.append(self.r)
         if self.is_incompressible:
             u.append(self.p)
+        if hasattr(self, "circulation_model"):
+            u.append(self.circulation_y)
         return u
 
     @property
@@ -343,6 +541,8 @@ class StaticProblem:
             u.append(self.q)
         if self.is_incompressible:
             u.append(self.p_test)
+        if hasattr(self, "circulation_model"):
+            u.append(self.circulation_test)
         return u
 
     @property
@@ -354,6 +554,8 @@ class StaticProblem:
             u.append(self.dr)
         if self.is_incompressible:
             u.append(self.dp)
+        if hasattr(self, "circulation_model"):
+            u.append(self.circulation_trial)
         return u
 
     def K(self, R):
@@ -392,11 +594,14 @@ class StaticProblem:
         )
 
     def update_fields(self):
-        pass
+        if hasattr(self, "circulation_model"):
+            self.circulation_y_old.x.array[:] = self.circulation_y.x.array[:]
 
     def solve(self) -> bool:
         """Solve the system"""
         ret = self._solver.solve(rtol=1e-10, atol=1e-6)
+        self.t.value += self.parameters["dt"].to_base_units()
+        self.update_var()
         self.update_fields()
 
         return ret
@@ -406,7 +611,7 @@ class DynamicProblem(StaticProblem):
     def __post_init__(self):
         super().__post_init__()
         # Just make sure we have units on rho and dt
-        for key, default_unit in [("rho", "kg/m^3"), ("dt", "s")]:
+        for key, default_unit in [("rho", "kg/m^3")]:
             if not isinstance(self.parameters[key], Variable):
                 self.parameters[key] = Variable(self.parameters[key], default_unit)
 
@@ -426,9 +631,10 @@ class DynamicProblem(StaticProblem):
     def _init_cavity_pressure_spaces(self):
         super()._init_cavity_pressure_spaces()
         self.cavity_pressures_old = []
-        for _ in range(self.num_cavity_pressure_states):
+        for i in range(self.num_cavity_pressure_states):
             cavity_pressure_old = dolfinx.fem.Function(self.real_space)
             self.cavity_pressures_old.append(cavity_pressure_old)
+            self.cavities[i].alpha = self.parameters["alpha_f"]
 
     def _material_form(self, u, v, p):
         F = ufl.grad(u) + ufl.Identity(3)
@@ -478,9 +684,19 @@ class DynamicProblem(StaticProblem):
         v = interpolate(self.v_old, v_new, alpha_f)
         a = interpolate(self.a_old, a_new, alpha_m)
 
+        if self.is_incompressible:
+            p = interpolate(self.p_old, self.p, alpha_f)
+        else:
+            p = None
+
+        cavity_pressures = [
+            interpolate(pendo_old, pendo, alpha_f)
+            for pendo_old, pendo in zip(self.cavity_pressures_old, self.cavity_pressures)
+        ]
+
         R = self._empty_form()
-        R_material = self._material_form(u=u, v=v, p=self.p)
-        R_cavity = self._cavity_pressure_form(u, self.cavity_pressures)
+        R_material = self._material_form(u=u, v=v, p=p)
+        R_cavity = self._cavity_pressure_form(u, cavity_pressures)
         R_robin = self._robin_form(u=u, v=v)
         R_neumann = self._neumann_form(u)
         R_rigid = self._rigid_body_form(u)
@@ -496,12 +712,15 @@ class DynamicProblem(StaticProblem):
 
         return R
 
+    @property
+    def dt(self):
+        return self.parameters["dt"].to_base_units()
+
     @staticmethod
     def default_parameters():
         parameters = StaticProblem.default_parameters()
         parameters.update(
             {
-                "dt": Variable(1e-3, "s"),
                 "rho": Variable(1e3, "kg/m^3"),
                 "alpha_m": 0.2,
                 "alpha_f": 0.4,
@@ -577,6 +796,7 @@ class DynamicProblem(StaticProblem):
         """Update old values of displacement, velocity
         and acceleration
         """
+        super().update_fields()
 
         u = self.u.x.array.copy()
         u_old = self.u_old.x.array.copy()
