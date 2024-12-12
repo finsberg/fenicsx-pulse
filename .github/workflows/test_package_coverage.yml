@@ -24,10 +24,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install developement version of adios4dolfinx
+        if: ${{ matrix.container == 'ghcr.io/fenics/dolfinx/dolfinx:nightly' }}
+        run: python3 -m pip install git+https://github.com/jorgensd/adios4dolfinx.git
+
       - name: Install package
-        run: |
-          python3 -m pip install scifem --no-build-isolation
-          python3 -m pip install .[test]
+        run: python3 -m pip install .[test]
+
 
       - name: Run tests
         run: python3 -m pytest -m "not benchmark"
