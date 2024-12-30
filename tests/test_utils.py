@@ -4,8 +4,11 @@ import dolfinx
 import numpy as np
 import pytest
 import ufl
+from packaging.version import Version
 
 import fenicsx_pulse
+
+_dolfinx_version = Version(dolfinx.__version__)
 
 
 @pytest.mark.parametrize("element", [("P", 1), ("P", 2)])
@@ -22,7 +25,12 @@ def test_vertex_to_dofmap(element, celltype):
     X = ufl.SpatialCoordinate(mesh)
 
     s = dolfinx.fem.Function(V)
-    s.interpolate(dolfinx.fem.Expression(X[0] + X[1], V.element.interpolation_points()))
+    if _dolfinx_version >= Version("0.10"):
+        points = V.element.interpolation_points
+    else:
+        points = V.element.interpolation_points()
+
+    s.interpolate(dolfinx.fem.Expression(X[0] + X[1], points))
 
     vert_values = mesh.geometry.x.sum(1)
     assert np.allclose(vert_values, s.x.array[v2d])
