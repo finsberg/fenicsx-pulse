@@ -28,9 +28,9 @@ def vertex_to_dofmap(V: dolfinx.fem.FunctionSpace) -> npt.NDArray[np.int32]:
     num_vertices = mesh.topology.index_map(0).size_local + mesh.topology.index_map(0).num_ghosts
 
     c_to_v = mesh.topology.connectivity(mesh.topology.dim, 0)
-    assert (
-        c_to_v.offsets[1:] - c_to_v.offsets[:-1] == c_to_v.offsets[1]
-    ).all(), "Single cell type supported"
+    assert (c_to_v.offsets[1:] - c_to_v.offsets[:-1] == c_to_v.offsets[1]).all(), (
+        "Single cell type supported"
+    )
 
     vertex_to_dof_map = np.empty(num_vertices, dtype=np.int32)
     vertex_to_dof_map[c_to_v.array] = V.dofmap.list[:, dof_layout].reshape(-1)
