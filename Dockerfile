@@ -4,7 +4,7 @@ FROM ghcr.io/fenics/dolfinx/dolfinx:stable
 ENV PYVISTA_JUPYTER_BACKEND="html"
 
 # Requirements for pyvista
-RUN apt-get update && apt-get install -y libgl1-mesa-glx libxrender1 xvfb nodejs
+RUN apt-get update && apt-get install -y libgl1-mesa-dev xvfb
 
 COPY . /repo
 WORKDIR /repo
