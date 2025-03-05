@@ -108,17 +108,13 @@ robin_base = fenicsx_pulse.RobinBC(value=alpha_base, marker=geometry.markers["BA
 # To do this we create a `Cavity` object with a given volume, and specify which marker to use for the boundary condition.
 
 initial_volume = geometry.volume("ENDO")
-Volume = dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(initial_volume))
-cavity = fenicsx_pulse.problem.Cavity(marker="ENDO", volume=Volume)
-
-# We also specify the parameters for the problem and say that we want the base to move freely and that the units of the mesh is meters
-
+volume = dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(initial_volume))
+cavity = fenicsx_pulse.problem.Cavity(marker="ENDO", volume=volume, pressure_name="p_LV", volume_name="V_LV", scale_volume=1e6, scale_pressure=0.0075)
 parameters = {"base_bc": fenicsx_pulse.problem.BaseBC.free, "mesh_unit": "m"}
 
 # Next we set up the problem. We can choose between a static and a dynamic problem by setting the `static` variable to `True` or `False`. Currently the dynamic problem is not working (when coupled to a circulation model), so we will use the static problem for now.
 
 static = True
-
 
 if static:
     outdir = Path("lv_ellipsoid_time_dependent_circulation_static")
@@ -145,14 +141,6 @@ outdir.mkdir(exist_ok=True)
 
 log.set_log_level(log.LogLevel.INFO)
 problem.solve()
-
-# We also use the time step from the problem to set the time step for the 0D cell model
-
-if static:
-    dt = 0.001
-else:
-    dt = problem.parameters["dt"].to_base_units()
-times = np.arange(0.0, 1.0, dt)
 
 # Next we will load the 0D cell model and run it to steady state. Here we use `gotranx` to load the ode, remove potential singularities and convert it to Python code. We then run the model for 200 beats and save the state of the model at the end of the simulation. We also plot the results. Note also that we extract the index of the active tension (`Ta`) which will be used to drive the 3D model.
 
@@ -330,52 +318,45 @@ def p_LV_func(V_LV, t):
     Ta.assign(value)
     Volume.value = V_LV * 1e-6
     problem.solve()
-    pendo = problem.cavity_pressures[0]
 
-    pendo_kPa = pendo.x.array[0] * 1e-3
+    pendo_kPa = problem.cavity_pressures[0].x.array[0] * 1e-3
 
     return circulation.units.kPa_to_mmHg(pendo_kPa)
 
+# mL = circulation.units.ureg("mL")
+# add_units = False
+# init_state = {"V_LV": initial_volume * mL}
 
-# Finally we create the circulation model and and pass in al the arguements. We also set the initial volume of the LV to be the same as the one computed from the 3D model.
-#
+HR = 1 * circulation.units.ureg("Hz")
+num_beats = 4
 
-mL = circulation.units.ureg("mL")
-add_units = False
-surface_area = geometry.surface_area("ENDO")
-initial_volume = geo.mesh.comm.allreduce(geometry.volume("ENDO", u=problem.u), op=MPI.SUM) * 1e6
-print(f"Initial volume: {initial_volume}")
-init_state = {"V_LV": initial_volume * mL}
+if static:
+    dt = 0.001
+else:
+    dt = problem.parameters["dt"].to_base_units()
+
+# circulation_model = circulation.regazzoni2020.Regazzoni2020(
+#     add_units=add_units,
+#     # callback=callback,
+#     # p_LV_func=p_LV_func,
+#     verbose=True,
+#     comm=comm,
+#     outdir=outdir,
+#     # initial_state=init_state,
+# )
+
+problem.register_circulation_model(circulation.regazzoni2020.Regazzoni2020, verbose=True, outdir=outdir)
+# breakpoint()
+
+for beat in range(num_beats):
+    for t in problem.circulation_model.times_one_beat(problem.parameters["dt"].to_base_units()):
+        print(f"Solving for time {t}")
+        problem.solve()
+        print(problem.cavity_pressures[0].x.array[0])#, problem.cavities[0].volume.value)
+        print(problem.circulation_y.x.array)
+        # vtx.write(t)
 
 
-circulation_model_3D = circulation.regazzoni2020.Regazzoni2020(
-    add_units=add_units,
-    callback=callback,
-    p_LV_func=p_LV_func,
-    verbose=True,
-    comm=comm,
-    outdir=outdir,
-    initial_state=init_state,
-)
-# Set end time for early stopping if running in CI
-end_time = 2 * dt if os.getenv("CI") else None
-circulation_model_3D.solve(num_cycles=5, initial_state=init_state, dt=dt, T=end_time)
-circulation_model_3D.print_info()
 
-
-# ```{figure} ../_static/pv_loop_time_dependent_land_circ_lv.png
-# ---
-# name: pv_loop_time_dependent_land_circ_lv
-# ---
-# Pressure volume loop for the LV.
-# ```
-#
-# <video controls loop autoplay muted>
-#   <source src="../_static/time_dependent_land_circ_lv.mp4" type="video/mp4">
-#   <p>Video showing the motion of the LV.</p>
-# </video>
-#
-# # References
-# ```{bibliography}
-# :filter: docname in docnames
-# ```
+# circulation_model_3D.solve(num_cycles=5, initial_state=init_state, dt=dt)
+# circulation_model_3D.print_info()
