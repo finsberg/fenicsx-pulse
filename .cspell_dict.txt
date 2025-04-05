@@ -71,8 +71,6 @@ viscoelasticity
 Waldman
 XDMF
 xvfb
-
-
 inproceedings
 bestel
 Bestel
@@ -113,3 +111,6 @@ Remedios
 Cristobal
 Niederer
 Elsevier
+Zenker
+Clermont
+Gilles
