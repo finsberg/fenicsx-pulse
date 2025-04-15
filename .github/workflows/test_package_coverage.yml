@@ -24,6 +24,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install development version of scifem
+        if : ${{ matrix.container == 'ghcr.io/fenics/dolfinx/dolfinx:nightly' }}
+        run: |
+          python3 -m pip install git+https://github.com/scientificcomputing/scifem.git --no-build-isolation
+
       - name: Install package
         run: |
           python3 -m pip install scifem --no-build-isolation
