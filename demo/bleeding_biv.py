@@ -1,7 +1,6 @@
-# # Bleeding BiV to a 0D circulatory model and a 0D cell model
+# # Bleeding BiV
 
-# This example is similar to the [BiV example](time_dependent_land_circ_biv.py). However, in this example we also simulate a bleeding of the BiV by draining the
-
+# In this example we will take the [BiV example](time_dependent_land_circ_biv.py) from the other tutorial and drain the veins with 2 liter of blood. To model the the effect of bleeding we will use the Zenker model {cite}`zenker2019correction` to find the new heart rate and the Regazzoni model to simulate the circulation.
 
 from pathlib import Path
 
@@ -27,7 +26,10 @@ circulation.log.setup_logging(logging.INFO)
 logger = logging.getLogger("pulse")
 comm = MPI.COMM_WORLD
 
-geodir = Path("biv_ellipsoid-time-dependent")
+outdir = Path("bleeding_biv")
+outdir.mkdir(exist_ok=True)
+
+geodir = outdir / "geometry"
 if not geodir.exists():
     comm.barrier()
     cardiac_geometries.mesh.biv_ellipsoid(
@@ -46,6 +48,7 @@ geo = cardiac_geometries.geometry.Geometry.from_folder(
     comm=comm,
     folder=geodir,
 )
+# Now, let's scale the geometry to be in meters and so that the volume matches the expected volume in the ciculation model
 geo.mesh.geometry.x[:] *= 3e-2
 
 geometry = fenicsx_pulse.HeartGeometry.from_cardiac_geometries(
@@ -55,7 +58,6 @@ geometry = fenicsx_pulse.HeartGeometry.from_cardiac_geometries(
 # Next we create the material object, and we will use the transversely isotropic version of the {py:class}`Holzapfel Ogden model <fenicsx_pulse.holzapfelogden.HolzapfelOgden>`
 
 material_params = fenicsx_pulse.HolzapfelOgden.transversely_isotropic_parameters()
-# material_params = fenicsx_pulse.HolzapfelOgden.orthotropic_parameters()
 material = fenicsx_pulse.HolzapfelOgden(f0=geo.f0, s0=geo.s0, **material_params)  # type: ignore
 
 # We use an active stress approach with 30% transverse active stress (see {py:meth}`fenicsx_pulse.active_stress.transversely_active_stress`)
@@ -144,6 +146,8 @@ HR_factor = HR_bleed / HR_normal
 R_TPR_factor = R_TPR_bleed / R_TPR_normal
 C_PRSW_factor = C_PRSW_bleed / C_PRSW_normal
 
+# Create updated parameters for the Regazzoni model yby scaling the heart rate, resistance and compliance parameters
+
 regazzoni_bleed_parmeters = circulation.regazzoni2020.Regazzoni2020.default_parameters()
 regazzoni_bleed_parmeters["HR"] = HR_factor
 regazzoni_bleed_parmeters["circulation"]["SYS"]["R_AR"] *= R_TPR_factor
@@ -153,6 +157,8 @@ for chamber in ["LA", "LV", "RA", "RV"]:
     regazzoni_bleed_parmeters["chambers"][chamber]["EB"] *= C_PRSW_factor
 regazzoni_bleed_parmeters["circulation"]["external"] = blood_loss_parameters
 
+# The RR interval will determine the duration of the simulation
+
 RR = 1 / HR_factor
 
 # Now we can solve the problem
@@ -160,8 +166,7 @@ RR = 1 / HR_factor
 log.set_log_level(log.LogLevel.INFO)
 problem.solve()
 
-dt = 0.001
-times = np.arange(0.0, 1.0, dt)
+# Now let ut simulate the single cell model to get the activation
 
 ode = gotranx.load_ode("TorOrdLand.ode")
 ode = ode.remove_singularities()
@@ -187,7 +192,10 @@ V_index = TorOrdLand_model["state_index"]("v")
 Ca_index = TorOrdLand_model["state_index"]("cai")
 
 # Time in milliseconds
+
 dt_cell = 0.1
+
+# Let us ensure the 0D model is run to steady state
 
 state_file = outdir / "state.npy"
 if not state_file.is_file():
@@ -232,8 +240,11 @@ if not state_file.is_file():
     fig.savefig(outdir / "Ta_ORdLand.png")
     np.save(state_file, y)
 
+# Load the steady state
+
 y = np.load(state_file)
 
+# Create a class to handle the ODE state
 
 class ODEState:
     def __init__(self, y, dt_cell, p, t=0.0):
@@ -253,9 +264,11 @@ class ODEState:
         return monitor[Ta_index]
 
 
+# Now use the ODEState class to get the activation
+
 ode_state = ODEState(y, dt_cell, p)
 
-
+dt = 0.01
 Tas = {}
 
 for t in np.arange(0, RR + dt, dt):
@@ -274,20 +287,27 @@ def get_activation(t: float):
     return Tas[f"{t % RR:.3f}"]
 
 
+# Let us plot the activation
+
+
 times = np.linspace(0, 10 * RR, 1000)
 activation = [get_activation(t) for t in times]
 plt.plot(times, activation)
 plt.savefig(outdir / "activation.png")
 
-# exit()
+# Save the displacement for visualization in Paraview
 
 vtx = dolfinx.io.VTXWriter(
     geometry.mesh.comm, f"{outdir}/displacement.bp", [problem.u], engine="BP4",
 )
 vtx.write(0.0)
 
+# Save checkpoints for later post processing
+
 filename = Path("function_checkpoint.bp")
 adios4dolfinx.write_mesh(filename, geometry.mesh)
+
+# The callback function is primarily used to save the results and plot the pressure volume loop as we run the simulation
 
 
 def callback(model, t: float, save=True):
@@ -383,6 +403,7 @@ def callback(model, t: float, save=True):
         fig.savefig(outdir / "volumes.png")
         plt.close(fig)
 
+# This function will be used to calculate the pressure in the BiV model, it takes the volume from the circulation model and the time and returns the pressure in the left and right ventricle
 
 def p_BiV_func(V_LV, V_RV, t):
     print("Calculating pressure at time", t)
