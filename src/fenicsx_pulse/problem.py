@@ -139,6 +139,7 @@ class StaticProblem:
                 "ksp_type": "preonly",
                 "pc_type": "lu",
                 "pc_factor_mat_solver_type": "mumps",
+                # "ksp_monitor": None,
             },
         }
 
