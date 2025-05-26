@@ -9,7 +9,7 @@ on:
 
 jobs:
   check-code:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       # This action sets the current path to the root of your github repo
       - uses: actions/checkout@v4
