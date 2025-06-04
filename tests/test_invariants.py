@@ -4,7 +4,7 @@ import pytest
 import ufl
 import utils
 
-from fenicsx_pulse import invariants, kinematics
+from pulse import invariants, kinematics
 
 
 @pytest.mark.parametrize(

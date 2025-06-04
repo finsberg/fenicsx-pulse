@@ -7,9 +7,8 @@ import numpy as np
 import pytest
 
 import cardiac_geometries
-import fenicsx_pulse
-import fenicsx_pulse.problem
-from fenicsx_pulse.problem import BaseBC, StaticProblem
+import pulse
+from pulse import BaseBC, StaticProblem
 
 
 def get_geo_biv(geodir):
@@ -90,16 +89,16 @@ def get_geo(geo_str, tmp_path_factory):
 
 
 def cardiac_model(geo, comp_model_cls):
-    material_params = fenicsx_pulse.HolzapfelOgden.transversely_isotropic_parameters()
-    material = fenicsx_pulse.HolzapfelOgden(f0=geo.f0, s0=geo.s0, **material_params)  # type: ignore
-    Ta = fenicsx_pulse.Variable(
+    material_params = pulse.HolzapfelOgden.transversely_isotropic_parameters()
+    material = pulse.HolzapfelOgden(f0=geo.f0, s0=geo.s0, **material_params)  # type: ignore
+    Ta = pulse.Variable(
         dolfinx.fem.Constant(geo.mesh, dolfinx.default_scalar_type(0.0)),
         "kPa",
     )
-    active_model = fenicsx_pulse.ActiveStress(geo.f0, activation=Ta)
+    active_model = pulse.ActiveStress(geo.f0, activation=Ta)
     comp_model = comp_model_cls()
 
-    return fenicsx_pulse.CardiacModel(
+    return pulse.CardiacModel(
         material=material,
         active=active_model,
         compressibility=comp_model,
@@ -110,17 +109,17 @@ def handle_base_bc(base_bc, geometry):
     if base_bc == BaseBC.fixed:
         robin = ()
     elif base_bc == BaseBC.free:
-        alpha_epi = fenicsx_pulse.Variable(
+        alpha_epi = pulse.Variable(
             dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(1e8)),
             "Pa / m",
         )
-        robin_epi = fenicsx_pulse.RobinBC(value=alpha_epi, marker=geometry.markers["EPI"][0])
+        robin_epi = pulse.RobinBC(value=alpha_epi, marker=geometry.markers["EPI"][0])
 
-        alpha_base = fenicsx_pulse.Variable(
+        alpha_base = pulse.Variable(
             dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(1e5)),
             "Pa / m",
         )
-        robin_base = fenicsx_pulse.RobinBC(value=alpha_base, marker=geometry.markers["BASE"][0])
+        robin_base = pulse.RobinBC(value=alpha_base, marker=geometry.markers["BASE"][0])
         robin = (robin_epi, robin_base)
 
     else:
@@ -140,12 +139,12 @@ def handle_control_lv(
 ):
     comm = geometry.mesh.comm
     if control == "pressure":
-        traction = fenicsx_pulse.Variable(
+        traction = pulse.Variable(
             dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(initial_lvp)),
             "Pa",
         )
-        neumann = fenicsx_pulse.NeumannBC(traction=traction, marker=geometry.markers["ENDO"][0])
-        bcs = fenicsx_pulse.BoundaryConditions(neumann=(neumann,), robin=robin)
+        neumann = pulse.NeumannBC(traction=traction, marker=geometry.markers["ENDO"][0])
+        bcs = pulse.BoundaryConditions(neumann=(neumann,), robin=robin)
         cavities = []
 
         def gen(problem):
@@ -160,9 +159,9 @@ def handle_control_lv(
 
     elif control == "volume":
         volume = dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(initial_volume))
-        cavity = fenicsx_pulse.problem.Cavity(marker="ENDO", volume=volume)
+        cavity = pulse.problem.Cavity(marker="ENDO", volume=volume)
         cavities = [cavity]
-        bcs = fenicsx_pulse.BoundaryConditions(robin=robin)
+        bcs = pulse.BoundaryConditions(robin=robin)
 
         def gen(problem):
             dlv = (target_lvv - initial_volume) / 4.0
@@ -199,8 +198,8 @@ def handle_control_lv(
 @pytest.mark.parametrize(
     "comp_model_cls",
     [
-        fenicsx_pulse.compressibility.Incompressible,
-        fenicsx_pulse.compressibility.Compressible2,
+        pulse.compressibility.Incompressible,
+        pulse.compressibility.Compressible2,
     ],
 )
 def test_static_problem_lv(
@@ -212,7 +211,7 @@ def test_static_problem_lv(
     tmp_path_factory,
 ):
     geo = get_geo(geo_str, tmp_path_factory)
-    geometry = fenicsx_pulse.HeartGeometry.from_cardiac_geometries(
+    geometry = pulse.HeartGeometry.from_cardiac_geometries(
         geo,
         metadata={"quadrature_degree": 6},
     )

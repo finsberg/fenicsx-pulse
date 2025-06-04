@@ -3,7 +3,7 @@ from petsc4py import PETSc
 import dolfinx
 import numpy as np
 
-import fenicsx_pulse
+import pulse
 
 
 def test_IncompressibleProblem_and_boundary_conditions(mesh):
@@ -13,22 +13,22 @@ def test_IncompressibleProblem_and_boundary_conditions(mesh):
         ("Y0", 3, 2, lambda x: np.isclose(x[1], 0)),
         ("Y1", 4, 2, lambda x: np.isclose(x[1], 1)),
     ]
-    geo = fenicsx_pulse.Geometry(
+    geo = pulse.Geometry(
         mesh=mesh,
         boundaries=boundaries,
         metadata={"quadrature_degree": 4},
     )
 
-    material_params = fenicsx_pulse.HolzapfelOgden.transversely_isotropic_parameters()
+    material_params = pulse.HolzapfelOgden.transversely_isotropic_parameters()
     f0 = dolfinx.fem.Constant(mesh, PETSc.ScalarType((1.0, 0.0, 0.0)))
     s0 = dolfinx.fem.Constant(mesh, PETSc.ScalarType((0.0, 1.0, 0.0)))
-    material = fenicsx_pulse.HolzapfelOgden(f0=f0, s0=s0, **material_params)
+    material = pulse.HolzapfelOgden(f0=f0, s0=s0, **material_params)
 
     Ta = dolfinx.fem.Constant(mesh, PETSc.ScalarType(0.0))
-    active_model = fenicsx_pulse.ActiveStress(f0, activation=Ta)
-    comp_model = fenicsx_pulse.Incompressible()
+    active_model = pulse.ActiveStress(f0, activation=Ta)
+    comp_model = pulse.Incompressible()
 
-    model = fenicsx_pulse.CardiacModel(
+    model = pulse.CardiacModel(
         material=material,
         active=active_model,
         compressibility=comp_model,
@@ -45,21 +45,21 @@ def test_IncompressibleProblem_and_boundary_conditions(mesh):
         return [dolfinx.fem.dirichletbc(u_fixed, dofs)]
 
     traction = dolfinx.fem.Constant(mesh, PETSc.ScalarType(0.0))
-    neumann = fenicsx_pulse.NeumannBC(traction=traction, marker=2)
+    neumann = pulse.NeumannBC(traction=traction, marker=2)
 
     robin_value = dolfinx.fem.Constant(mesh, PETSc.ScalarType(0.0))
-    robin = fenicsx_pulse.RobinBC(value=robin_value, marker=3)
+    robin = pulse.RobinBC(value=robin_value, marker=3)
 
     body_force = dolfinx.fem.Constant(mesh, PETSc.ScalarType((0.0, 0.0, 0.0)))
 
-    bcs = fenicsx_pulse.BoundaryConditions(
+    bcs = pulse.BoundaryConditions(
         dirichlet=(dirichlet_bc,),
         neumann=(neumann,),
         robin=(robin,),
         body_force=(body_force,),
     )
 
-    problem = fenicsx_pulse.StaticProblem(model=model, geometry=geo, bcs=bcs)
+    problem = pulse.StaticProblem(model=model, geometry=geo, bcs=bcs)
     problem.solve()
 
     u = problem.u
@@ -105,20 +105,20 @@ def test_CompressibleProblem_and_boundary_conditions(mesh):
         ("Y0", 3, 2, lambda x: np.isclose(x[1], 0)),
         ("Y1", 4, 2, lambda x: np.isclose(x[1], 1)),
     ]
-    geo = fenicsx_pulse.Geometry(
+    geo = pulse.Geometry(
         mesh=mesh,
         boundaries=boundaries,
         metadata={"quadrature_degree": 4},
     )
 
     f0 = dolfinx.fem.Constant(mesh, PETSc.ScalarType((1.0, 0.0, 0.0)))
-    material = fenicsx_pulse.NeoHookean(mu=dolfinx.fem.Constant(mesh, PETSc.ScalarType(15.0)))
+    material = pulse.NeoHookean(mu=dolfinx.fem.Constant(mesh, PETSc.ScalarType(15.0)))
 
     Ta = dolfinx.fem.Constant(mesh, PETSc.ScalarType(0.0))
-    active_model = fenicsx_pulse.ActiveStress(f0, activation=Ta)
-    comp_model = fenicsx_pulse.Compressible()
+    active_model = pulse.ActiveStress(f0, activation=Ta)
+    comp_model = pulse.Compressible()
 
-    model = fenicsx_pulse.CardiacModel(
+    model = pulse.CardiacModel(
         material=material,
         active=active_model,
         compressibility=comp_model,
@@ -136,21 +136,21 @@ def test_CompressibleProblem_and_boundary_conditions(mesh):
         return [dolfinx.fem.dirichletbc(u_fixed, dofs)]
 
     traction = dolfinx.fem.Constant(mesh, PETSc.ScalarType(0.0))
-    neumann = fenicsx_pulse.NeumannBC(traction=traction, marker=2)
+    neumann = pulse.NeumannBC(traction=traction, marker=2)
 
     robin_value = dolfinx.fem.Constant(mesh, PETSc.ScalarType(0.0))
-    robin = fenicsx_pulse.RobinBC(value=robin_value, marker=3)
+    robin = pulse.RobinBC(value=robin_value, marker=3)
 
     body_force = dolfinx.fem.Constant(mesh, PETSc.ScalarType((0.0, 0.0, 0.0)))
 
-    bcs = fenicsx_pulse.BoundaryConditions(
+    bcs = pulse.BoundaryConditions(
         dirichlet=(dirichlet_bc,),
         neumann=(neumann,),
         robin=(robin,),
         body_force=(body_force,),
     )
 
-    problem = fenicsx_pulse.StaticProblem(model=model, geometry=geo, bcs=bcs)
+    problem = pulse.StaticProblem(model=model, geometry=geo, bcs=bcs)
     problem.solve()
 
     # And with no external forces, there should be no displacement

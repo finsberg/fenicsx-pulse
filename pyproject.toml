@@ -12,7 +12,7 @@ requires-python = ">=3.10.0"
 dependencies = ["fenics-dolfinx", "pint", "scifem", "rich", "rich-argparse"]
 
 [project.scripts]
-pulse = "fenicsx_pulse.cli:main"
+pulse = "pulse.cli:main"
 
 [project.optional-dependencies]
 test = [
@@ -41,23 +41,23 @@ docs = [
    "pyvista[all]>=0.43.0",
    "trame-vuetify",
    "ipywidgets",
-   "fenicsx_pulse[demo]",
+   "fenicsx-pulse[demo]",
 ]
 benchmark = [
     "pytest-codspeed",
-    "fenicsx_pulse[test]",
+    "fenicsx-pulse[test]",
 ]
 
 all = [
-    "fenicsx_pulse[test]",
-    "fenicsx_pulse[docs]",
-    "fenicsx_pulse[dev]",
-    "fenicsx_pulse[demo]",
+    "fenicsx-pulse[test]",
+    "fenicsx-pulse[docs]",
+    "fenicsx-pulse[dev]",
+    "fenicsx-pulse[demo]",
 ]
 
 [tool.pytest.ini_options]
 addopts = [
-   "--cov=fenicsx_pulse",
+   "--cov=pulse",
    "--cov-report=html",
    "--cov-report=xml",
    "--cov-report=term-missing",

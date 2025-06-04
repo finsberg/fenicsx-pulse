@@ -6,7 +6,7 @@ from mpi4py import MPI
 import numpy as np
 import dolfinx
 from dolfinx import log
-import fenicsx_pulse
+import pulse
 
 # Next we create the beam, which should have a length og 10 mm and a width of 1 mm
 
@@ -20,22 +20,22 @@ mesh = dolfinx.mesh.create_box(MPI.COMM_WORLD, [[0.0, 0.0, 0.0], [L, W, W]], [30
 left = 1
 bottom = 2
 boundaries = [
-    fenicsx_pulse.Marker(name="left", marker=left, dim=2, locator=lambda x: np.isclose(x[0], 0)),
-    fenicsx_pulse.Marker(name="bottom", marker=bottom, dim=2, locator=lambda x: np.isclose(x[2], 0)),
+    pulse.Marker(name="left", marker=left, dim=2, locator=lambda x: np.isclose(x[0], 0)),
+    pulse.Marker(name="bottom", marker=bottom, dim=2, locator=lambda x: np.isclose(x[2], 0)),
 ]
 
 # and assemble the geometry
 
-geo = fenicsx_pulse.Geometry(
+geo = pulse.Geometry(
     mesh=mesh,
     boundaries=boundaries,
     metadata={"quadrature_degree": 4},
 )
 
-# The material model used in this benchmark is the {py:class}`Guccione <fenicsx_pulse.material_models.guccione.Guccione>` model.
+# The material model used in this benchmark is the {py:class}`Guccione <pulse.material_models.guccione.Guccione>` model.
 
 material_params = {
-    "C": fenicsx_pulse.Variable(dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(2.0)), "kPa"),
+    "C": pulse.Variable(dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(2.0)), "kPa"),
     "bf": dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(8.0)),
     "bt": dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(2.0)),
     "bfs": dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(4.0)),
@@ -43,20 +43,20 @@ material_params = {
 f0 = dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type((1.0, 0.0, 0.0)))
 s0 = dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type((0.0, 1.0, 0.0)))
 n0 = dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type((0.0, 0.0, 1.0)))
-material = fenicsx_pulse.Guccione(f0=f0, s0=s0, n0=n0, **material_params)
+material = pulse.Guccione(f0=f0, s0=s0, n0=n0, **material_params)
 
 # There are now active contraction, so we choose a pure passive model
 
-active_model = fenicsx_pulse.active_model.Passive()
+active_model = pulse.active_model.Passive()
 
 # and the model should be incompressible
 
-comp_model = fenicsx_pulse.Incompressible()
+comp_model = pulse.Incompressible()
 
 # We can now assemble the `CardiacModel`
 #
 
-model = fenicsx_pulse.CardiacModel(
+model = pulse.CardiacModel(
     material=material,
     active=active_model,
     compressibility=comp_model,
@@ -79,15 +79,15 @@ def dirichlet_bc(
 # and the traction force
 
 traction = dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(0.0))
-neumann = fenicsx_pulse.NeumannBC(traction=traction, marker=bottom)
+neumann = pulse.NeumannBC(traction=traction, marker=bottom)
 
 # We assemble all the boundary conditions
 
-bcs = fenicsx_pulse.BoundaryConditions(dirichlet=(dirichlet_bc,), neumann=(neumann,))
+bcs = pulse.BoundaryConditions(dirichlet=(dirichlet_bc,), neumann=(neumann,))
 
 # and create a mechanics problem
 
-problem = fenicsx_pulse.StaticProblem(model=model, geometry=geo, bcs=bcs)
+problem = pulse.StaticProblem(model=model, geometry=geo, bcs=bcs)
 
 # Now let us turn on some more logging
 

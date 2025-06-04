@@ -28,7 +28,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import gotranx
 import adios4dolfinx
-import fenicsx_pulse
+import pulse
 import cardiac_geometries
 import cardiac_geometries.geometry
 
@@ -69,25 +69,25 @@ geo = cardiac_geometries.geometry.Geometry.from_folder(
 
 # Next we transform the geometry to a `HeartGeometry` object
 
-geometry = fenicsx_pulse.HeartGeometry.from_cardiac_geometries(geo, metadata={"quadrature_degree": 6})
+geometry = pulse.HeartGeometry.from_cardiac_geometries(geo, metadata={"quadrature_degree": 6})
 
-# Next we create the material object, and we will use the transversely isotropic version of the {py:class}`Holzapfel Ogden model <fenicsx_pulse.holzapfelogden.HolzapfelOgden>`
+# Next we create the material object, and we will use the transversely isotropic version of the {py:class}`Holzapfel Ogden model <pulse.holzapfelogden.HolzapfelOgden>`
 
-material_params = fenicsx_pulse.HolzapfelOgden.transversely_isotropic_parameters()
-material = fenicsx_pulse.HolzapfelOgden(f0=geo.f0, s0=geo.s0, **material_params)  # type: ignore
+material_params = pulse.HolzapfelOgden.transversely_isotropic_parameters()
+material = pulse.HolzapfelOgden(f0=geo.f0, s0=geo.s0, **material_params)  # type: ignore
 
-# We use an active stress approach with 30% transverse active stress (see {py:meth}`fenicsx_pulse.active_stress.transversely_active_stress`)
+# We use an active stress approach with 30% transverse active stress (see {py:meth}`pulse.active_stress.transversely_active_stress`)
 
-Ta = fenicsx_pulse.Variable(dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0)), "kPa")
-active_model = fenicsx_pulse.ActiveStress(geo.f0, activation=Ta)
+Ta = pulse.Variable(dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0)), "kPa")
+active_model = pulse.ActiveStress(geo.f0, activation=Ta)
 
 # a compressible material model
 
-comp_model = fenicsx_pulse.compressibility.Compressible2()
+comp_model = pulse.compressibility.Compressible2()
 
 # and assembles the `CardiacModel`
 
-model = fenicsx_pulse.CardiacModel(
+model = pulse.CardiacModel(
     material=material,
     active=active_model,
     compressibility=comp_model,
@@ -95,25 +95,25 @@ model = fenicsx_pulse.CardiacModel(
 
 # Next we set up the boundary conditions. We use a Robin boundary condition on the epicardium and the base of the LV
 
-alpha_epi = fenicsx_pulse.Variable(
+alpha_epi = pulse.Variable(
     dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(1e8)), "Pa / m",
 )
-robin_epi = fenicsx_pulse.RobinBC(value=alpha_epi, marker=geometry.markers["EPI"][0])
-alpha_base = fenicsx_pulse.Variable(
+robin_epi = pulse.RobinBC(value=alpha_epi, marker=geometry.markers["EPI"][0])
+alpha_base = pulse.Variable(
     dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(1e5)), "Pa / m",
 )
-robin_base = fenicsx_pulse.RobinBC(value=alpha_base, marker=geometry.markers["BASE"][0])
+robin_base = pulse.RobinBC(value=alpha_base, marker=geometry.markers["BASE"][0])
 
 # For the pressure we use a Lagrange multiplier method to enforce a given volume. The resulting Lagrange multiplier will be the pressure in the cavity.
 # To do this we create a `Cavity` object with a given volume, and specify which marker to use for the boundary condition.
 
 initial_volume = geometry.volume("ENDO")
 Volume = dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(initial_volume))
-cavity = fenicsx_pulse.problem.Cavity(marker="ENDO", volume=Volume)
+cavity = pulse.problem.Cavity(marker="ENDO", volume=Volume)
 
 # We also specify the parameters for the problem and say that we want the base to move freely and that the units of the mesh is meters
 
-parameters = {"base_bc": fenicsx_pulse.problem.BaseBC.free, "mesh_unit": "m"}
+parameters = {"base_bc": pulse.problem.BaseBC.free, "mesh_unit": "m"}
 
 # Next we set up the problem. We can choose between a static and a dynamic problem by setting the `static` variable to `True` or `False`. Currently the dynamic problem is not working (when coupled to a circulation model), so we will use the static problem for now.
 
@@ -122,21 +122,21 @@ static = True
 
 if static:
     outdir = Path("lv_ellipsoid_time_dependent_circulation_static")
-    bcs = fenicsx_pulse.BoundaryConditions(robin=(robin_epi, robin_base))
-    problem = fenicsx_pulse.problem.StaticProblem(model=model, geometry=geometry, bcs=bcs, cavities=[cavity], parameters=parameters)
+    bcs = pulse.BoundaryConditions(robin=(robin_epi, robin_base))
+    problem = pulse.problem.StaticProblem(model=model, geometry=geometry, bcs=bcs, cavities=[cavity], parameters=parameters)
 else:
     outdir = Path("lv_ellipsoid_time_dependent_circulation_dynamic")
-    beta_epi = fenicsx_pulse.Variable(
+    beta_epi = pulse.Variable(
         dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(5e3)), "Pa s/ m",
     )
-    robin_epi_v = fenicsx_pulse.RobinBC(value=beta_epi, marker=geometry.markers["EPI"][0], damping=True)
-    beta_base = fenicsx_pulse.Variable(
+    robin_epi_v = pulse.RobinBC(value=beta_epi, marker=geometry.markers["EPI"][0], damping=True)
+    beta_base = pulse.Variable(
         dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(5e3)), "Pa s/ m",
     )
-    robin_base_v = fenicsx_pulse.RobinBC(value=beta_base, marker=geometry.markers["BASE"][0], damping=True)
-    bcs = fenicsx_pulse.BoundaryConditions(robin=(robin_epi, robin_epi_v, robin_base, robin_base_v))
+    robin_base_v = pulse.RobinBC(value=beta_base, marker=geometry.markers["BASE"][0], damping=True)
+    bcs = pulse.BoundaryConditions(robin=(robin_epi, robin_epi_v, robin_base, robin_base_v))
 
-    problem = fenicsx_pulse.problem.DynamicProblem(model=model, geometry=geometry, bcs=bcs, cavities=[cavity], parameters=parameters)
+    problem = pulse.problem.DynamicProblem(model=model, geometry=geometry, bcs=bcs, cavities=[cavity], parameters=parameters)
 
 
 outdir.mkdir(exist_ok=True)
