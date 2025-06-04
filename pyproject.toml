@@ -9,7 +9,7 @@ authors = [{name = "Henrik Finsberg", email = "henriknf@simula.no"}]
 license = {file = "LICENSE"}
 readme = "README.md"
 requires-python = ">=3.10.0"
-dependencies = ["fenics-dolfinx", "pint", "scifem", "rich"]
+dependencies = ["fenics-dolfinx", "pint", "scifem", "rich", "rich-argparse"]
 
 [project.scripts]
 pulse = "fenicsx_pulse.cli:main"

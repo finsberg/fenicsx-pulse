@@ -2,11 +2,13 @@ import argparse
 import logging
 from typing import Optional, Sequence
 
+from rich_argparse import ArgumentDefaultsRichHelpFormatter
+
 logger = logging.getLogger(__name__)
 
 
 def setup_parser():
-    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser = argparse.ArgumentParser(formatter_class=ArgumentDefaultsRichHelpFormatter)
     # Root parser
     parser.add_argument(
         "--dry-run",
