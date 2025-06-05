@@ -1,6 +1,6 @@
 import numpy as np
 
-from fenicsx_pulse import units
+from pulse import units
 
 
 def test_Variable():

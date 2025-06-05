@@ -15,7 +15,7 @@ from scipy.integrate import solve_ivp
 import circulation.bestel
 import cardiac_geometries
 import cardiac_geometries.geometry
-import fenicsx_pulse
+import pulse
 
 
 logging.basicConfig(level=logging.INFO)
@@ -48,17 +48,17 @@ geo.mesh.geometry.x[:] *= 3e-2
 
 # We create the geometry object and print the volumes of the LV and RV cavities
 
-geometry = fenicsx_pulse.HeartGeometry.from_cardiac_geometries(geo, metadata={"quadrature_degree": 6})
+geometry = pulse.HeartGeometry.from_cardiac_geometries(geo, metadata={"quadrature_degree": 6})
 print(geometry.volume("ENDO_LV") * 1e6, geometry.volume("ENDO_RV") * 1e6)
 
-material_params = fenicsx_pulse.HolzapfelOgden.orthotropic_parameters()
-material = fenicsx_pulse.HolzapfelOgden(f0=geo.f0, s0=geo.s0, **material_params)  # type: ignore
+material_params = pulse.HolzapfelOgden.orthotropic_parameters()
+material = pulse.HolzapfelOgden(f0=geo.f0, s0=geo.s0, **material_params)  # type: ignore
 
-Ta = fenicsx_pulse.Variable(dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0)), "Pa")
-active_model = fenicsx_pulse.ActiveStress(geo.f0, activation=Ta)
-comp_model = fenicsx_pulse.compressibility.Compressible2()
-viscoeleastic_model = fenicsx_pulse.viscoelasticity.Viscous()
-model = fenicsx_pulse.CardiacModel(
+Ta = pulse.Variable(dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0)), "Pa")
+active_model = pulse.ActiveStress(geo.f0, activation=Ta)
+comp_model = pulse.compressibility.Compressible2()
+viscoeleastic_model = pulse.viscoelasticity.Viscous()
+model = pulse.CardiacModel(
     material=material,
     active=active_model,
     compressibility=comp_model,
@@ -67,34 +67,34 @@ model = fenicsx_pulse.CardiacModel(
 
 # One difference with the LV example is that we now have two different pressure boundary conditions, one for the LV and one for the RV
 
-traction_lv = fenicsx_pulse.Variable(dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0)), "Pa")
-neumann_lv = fenicsx_pulse.NeumannBC(traction=traction_lv, marker=geometry.markers["ENDO_LV"][0])
+traction_lv = pulse.Variable(dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0)), "Pa")
+neumann_lv = pulse.NeumannBC(traction=traction_lv, marker=geometry.markers["ENDO_LV"][0])
 
-traction_rv = fenicsx_pulse.Variable(dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0)), "Pa")
-neumann_rv = fenicsx_pulse.NeumannBC(traction=traction_rv, marker=geometry.markers["ENDO_RV"][0])
+traction_rv = pulse.Variable(dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0)), "Pa")
+neumann_rv = pulse.NeumannBC(traction=traction_rv, marker=geometry.markers["ENDO_RV"][0])
 
 # Otherwize we have the same Robin boundary conditions as in the LV example
 
-alpha_epi = fenicsx_pulse.Variable(
+alpha_epi = pulse.Variable(
     dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(1e8)), "Pa / m",
 )
-robin_epi_u = fenicsx_pulse.RobinBC(value=alpha_epi, marker=geometry.markers["EPI"][0])
-beta_epi = fenicsx_pulse.Variable(
+robin_epi_u = pulse.RobinBC(value=alpha_epi, marker=geometry.markers["EPI"][0])
+beta_epi = pulse.Variable(
     dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(5e3)), "Pa s/ m",
 )
-robin_epi_v = fenicsx_pulse.RobinBC(value=beta_epi, marker=geometry.markers["EPI"][0], damping=True)
+robin_epi_v = pulse.RobinBC(value=beta_epi, marker=geometry.markers["EPI"][0], damping=True)
 
-alpha_base = fenicsx_pulse.Variable(
+alpha_base = pulse.Variable(
     dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(1e5)), "Pa / m",
 )
-robin_base_u = fenicsx_pulse.RobinBC(value=alpha_base, marker=geometry.markers["BASE"][0])
-beta_base = fenicsx_pulse.Variable(
+robin_base_u = pulse.RobinBC(value=alpha_base, marker=geometry.markers["BASE"][0])
+beta_base = pulse.Variable(
     dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(5e3)), "Pa s/ m",
 )
-robin_base_v = fenicsx_pulse.RobinBC(value=beta_base, marker=geometry.markers["BASE"][0], damping=True)
+robin_base_v = pulse.RobinBC(value=beta_base, marker=geometry.markers["BASE"][0], damping=True)
 
-bcs = fenicsx_pulse.BoundaryConditions(neumann=(neumann_lv, neumann_rv), robin=(robin_epi_u, robin_epi_v, robin_base_u, robin_base_v))
-problem = fenicsx_pulse.problem.DynamicProblem(model=model, geometry=geometry, bcs=bcs)
+bcs = pulse.BoundaryConditions(neumann=(neumann_lv, neumann_rv), robin=(robin_epi_u, robin_epi_v, robin_base_u, robin_base_v))
+problem = pulse.problem.DynamicProblem(model=model, geometry=geometry, bcs=bcs)
 
 
 log.set_log_level(log.LogLevel.INFO)

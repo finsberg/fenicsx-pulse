@@ -6,7 +6,7 @@ import pytest
 import ufl
 from packaging.version import Version
 
-import fenicsx_pulse
+import pulse
 
 _dolfinx_version = Version(dolfinx.__version__)
 
@@ -20,7 +20,7 @@ def test_vertex_to_dofmap(element, celltype):
     mesh = dolfinx.mesh.create_unit_square(MPI.COMM_WORLD, 10, 10, celltype)
     V = dolfinx.fem.functionspace(mesh, element)
 
-    v2d = fenicsx_pulse.utils.vertex_to_dofmap(V)
+    v2d = pulse.utils.vertex_to_dofmap(V)
 
     X = ufl.SpatialCoordinate(mesh)
 

@@ -5,9 +5,9 @@ import numpy as np
 import pytest
 import ufl
 
-from fenicsx_pulse import kinematics
-from fenicsx_pulse.active_model import Passive
-from fenicsx_pulse.active_stress import ActiveStress
+from pulse import kinematics
+from pulse.active_model import Passive
+from pulse.active_stress import ActiveStress
 
 
 def W_fun(Ta: float, eta: float = 0.0) -> float:

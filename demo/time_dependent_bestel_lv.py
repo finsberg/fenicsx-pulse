@@ -187,7 +187,7 @@ import matplotlib.pyplot as plt
 import circulation.bestel
 import cardiac_geometries
 import cardiac_geometries.geometry
-import fenicsx_pulse
+import pulse
 
 # Next we set up the logging and the MPI communicator
 
@@ -228,33 +228,33 @@ geo = cardiac_geometries.geometry.Geometry.from_folder(
     comm=comm,
     folder=geodir,
 )
-geometry = fenicsx_pulse.HeartGeometry.from_cardiac_geometries(geo, metadata={"quadrature_degree": 6})
+geometry = pulse.HeartGeometry.from_cardiac_geometries(geo, metadata={"quadrature_degree": 6})
 
-# Next we create the material object using the class {py:class}`Holzapfel Ogden model <fenicsx_pulse.holzapfelogden.HolzapfelOgden>`
+# Next we create the material object using the class {py:class}`Holzapfel Ogden model <pulse.holzapfelogden.HolzapfelOgden>`
 
-material_params = fenicsx_pulse.HolzapfelOgden.orthotropic_parameters()
-material = fenicsx_pulse.HolzapfelOgden(f0=geo.f0, s0=geo.s0, **material_params)  # type: ignore
+material_params = pulse.HolzapfelOgden.orthotropic_parameters()
+material = pulse.HolzapfelOgden(f0=geo.f0, s0=geo.s0, **material_params)  # type: ignore
 print(material)
 
 # We set up the active stress model
 
-Ta = fenicsx_pulse.Variable(dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0)), "Pa")
-active_model = fenicsx_pulse.ActiveStress(geo.f0, activation=Ta)
+Ta = pulse.Variable(dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0)), "Pa")
+active_model = pulse.ActiveStress(geo.f0, activation=Ta)
 print(active_model)
 
 # and define the compressibility
 
-comp_model = fenicsx_pulse.compressibility.Compressible2()
+comp_model = pulse.compressibility.Compressible2()
 print(comp_model)
 
 # and viscoelasticity model
 
-viscoelastic_model = fenicsx_pulse.viscoelasticity.Viscous()
+viscoelastic_model = pulse.viscoelasticity.Viscous()
 print(viscoelastic_model)
 
 # Finally we assembles the `CardiacModel`
 
-model = fenicsx_pulse.CardiacModel(
+model = pulse.CardiacModel(
     material=material,
     active=active_model,
     compressibility=comp_model,
@@ -263,38 +263,38 @@ model = fenicsx_pulse.CardiacModel(
 
 # Next we define the boundary conditions. First we define a traction on the endocardium
 
-traction = fenicsx_pulse.Variable(dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0)), "Pa")
-neumann = fenicsx_pulse.NeumannBC(traction=traction, marker=geometry.markers["ENDO"][0])
+traction = pulse.Variable(dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0)), "Pa")
+neumann = pulse.NeumannBC(traction=traction, marker=geometry.markers["ENDO"][0])
 
 # and Robin boundary conditions on the epicardium and base
 #
 
-alpha_epi = fenicsx_pulse.Variable(
+alpha_epi = pulse.Variable(
         dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(1e8)), "Pa / m",
 )
-robin_epi_u = fenicsx_pulse.RobinBC(value=alpha_epi, marker=geometry.markers["EPI"][0])
-beta_epi = fenicsx_pulse.Variable(
+robin_epi_u = pulse.RobinBC(value=alpha_epi, marker=geometry.markers["EPI"][0])
+beta_epi = pulse.Variable(
         dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(5e3)), "Pa s/ m",
 )
-robin_epi_v = fenicsx_pulse.RobinBC(value=beta_epi, marker=geometry.markers["EPI"][0], damping=True)
+robin_epi_v = pulse.RobinBC(value=beta_epi, marker=geometry.markers["EPI"][0], damping=True)
 
-alpha_base = fenicsx_pulse.Variable(
+alpha_base = pulse.Variable(
     dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(1e5)), "Pa / m",
 )
-robin_base_u = fenicsx_pulse.RobinBC(value=alpha_base, marker=geometry.markers["BASE"][0])
-beta_base = fenicsx_pulse.Variable(
+robin_base_u = pulse.RobinBC(value=alpha_base, marker=geometry.markers["BASE"][0])
+beta_base = pulse.Variable(
         dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(5e3)), "Pa s/ m",
 )
-robin_base_v = fenicsx_pulse.RobinBC(value=beta_base, marker=geometry.markers["BASE"][0], damping=True)
+robin_base_v = pulse.RobinBC(value=beta_base, marker=geometry.markers["BASE"][0], damping=True)
 
 # We assemble the boundary conditions
 #
 
-bcs = fenicsx_pulse.BoundaryConditions(robin=(robin_epi_u, robin_epi_v, robin_base_u, robin_base_v), neumann=(neumann,))
+bcs = pulse.BoundaryConditions(robin=(robin_epi_u, robin_epi_v, robin_base_u, robin_base_v), neumann=(neumann,))
 
 # Finally we create a `DynamicProblem`
 
-problem = fenicsx_pulse.problem.DynamicProblem(model=model, geometry=geometry, bcs=bcs, parameters={"base_bc": fenicsx_pulse.problem.BaseBC.free})
+problem = pulse.problem.DynamicProblem(model=model, geometry=geometry, bcs=bcs, parameters={"base_bc": pulse.problem.BaseBC.free})
 
 # Note that we also specify that the base is free to move, meaning that there will be no Dirichlet boundary conditions on the base. Now we can do an initial solve the problem
 

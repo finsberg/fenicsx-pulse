@@ -10,7 +10,7 @@ import dolfinx
 import numpy as np
 import math
 import cardiac_geometries
-import fenicsx_pulse
+import pulse
 
 
 logging.basicConfig(level=logging.INFO)
@@ -40,12 +40,12 @@ geo = cardiac_geometries.geometry.Geometry.from_folder(
     folder=geodir,
 )
 
-# Now, lets convert the geometry to a `fenicsx_pulse.Geometry` object.
+# Now, lets convert the geometry to a `pulse.Geometry` object.
 
-geometry = fenicsx_pulse.HeartGeometry.from_cardiac_geometries(geo, metadata={"quadrature_degree": 4})
+geometry = pulse.HeartGeometry.from_cardiac_geometries(geo, metadata={"quadrature_degree": 4})
 
 
-# The material model used in this benchmark is the {py:class}`Guccione <fenicsx_pulse.material_models.guccione.Guccione>` model.
+# The material model used in this benchmark is the {py:class}`Guccione <pulse.material_models.guccione.Guccione>` model.
 
 material_params = {
     "C": dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(10.0)),
@@ -53,21 +53,21 @@ material_params = {
     "bt": dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(1.0)),
     "bfs": dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(1.0)),
 }
-material = fenicsx_pulse.Guccione(**material_params)
+material = pulse.Guccione(**material_params)
 
 
 # There are now active contraction, so we choose a pure passive model
 
-active_model = fenicsx_pulse.active_model.Passive()
+active_model = pulse.active_model.Passive()
 
 # and the model should be incompressible
 
-comp_model = fenicsx_pulse.Incompressible()
+comp_model = pulse.Incompressible()
 
 
 # and assembles the `CardiacModel`
 
-model = fenicsx_pulse.CardiacModel(
+model = pulse.CardiacModel(
     material=material,
     active=active_model,
     compressibility=comp_model,
@@ -78,19 +78,19 @@ model = fenicsx_pulse.CardiacModel(
 # We apply a traction in endocardium
 
 traction = dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0))
-neumann = fenicsx_pulse.NeumannBC(
-    traction=fenicsx_pulse.Variable(traction, "kPa"),
+neumann = pulse.NeumannBC(
+    traction=pulse.Variable(traction, "kPa"),
     marker=geo.markers["ENDO"][0],
 )
 
 # and finally combine all the boundary conditions
 
-bcs = fenicsx_pulse.BoundaryConditions(neumann=(neumann,))
+bcs = pulse.BoundaryConditions(neumann=(neumann,))
 
 # and create a Mixed problem
 
-problem = fenicsx_pulse.StaticProblem(
-    model=model, geometry=geometry, bcs=bcs, parameters={"base_bc": fenicsx_pulse.BaseBC.fixed},
+problem = pulse.StaticProblem(
+    model=model, geometry=geometry, bcs=bcs, parameters={"base_bc": pulse.BaseBC.fixed},
 )
 
 # Now we can solve the problem
@@ -183,12 +183,12 @@ else:
 U = dolfinx.fem.Function(problem.u.function_space)
 U.interpolate(lambda x: (x[0], x[1], x[2]))
 
-endo_apex_coord = fenicsx_pulse.utils.evaluate_at_vertex_tag(U, geo.vfun, geo.markers["ENDOPT"][0])
-u_endo_apex = fenicsx_pulse.utils.evaluate_at_vertex_tag(problem.u, geo.vfun, geo.markers["ENDOPT"][0])
-endo_apex_pos = fenicsx_pulse.utils.gather_broadcast_array(geo.mesh.comm, endo_apex_coord + u_endo_apex)
+endo_apex_coord = pulse.utils.evaluate_at_vertex_tag(U, geo.vfun, geo.markers["ENDOPT"][0])
+u_endo_apex = pulse.utils.evaluate_at_vertex_tag(problem.u, geo.vfun, geo.markers["ENDOPT"][0])
+endo_apex_pos = pulse.utils.gather_broadcast_array(geo.mesh.comm, endo_apex_coord + u_endo_apex)
 print(f"\nGet longitudinal position of endocardial apex: {endo_apex_pos[0, 0]:4f} mm")
 
-epi_apex_coord = fenicsx_pulse.utils.evaluate_at_vertex_tag(U, geo.vfun, geo.markers["EPIPT"][0])
-u_epi_apex = fenicsx_pulse.utils.evaluate_at_vertex_tag(problem.u, geo.vfun, geo.markers["EPIPT"][0])
-epi_apex_pos = fenicsx_pulse.utils.gather_broadcast_array(geo.mesh.comm, epi_apex_coord + u_epi_apex)
+epi_apex_coord = pulse.utils.evaluate_at_vertex_tag(U, geo.vfun, geo.markers["EPIPT"][0])
+u_epi_apex = pulse.utils.evaluate_at_vertex_tag(problem.u, geo.vfun, geo.markers["EPIPT"][0])
+epi_apex_pos = pulse.utils.gather_broadcast_array(geo.mesh.comm, epi_apex_coord + u_epi_apex)
 print(f"\nGet longitudinal position of epicardial apex: {epi_apex_pos[0, 0]:4f} mm")

@@ -8,10 +8,10 @@ from pathlib import Path
 from mpi4py import MPI
 import dolfinx
 from dolfinx import log
-import fenicsx_pulse
 import ldrb
 import cardiac_geometries
 import cardiac_geometries.geometry
+import pulse
 
 # and lets turn on logging so that we can see more info from `dolfinx`
 
@@ -34,18 +34,18 @@ geo = cardiac_geometries.geometry.Geometry.from_folder(
     folder=geodir,
 )
 
-# In order to use the geometry with `pulse` we need to convert it to a `fenicsx_pulse.Geometry` object. We can do this by using the `from_cardiac_geometries` method. We also specify that we want to use a quadrature degree of 4
+# In order to use the geometry with `pulse` we need to convert it to a `pulse.Geometry` object. We can do this by using the `from_cardiac_geometries` method. We also specify that we want to use a quadrature degree of 4
 #
 
-geometry = fenicsx_pulse.Geometry.from_cardiac_geometries(geo, metadata={"quadrature_degree": 4})
+geometry = pulse.Geometry.from_cardiac_geometries(geo, metadata={"quadrature_degree": 4})
 
-# Next we create the material object, and we will use the transversely isotropic version of the {py:class}`Neo Hookean model <fenicsx_pulse.neo_hookean.NeoHookean>`
+# Next we create the material object, and we will use the transversely isotropic version of the {py:class}`Neo Hookean model <pulse.neo_hookean.NeoHookean>`
 
-material = fenicsx_pulse.NeoHookean(mu=dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(15.0)))
+material = pulse.NeoHookean(mu=dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(15.0)))
 # and use an active stress approach
 
 Ta = dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0))
-active_model = fenicsx_pulse.ActiveStress(geo.f0, activation=Ta)
+active_model = pulse.ActiveStress(geo.f0, activation=Ta)
 
 # Now we will also implement two different versions, one where we use a compressible model and one where we use an incompressible model. To do this we will introduce a flag
 
@@ -54,14 +54,14 @@ incompressible = False
 # And in both cases we will use different compressible models, mechanics problems and different ways to get the displacement.
 
 if incompressible:
-    comp_model: fenicsx_pulse.Compressibility = fenicsx_pulse.Incompressible()
+    comp_model: pulse.Compressibility = pulse.Incompressible()
 else:
-    comp_model = fenicsx_pulse.Compressible()
+    comp_model = pulse.Compressible()
 
 
 # Now we can assemble the `CardiacModel`
 
-model = fenicsx_pulse.CardiacModel(
+model = pulse.CardiacModel(
     material=material,
     active=active_model,
     compressibility=comp_model,
@@ -71,25 +71,25 @@ model = fenicsx_pulse.CardiacModel(
 # We will add a pressure on the LV endocarium
 
 lvp = dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0))
-neumann_lv = fenicsx_pulse.NeumannBC(traction=lvp, marker=geometry.markers["ENDO_LV"][0])
+neumann_lv = pulse.NeumannBC(traction=lvp, marker=geometry.markers["ENDO_LV"][0])
 
 # and on the RV endocardium
 
 rvp = dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0))
-neumann_rv = fenicsx_pulse.NeumannBC(traction=lvp, marker=geometry.markers["ENDO_RV"][0])
+neumann_rv = pulse.NeumannBC(traction=lvp, marker=geometry.markers["ENDO_RV"][0])
 
 # We will also add a Robin type spring on the epicardial surface to mimic the pericardium.
 
 pericardium = dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(1.0))
-robin_per = fenicsx_pulse.RobinBC(value=pericardium, marker=geometry.markers["EPI"][0])
+robin_per = pulse.RobinBC(value=pericardium, marker=geometry.markers["EPI"][0])
 
 # We collect all the boundary conditions
 
-bcs = fenicsx_pulse.BoundaryConditions(neumann=(neumann_lv, neumann_rv), robin=(robin_per,))
+bcs = pulse.BoundaryConditions(neumann=(neumann_lv, neumann_rv), robin=(robin_per,))
 
 # create the problem
 
-problem = fenicsx_pulse.StaticProblem(model=model, geometry=geometry, bcs=bcs, parameters={"base_bc": fenicsx_pulse.BaseBC.fixed})
+problem = pulse.StaticProblem(model=model, geometry=geometry, bcs=bcs, parameters={"base_bc": pulse.BaseBC.fixed})
 
 # and solve
 

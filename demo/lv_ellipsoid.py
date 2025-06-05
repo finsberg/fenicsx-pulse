@@ -8,9 +8,9 @@ from pathlib import Path
 from mpi4py import MPI
 import dolfinx
 from dolfinx import log
-import fenicsx_pulse
 import cardiac_geometries
 import cardiac_geometries.geometry
+import pulse
 
 # Next we will create the geometry and save it in the folder called `lv_ellipsoid`. We also make sure to generate fibers which can be done analytically and use a second order Lagrange space for the fibers
 
@@ -27,28 +27,28 @@ geo = cardiac_geometries.geometry.Geometry.from_folder(
     folder=geodir,
 )
 
-# In order to use the geometry with `pulse` we need to convert it to a `fenicsx_pulse.Geometry` object. We can do this by using the `from_cardiac_geometries` method. We also specify that we want to use a quadrature degree of 4
+# In order to use the geometry with `pulse` we need to convert it to a `pulse.Geometry` object. We can do this by using the `from_cardiac_geometries` method. We also specify that we want to use a quadrature degree of 4
 #
 
-geometry = fenicsx_pulse.Geometry.from_cardiac_geometries(geo, metadata={"quadrature_degree": 4})
+geometry = pulse.Geometry.from_cardiac_geometries(geo, metadata={"quadrature_degree": 4})
 
-# Next we create the material object, and we will use the transversely isotropic version of the {py:class}`Holzapfel Ogden model <fenicsx_pulse.holzapfelogden.HolzapfelOgden>`
+# Next we create the material object, and we will use the transversely isotropic version of the {py:class}`Holzapfel Ogden model <pulse.holzapfelogden.HolzapfelOgden>`
 
-material_params = fenicsx_pulse.HolzapfelOgden.transversely_isotropic_parameters()
-material = fenicsx_pulse.HolzapfelOgden(f0=geo.f0, s0=geo.s0, **material_params)  # type: ignore
+material_params = pulse.HolzapfelOgden.transversely_isotropic_parameters()
+material = pulse.HolzapfelOgden(f0=geo.f0, s0=geo.s0, **material_params)  # type: ignore
 
-# We use an active stress approach with 30% transverse active stress (see {py:meth}`fenicsx_pulse.active_stress.transversely_active_stress`)
+# We use an active stress approach with 30% transverse active stress (see {py:meth}`pulse.active_stress.transversely_active_stress`)
 
-Ta = fenicsx_pulse.Variable(dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0)), "kPa")
-active_model = fenicsx_pulse.ActiveStress(geo.f0, activation=Ta, eta=0.3)
+Ta = pulse.Variable(dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0)), "kPa")
+active_model = pulse.ActiveStress(geo.f0, activation=Ta, eta=0.3)
 
 # We use an incompressible model
 
-comp_model = fenicsx_pulse.Incompressible()
+comp_model = pulse.Incompressible()
 
 # and assembles the `CardiacModel`
 
-model = fenicsx_pulse.CardiacModel(
+model = pulse.CardiacModel(
     material=material,
     active=active_model,
     compressibility=comp_model,
@@ -56,16 +56,16 @@ model = fenicsx_pulse.CardiacModel(
 
 # We apply a traction in endocardium
 
-traction = fenicsx_pulse.Variable(dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0)), "kPa")
-neumann = fenicsx_pulse.NeumannBC(traction=traction, marker=geometry.markers["ENDO"][0])
+traction = pulse.Variable(dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0)), "kPa")
+neumann = pulse.NeumannBC(traction=traction, marker=geometry.markers["ENDO"][0])
 
 # and finally combine all the boundary conditions
 
-bcs = fenicsx_pulse.BoundaryConditions(neumann=(neumann,))
+bcs = pulse.BoundaryConditions(neumann=(neumann,))
 
 # and create a Mixed problem
 
-problem = fenicsx_pulse.StaticProblem(model=model, geometry=geometry, bcs=bcs, parameters={"base_bc": fenicsx_pulse.BaseBC.fixed})
+problem = pulse.StaticProblem(model=model, geometry=geometry, bcs=bcs, parameters={"base_bc": pulse.BaseBC.fixed})
 
 # Now we can solve the problem
 

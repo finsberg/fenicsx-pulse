@@ -5,11 +5,11 @@ import pytest
 import ufl
 
 import cardiac_geometries
-import fenicsx_pulse
+import pulse
 
 
 def test_geometry_empty_initialization(mesh):
-    geo = fenicsx_pulse.Geometry(mesh=mesh)
+    geo = pulse.Geometry(mesh=mesh)
     assert geo.facet_tags.values.size == 0
     assert geo.facet_tags.indices.size == 0
     assert geo._facet_indices.size == 0
@@ -28,7 +28,7 @@ def test_geometry_with_boundary_and_metadata(mesh):
         ("right", 2, 2, lambda x: np.isclose(x[0], 1)),
     ]
     metadata = {"quadrature_degree": 4}
-    geo = fenicsx_pulse.Geometry(
+    geo = pulse.Geometry(
         mesh=mesh,
         boundaries=boundaries,
         metadata=metadata,
@@ -49,7 +49,7 @@ def test_geometry_with_boundary_and_metadata(mesh):
 
 
 def test_dump_mesh_tags(tmp_path, mesh):
-    geo = fenicsx_pulse.Geometry(
+    geo = pulse.Geometry(
         mesh=mesh,
         boundaries=[("marker", 1, 2, lambda x: np.isclose(x[0], 0))],
     )
@@ -61,14 +61,14 @@ def test_dump_mesh_tags(tmp_path, mesh):
 
 
 def test_dump_mesh_tags_raises_MeshTagNotFoundError(tmp_path, mesh):
-    geo = fenicsx_pulse.Geometry(mesh=mesh)
-    with pytest.raises(fenicsx_pulse.exceptions.MeshTagNotFoundError):
+    geo = pulse.Geometry(mesh=mesh)
+    with pytest.raises(pulse.exceptions.MeshTagNotFoundError):
         geo.dump_mesh_tags(tmp_path)
 
 
 def test_geometry_from_cardiac_geometries(tmp_path):
     geo1 = cardiac_geometries.mesh.lv_ellipsoid(outdir=tmp_path)
-    geo2 = fenicsx_pulse.Geometry.from_cardiac_geometries(geo1)
+    geo2 = pulse.Geometry.from_cardiac_geometries(geo1)
 
     assert geo1.mesh is geo2.mesh
     assert geo1.markers is geo2.markers
@@ -99,7 +99,7 @@ def test_HeartGeometry_lv(tmp_path):
         mu_apex_epi=-math.pi,
         mu_base_epi=-math.acos(5 / 20),
     )
-    geo2 = fenicsx_pulse.HeartGeometry.from_cardiac_geometries(geo1)
+    geo2 = pulse.HeartGeometry.from_cardiac_geometries(geo1)
 
     endo_volume = 1608.5279831096575
     assert np.isclose(geo2.volume("ENDO"), endo_volume)
@@ -115,7 +115,7 @@ def test_HeartGeometry_biv(tmp_path):
     geo1 = cardiac_geometries.mesh.biv_ellipsoid(
         outdir=tmp_path,
     )
-    geo2 = fenicsx_pulse.HeartGeometry.from_cardiac_geometries(geo1)
+    geo2 = pulse.HeartGeometry.from_cardiac_geometries(geo1)
 
     endo_lv_volume = 4.984208611265616
     assert np.isclose(geo2.volume("ENDO_LV"), endo_lv_volume, rtol=0.05)

@@ -21,7 +21,7 @@ import gotranx
 import adios4dolfinx
 import cardiac_geometries
 import cardiac_geometries.geometry
-import fenicsx_pulse
+import pulse
 
 circulation.log.setup_logging(logging.INFO)
 logger = logging.getLogger("pulse")
@@ -48,65 +48,65 @@ geo = cardiac_geometries.geometry.Geometry.from_folder(
 )
 geo.mesh.geometry.x[:] *= 3e-2
 
-geometry = fenicsx_pulse.HeartGeometry.from_cardiac_geometries(
+geometry = pulse.HeartGeometry.from_cardiac_geometries(
     geo, metadata={"quadrature_degree": 6},
 )
 
-# Next we create the material object, and we will use the transversely isotropic version of the {py:class}`Holzapfel Ogden model <fenicsx_pulse.holzapfelogden.HolzapfelOgden>`
+# Next we create the material object, and we will use the transversely isotropic version of the {py:class}`Holzapfel Ogden model <pulse.holzapfelogden.HolzapfelOgden>`
 
-material_params = fenicsx_pulse.HolzapfelOgden.transversely_isotropic_parameters()
-# material_params = fenicsx_pulse.HolzapfelOgden.orthotropic_parameters()
-material = fenicsx_pulse.HolzapfelOgden(f0=geo.f0, s0=geo.s0, **material_params)  # type: ignore
+material_params = pulse.HolzapfelOgden.transversely_isotropic_parameters()
+# material_params = pulse.HolzapfelOgden.orthotropic_parameters()
+material = pulse.HolzapfelOgden(f0=geo.f0, s0=geo.s0, **material_params)  # type: ignore
 
-# We use an active stress approach with 30% transverse active stress (see {py:meth}`fenicsx_pulse.active_stress.transversely_active_stress`)
+# We use an active stress approach with 30% transverse active stress (see {py:meth}`pulse.active_stress.transversely_active_stress`)
 
-Ta = fenicsx_pulse.Variable(
+Ta = pulse.Variable(
     dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0)), "kPa",
 )
-active_model = fenicsx_pulse.ActiveStress(geo.f0, activation=Ta)
+active_model = pulse.ActiveStress(geo.f0, activation=Ta)
 
 # We use an incompressible model
 
-comp_model = fenicsx_pulse.compressibility.Compressible2()
-viscoeleastic_model = fenicsx_pulse.viscoelasticity.Viscous()
+comp_model = pulse.compressibility.Compressible2()
+viscoeleastic_model = pulse.viscoelasticity.Viscous()
 
 # and assembles the `CardiacModel`
 
-model = fenicsx_pulse.CardiacModel(
+model = pulse.CardiacModel(
     material=material,
     active=active_model,
     compressibility=comp_model,
     viscoelasticity=viscoeleastic_model,
 )
 
-alpha_epi = fenicsx_pulse.Variable(
+alpha_epi = pulse.Variable(
     dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(1e8)),
     "Pa / m",
 )
-robin_epi = fenicsx_pulse.RobinBC(value=alpha_epi, marker=geometry.markers["EPI"][0])
-alpha_base = fenicsx_pulse.Variable(
+robin_epi = pulse.RobinBC(value=alpha_epi, marker=geometry.markers["EPI"][0])
+alpha_base = pulse.Variable(
     dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(1e5)),
     "Pa / m",
 )
-robin_base = fenicsx_pulse.RobinBC(value=alpha_base, marker=geometry.markers["BASE"][0])
+robin_base = pulse.RobinBC(value=alpha_base, marker=geometry.markers["BASE"][0])
 
 
 lvv_initial = geometry.volume("ENDO_LV")
 lv_volume = dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(lvv_initial))
-lv_cavity = fenicsx_pulse.problem.Cavity(marker="ENDO_LV", volume=lv_volume)
+lv_cavity = pulse.problem.Cavity(marker="ENDO_LV", volume=lv_volume)
 
 rvv_initial = geometry.volume("ENDO_RV")
 rv_volume = dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(rvv_initial))
-rv_cavity = fenicsx_pulse.problem.Cavity(marker="ENDO_RV", volume=rv_volume)
+rv_cavity = pulse.problem.Cavity(marker="ENDO_RV", volume=rv_volume)
 
 cavities = [lv_cavity, rv_cavity]
 
 
-parameters = {"base_bc": fenicsx_pulse.problem.BaseBC.free, "mesh_unit": "m"}
+parameters = {"base_bc": pulse.problem.BaseBC.free, "mesh_unit": "m"}
 
 outdir = Path("bleeding_biv3")
-bcs = fenicsx_pulse.BoundaryConditions(robin=(robin_epi, robin_base))
-problem = fenicsx_pulse.problem.StaticProblem(
+bcs = pulse.BoundaryConditions(robin=(robin_epi, robin_base))
+problem = pulse.problem.StaticProblem(
     model=model, geometry=geometry, bcs=bcs, cavities=cavities, parameters=parameters,
 )
 
