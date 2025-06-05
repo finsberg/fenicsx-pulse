@@ -81,6 +81,10 @@ def IsochoricDeformationGradient(F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
     return pow(J, -1.0 / float(dim)) * F
 
 
+def IsochoricDeformationGradient_from_u(u) -> ufl.core.expr.Expr:
+    return IsochoricDeformationGradient(DeformationGradient(u))
+
+
 def Jacobian(F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
     r"""Determinant of the deformation gradient
 

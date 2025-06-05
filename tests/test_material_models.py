@@ -3,7 +3,6 @@ import math
 import dolfinx
 import pytest
 import ufl
-import utils
 
 import pulse
 
@@ -12,7 +11,7 @@ import pulse
 def test_linear_elastic_model(obj_str, mesh, P1, u) -> None:
     E = 2.0
     _nu = 0.2
-    nu = utils.float2object(f=_nu, obj_str=obj_str, mesh=mesh, V=P1)
+    nu = pulse.utils.float2object(f=_nu, obj_str=obj_str, mesh=mesh, V=P1)
     model = pulse.LinearElastic(E=pulse.Variable(E, "Pa"), nu=nu)
 
     u.interpolate(lambda x: x)
@@ -23,14 +22,14 @@ def test_linear_elastic_model(obj_str, mesh, P1, u) -> None:
     sigma = model.sigma(F)
     I = ufl.Identity(3)
     zero = sigma - (E / (1 + _nu)) * (1 + (_nu / (1 - 2 * _nu)) * 3) * I
-    assert utils.matrix_is_zero(zero)
+    assert pulse.utils.matrix_is_zero(zero)
 
 
 @pytest.mark.parametrize("obj_str", ("float", "Constant", "Function"))
 def test_linear_elastic_model_with_invalid_range(obj_str, mesh, P1) -> None:
     E = pulse.Variable(2.0, "kPa")
     _nu = 0.5
-    nu = utils.float2object(f=_nu, obj_str=obj_str, mesh=mesh, V=P1)
+    nu = pulse.utils.float2object(f=_nu, obj_str=obj_str, mesh=mesh, V=P1)
 
     with pytest.raises(pulse.exceptions.InvalidRangeError):
         pulse.LinearElastic(E=E, nu=nu)

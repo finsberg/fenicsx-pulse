@@ -1,8 +1,7 @@
 import pytest
 import ufl
-import utils
 
-from pulse import kinematics
+from pulse import kinematics, utils
 
 
 def test_SecondOrderIdentity(u) -> None:
@@ -13,7 +12,7 @@ def test_SecondOrderIdentity(u) -> None:
     "cls, factor",
     (
         (kinematics.DeformationGradient, 2),
-        (utils.IsochoricDeformationGradient, pow(8, -1 / 3) * 2),
+        (kinematics.IsochoricDeformationGradient_from_u, pow(8, -1 / 3) * 2),
     ),
 )
 def test_DeformationGradient(cls, factor, u) -> None:
@@ -47,7 +46,7 @@ def test_DeformationGradient(cls, factor, u) -> None:
     "cls, factor",
     (
         (kinematics.DeformationGradient, 4),
-        (utils.IsochoricDeformationGradient, pow(8, -2 / 3) * 4),
+        (kinematics.IsochoricDeformationGradient_from_u, pow(8, -2 / 3) * 4),
     ),
 )
 def test_RightCauchyGreen(cls, factor, u) -> None:
@@ -63,7 +62,7 @@ def test_RightCauchyGreen(cls, factor, u) -> None:
     "cls, factor",
     (
         (kinematics.DeformationGradient, 4),
-        (utils.IsochoricDeformationGradient, pow(8, -2 / 3) * 4),
+        (kinematics.IsochoricDeformationGradient_from_u, pow(8, -2 / 3) * 4),
     ),
 )
 def test_LeftCauchyGreen(cls, factor, u) -> None:
@@ -79,7 +78,7 @@ def test_LeftCauchyGreen(cls, factor, u) -> None:
     "cls, factor",
     (
         (kinematics.DeformationGradient, 1),
-        (utils.IsochoricDeformationGradient, pow(8, -1 / 3) * 2 - 1),
+        (kinematics.IsochoricDeformationGradient_from_u, pow(8, -1 / 3) * 2 - 1),
     ),
 )
 def test_EngineeringStrain(cls, factor, u) -> None:
@@ -95,7 +94,7 @@ def test_EngineeringStrain(cls, factor, u) -> None:
     "cls, factor",
     (
         (kinematics.DeformationGradient, 1.5),
-        (utils.IsochoricDeformationGradient, 0.5 * (pow(8, -2 / 3) * 4 - 1)),
+        (kinematics.IsochoricDeformationGradient_from_u, 0.5 * (pow(8, -2 / 3) * 4 - 1)),
     ),
 )
 def test_GreenLagrangeStrain(cls, factor, u) -> None:

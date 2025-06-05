@@ -1,52 +1,8 @@
 import dolfinx
 import numpy as np
 import numpy.typing as npt
-
-
-def vertex_to_dofmap(V: dolfinx.fem.FunctionSpace) -> npt.NDArray[np.int32]:
-    """Compute a mapping from vertices to dofs in a function space
-
-    Parameters
-    ----------
-    V : dolfinx.fem.FunctionSpace
-        The function space
-
-    Returns
-    -------
-    npt.NDArray[np.int32]
-        The mapping from vertices to dofs
-    """
-    mesh = V.mesh
-    num_vertices_per_cell = dolfinx.cpp.mesh.cell_num_entities(mesh.topology.cell_type, 0)
-
-    dof_layout = np.empty((num_vertices_per_cell,), dtype=np.int32)
-    for i in range(num_vertices_per_cell):
-        var = V.dofmap.dof_layout.entity_dofs(0, i)
-        assert len(var) == 1
-        dof_layout[i] = var[0]
-
-    num_vertices = mesh.topology.index_map(0).size_local + mesh.topology.index_map(0).num_ghosts
-
-    c_to_v = mesh.topology.connectivity(mesh.topology.dim, 0)
-    assert (c_to_v.offsets[1:] - c_to_v.offsets[:-1] == c_to_v.offsets[1]).all(), (
-        "Single cell type supported"
-    )
-
-    vertex_to_dof_map = np.empty(num_vertices, dtype=np.int32)
-    vertex_to_dof_map[c_to_v.array] = V.dofmap.list[:, dof_layout].reshape(-1)
-    return vertex_to_dof_map
-
-
-def unroll_dofmap(dofs: npt.NDArray[np.int32], bs: int) -> npt.NDArray[np.int32]:
-    """
-    Given a two-dimensional dofmap of size `(num_cells, num_dofs_per_cell)`
-    Expand the dofmap by its block size such that the resulting array
-    is of size `(num_cells, bs*num_dofs_per_cell)`
-    """
-    num_cells, num_dofs_per_cell = dofs.shape
-    unrolled_dofmap = np.repeat(dofs, bs).reshape(num_cells, num_dofs_per_cell * bs) * bs
-    unrolled_dofmap += np.tile(np.arange(bs), num_dofs_per_cell)
-    return unrolled_dofmap
+import scifem
+import ufl
 
 
 def evaluate_at_vertex_tag(
@@ -72,9 +28,9 @@ def evaluate_at_vertex_tag(
     npt.NDArray[np.int32]
         The values of `u` at the vertices tagged with `tag`
     """
-    v2d = vertex_to_dofmap(u.function_space)
+    v2d = scifem.vertex_to_dofmap(u.function_space)
     block_index = v2d[vt.find(tag)]
-    dofs = unroll_dofmap(block_index.reshape(-1, 1), u.function_space.dofmap.bs)
+    dofs = scifem.utils.unroll_dofmap(block_index.reshape(-1, 1), u.function_space.dofmap.bs)
     return u.x.array[dofs]
 
 
@@ -115,3 +71,32 @@ def gather_broadcast_array(comm, local_array):
     else:
         global_array = np.array([])
     return comm.bcast(global_array, root=0)
+
+
+def matrix_is_zero(A: ufl.core.expr.Expr) -> bool:
+    n = ufl.domain.find_geometric_dimension(A)
+    for i in range(n):
+        for j in range(n):
+            value = dolfinx.fem.assemble_scalar(dolfinx.fem.form(A[i, j] * ufl.dx))
+            print(i, j, value)
+            is_zero = np.isclose(value, 0)
+            if not is_zero:
+                return False
+    return True
+
+
+def float2object(
+    f: float,
+    obj_str: str,
+    mesh: dolfinx.mesh.Mesh,
+    V: dolfinx.fem.FunctionSpace,
+):
+    if obj_str == "float":
+        return f
+    if obj_str == "Constant":
+        return dolfinx.fem.Constant(mesh, f)
+    if obj_str == "Function":
+        v = dolfinx.fem.Function(V)
+        v.x.array[:] = f
+        return v
+    raise ValueError(f"Invalid object string {obj_str!r}")

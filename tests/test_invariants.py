@@ -2,7 +2,6 @@ import dolfinx
 import numpy as np
 import pytest
 import ufl
-import utils
 
 from pulse import invariants, kinematics
 
@@ -11,7 +10,7 @@ from pulse import invariants, kinematics
     "cls, expected",
     (
         (kinematics.DeformationGradient, 4 * 3),
-        (utils.IsochoricDeformationGradient, pow(8, -2 / 3) * 4 * 3),
+        (kinematics.IsochoricDeformationGradient_from_u, pow(8, -2 / 3) * 4 * 3),
     ),
 )
 def test_I1(cls, expected, u) -> None:
@@ -30,7 +29,7 @@ def test_I1(cls, expected, u) -> None:
     (
         (kinematics.DeformationGradient, 0.5 * ((4 * 3) ** 2 - (4**2) * 3)),
         (
-            utils.IsochoricDeformationGradient,
+            kinematics.IsochoricDeformationGradient_from_u,
             0.5 * (((pow(8, -2 / 3) * 4 * 3) ** 2) - ((pow(8, -2 / 3) * 4) ** 2) * 3),
         ),
     ),
@@ -49,7 +48,7 @@ def test_I2(cls, expected, u) -> None:
     "cls, expected",
     (
         (kinematics.DeformationGradient, 4**3),
-        (utils.IsochoricDeformationGradient, (pow(8, -2 / 3) * 4) ** 3),
+        (kinematics.IsochoricDeformationGradient_from_u, (pow(8, -2 / 3) * 4) ** 3),
     ),
 )
 def test_I3(cls, expected, u) -> None:
@@ -67,7 +66,7 @@ def test_I3(cls, expected, u) -> None:
     "cls, expected",
     (
         (kinematics.DeformationGradient, 4),
-        (utils.IsochoricDeformationGradient, pow(8, -2 / 3) * 4),
+        (kinematics.IsochoricDeformationGradient_from_u, pow(8, -2 / 3) * 4),
     ),
 )
 def test_I4(cls, expected, u, mesh) -> None:
@@ -86,7 +85,7 @@ def test_I4(cls, expected, u, mesh) -> None:
     "cls, expected",
     (
         (kinematics.DeformationGradient, 4**2),
-        (utils.IsochoricDeformationGradient, (pow(8, -2 / 3) * 4) ** 2),
+        (kinematics.IsochoricDeformationGradient_from_u, (pow(8, -2 / 3) * 4) ** 2),
     ),
 )
 def test_I5(cls, expected, u, mesh) -> None:
@@ -103,7 +102,7 @@ def test_I5(cls, expected, u, mesh) -> None:
 
 @pytest.mark.parametrize(
     "cls, expected",
-    ((kinematics.DeformationGradient, 0), (utils.IsochoricDeformationGradient, 0)),
+    ((kinematics.DeformationGradient, 0), (kinematics.IsochoricDeformationGradient_from_u, 0)),
 )
 def test_I8(cls, expected, u, mesh) -> None:
     u.interpolate(lambda x: x)
