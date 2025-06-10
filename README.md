@@ -17,11 +17,16 @@
 * Source code: https://github.com/finsberg/fenicsx-pulse
 
 ## Install
-
-To install `fenicsx_pulse` you need to first [install FEniCSx](https://github.com/FEniCS/dolfinx#installation). Next you can install `fenicsx_pulse` via pip
+You can install the library with `pip`
 ```
 python3 -m pip install fenicsx-pulse
 ```
+or with `conda`
+```
+conda install -c conda-forge fenicsx-pulse
+```
+Note that installing with `pip` requires [FEniCSx already installed](https://fenicsproject.org/download/)
+
 We also provide a pre-built docker image with FEniCSx and `fenicsx_pulse` installed. You pull this image using the command
 ```
 docker pull ghcr.io/finsberg/fenicsx-pulse:v0.3.1
