@@ -34,6 +34,7 @@ class NeoHookean(HyperElasticMaterial):
     """
 
     mu: Variable = field(default_factory=lambda: Variable(15.0, "kPa"))
+    deviatoric: bool = field(default=True)
 
     def __post_init__(self):
         if not isinstance(self.mu, Variable):
@@ -54,6 +55,10 @@ class NeoHookean(HyperElasticMaterial):
     def strain_energy(self, C: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
         I1 = invariants.I1(C)
         dim = C.ufl_shape[0]
+        if self.deviatoric:
+            # Deviatoric strain energy
+            Jm23 = pow(ufl.det(C), -1.0 / dim)
+            I1 *= Jm23
         mu = self.mu.to_base_units()
         return 0.5 * mu * (I1 - dim)
 

@@ -112,7 +112,10 @@ def test_CompressibleProblem_and_boundary_conditions(mesh):
     )
 
     f0 = dolfinx.fem.Constant(mesh, PETSc.ScalarType((1.0, 0.0, 0.0)))
-    material = pulse.NeoHookean(mu=dolfinx.fem.Constant(mesh, PETSc.ScalarType(15.0)))
+    material = pulse.NeoHookean(
+        mu=dolfinx.fem.Constant(mesh, PETSc.ScalarType(15.0)),
+        deviatoric=True,
+    )
 
     Ta = dolfinx.fem.Constant(mesh, PETSc.ScalarType(0.0))
     active_model = pulse.ActiveStress(f0, activation=Ta)
@@ -151,7 +154,6 @@ def test_CompressibleProblem_and_boundary_conditions(mesh):
 
     problem = pulse.StaticProblem(model=model, geometry=geo, bcs=bcs)
     problem.solve()
-
     # And with no external forces, there should be no displacement
     assert np.allclose(problem.u.x.array, 0.0)
 

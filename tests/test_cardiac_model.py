@@ -74,6 +74,7 @@ def test_CardiacModel_HolzapfelOgden(comp_model_cls, isotropy, mesh, u):
 def test_CardiacModel_NeoHookean(comp_model_cls, isotropy, mesh, u):
     material = pulse.NeoHookean(
         mu=dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(15.0)),
+        deviatoric=False,
     )
     f0 = dolfinx.fem.Constant(mesh, (1.0, 0.0, 0.0))
     comp_model = comp_model_cls()
