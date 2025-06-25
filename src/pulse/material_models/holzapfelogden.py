@@ -107,6 +107,7 @@ class HolzapfelOgden(HyperElasticMaterial):
     b_fs: Variable = field(default_factory=lambda: Variable(0.0, "dimensionless"))
     use_subplus: bool = field(default=True, repr=False)
     use_heaviside: bool = field(default=True, repr=False)
+    deviatoric: bool = field(default=True, repr=False)
 
     _W1_func: Invariant = field(
         init=False,
@@ -305,7 +306,15 @@ class HolzapfelOgden(HyperElasticMaterial):
 
     def strain_energy(self, C: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
         dim = C.ufl_shape[0]
-        I1 = pow(invariants.I3(C), -1 / dim) * invariants.I1(C)
+
+        I1 = invariants.I1(C)
+
+        if self.deviatoric:
+            Jm23 = pow(ufl.det(C), -1.0 / dim)
+            C *= Jm23  # Make C deviatoric
+            Jm23 = pow(invariants.I3(C), -1 / dim)
+            I1 *= Jm23  # Convert to deviatoric I1 - see https://arxiv.org/pdf/2009.08754
+
         I4f = self._I4f(C)
         I4s = self._I4s(C)
         I8fs = self._I8fs(C)

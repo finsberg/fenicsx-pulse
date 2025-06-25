@@ -61,6 +61,8 @@ class CardiacModel:
         if C_dot is not None:
             psi += self.viscoelasticity.strain_energy(C_dot)
 
+        return psi
+
     def S(
         self,
         C: ufl.core.expr.Expr,

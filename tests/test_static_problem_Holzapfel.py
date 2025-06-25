@@ -122,7 +122,6 @@ def test_CompressibleProblem_and_boundary_conditions(mesh):
         material=material,
         active=active_model,
         compressibility=comp_model,
-        decouple_deviatoric_volumetric=True,
     )
 
     def dirichlet_bc(
