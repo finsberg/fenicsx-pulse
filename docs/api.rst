@@ -24,11 +24,6 @@ material_model
     :members:
     :inherited-members:
 
-
-.. automodule:: fenicsx_pulse.material_models.linear_elastic
-    :members:
-    :inherited-members:
-
 .. automodule:: fenicsx_pulse.material_models.holzapfelogden
     :members:
     :inherited-members:
