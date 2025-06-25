@@ -99,3 +99,18 @@ class HyperElasticMaterial(Material, abc.ABC):
 
     def sigma(self, F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
         return kinematics.InversePiolaTransform(self.P(F), F)
+
+    def S(self, C: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
+        """Cauchy stress tensor for the hyperelastic material model.
+
+        Parameters
+        ----------
+        C : ufl.core.expr.Expr
+            The right Cauchy-Green deformation tensor
+
+        Returns
+        -------
+        ufl.core.expr.Expr
+            The Cauchy stress tensor
+        """
+        return 2.0 * ufl.diff(self.strain_energy(C), C)

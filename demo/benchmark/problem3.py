@@ -75,7 +75,6 @@ model = pulse.CardiacModel(
     material=material,
     active=active_model,
     compressibility=comp_model,
-    decouple_deviatoric_volumetric=True,
 )
 
 

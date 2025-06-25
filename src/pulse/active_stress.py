@@ -91,12 +91,12 @@ class ActiveStress(ActiveModel):
     def Fe(self, F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
         return F
 
-    def strain_energy(self, F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
+    def strain_energy(self, C: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
         """Active strain energy density
 
         Parameters
         ----------
-        F : ufl.core.expr.Expr
+        C : ufl.core.expr.Expr
             The deformation gradient
 
         Returns
@@ -109,9 +109,32 @@ class ActiveStress(ActiveModel):
         NotImplementedError
             _description_
         """
-        C = F.T * F
         if self.isotropy == ActiveStressModels.transversely:
-            return transversely_active_stress(Ta=self.Ta, C=C, f0=self.f0, eta=self.eta)
+            return transversely_active_stress_strain_energy(
+                Ta=self.Ta,
+                C=C,
+                f0=self.f0,
+                eta=self.eta,
+            )
+        else:
+            raise NotImplementedError
+
+    def S(self, C: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
+        """Cauchy stress tensor for the active stress model.
+
+        Parameters
+        ----------
+        C : ufl.core.expr.Expr
+            The right Cauchy-Green deformation tensor
+
+        Returns
+        -------
+        ufl.core.expr.Expr
+            The Cauchy stress tensor
+        """
+
+        if self.isotropy == ActiveStressModels.transversely:
+            return transversely_active_stress(Ta=self.Ta, f0=self.f0, eta=self.eta)
         else:
             raise NotImplementedError
 
@@ -119,7 +142,7 @@ class ActiveStress(ActiveModel):
         return "Ta (I4f - 1 + \u03b7 ((I1 - 3) - (I4f - 1)))"
 
 
-def transversely_active_stress(Ta, C, f0, eta=0.0):
+def transversely_active_stress_strain_energy(Ta, C, f0, eta=0.0):
     r"""
     Return active strain energy when activation is only
     working along the fibers, with a possible transverse
@@ -149,3 +172,33 @@ def transversely_active_stress(Ta, C, f0, eta=0.0):
     I4f = ufl.inner(C * f0, f0)
     I1 = ufl.tr(C)
     return 0.5 * Ta * ((I4f - 1) + eta * ((I1 - 3) - (I4f - 1)))
+
+
+def transversely_active_stress(Ta, f0, eta=0.0):
+    r"""
+    Return the Cauchy stress tensor for the active stress model
+    when activation is only working along the fibers, with a
+    possible transverse component defined by :math:`\eta` with
+    :math:`\eta = 0` meaning that all active stress is along the
+    fiber and :math:`\eta = 1` meaning that all active stress is in
+    the transverse direction. The Cauchy stress tensor is given by
+
+    .. math::
+        \sigma = T_a \left( I_{4f} - 1 + \eta ((I_1 - 3) - (I_{4f} - 1)) \right) f_0
+
+    Arguments
+    ---------
+    Ta : dolfinx.fem.Function or dolfinx.femConstant
+        A scalar function representing the magnitude of the
+        active stress in the reference configuration (first Piola)
+    f0 : dolfinx.fem.Function
+        A vector function representing the direction of the
+        active stress
+    eta : float
+        Amount of active stress in the transverse direction
+        (relative to f0)
+    """
+    S = Ta * ufl.outer(f0, f0)
+    if not np.isclose(float(eta), 0.0):
+        S += Ta * eta * (ufl.Identity(len(f0)) - ufl.outer(f0, f0))
+    return S

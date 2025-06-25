@@ -12,13 +12,13 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ViscoElasticity(ABC):
     @abstractmethod
-    def strain_energy(self, E_dot) -> ufl.Form:
+    def strain_energy(self, C_dot) -> ufl.Form:
         """Strain energy density function.
 
         Parameters
         ----------
-        E_dot : ufl.Coefficient
-            The strain rate tensor
+        C_dot : ufl.core.expr.Expr
+            The time derivative of the deformation gradient (strain rate)
 
         Returns
         -------
@@ -27,9 +27,24 @@ class ViscoElasticity(ABC):
         """
         ...
 
+    def S(self, C_dot: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
+        """Cauchy stress tensor for the viscoelasticity model.
+
+        Parameters
+        ----------
+        C_dot : ufl.core.expr.Expr
+            The time derivative of the deformation gradient (strain rate)
+
+        Returns
+        -------
+        ufl.core.expr.Expr
+            The Cauchy stress tensor
+        """
+        return 2.0 * ufl.diff(self.strain_energy(C_dot), C_dot)
+
 
 class NoneViscoElasticity(ViscoElasticity):
-    def strain_energy(self, E_dot) -> ufl.Form:
+    def strain_energy(self, C_dot: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
         return 0.0
 
 
@@ -43,7 +58,8 @@ class Viscous(ViscoElasticity):
             logger.warning("Setting eta to %s %s", self.eta, unit)
             self.eta = Variable(self.eta, unit)
 
-    def strain_energy(self, E_dot) -> ufl.Form:
+    def strain_energy(self, C_dot) -> ufl.Form:
+        E_dot = 0.5 * C_dot
         eta = self.eta.to_base_units()
         return 0.5 * eta * ufl.tr(E_dot * E_dot)
 

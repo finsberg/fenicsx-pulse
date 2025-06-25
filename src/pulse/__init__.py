@@ -36,7 +36,6 @@ from .material_model import HyperElasticMaterial, Material
 from .material_models import (
     Guccione,
     HolzapfelOgden,
-    LinearElastic,
     NeoHookean,
     SaintVenantKirchhoff,
 )
@@ -52,7 +51,6 @@ __all__ = [
     "cli",
     "Material",
     "HyperElasticMaterial",
-    "LinearElastic",
     "exceptions",
     "HolzapfelOgden",
     "compressibility",

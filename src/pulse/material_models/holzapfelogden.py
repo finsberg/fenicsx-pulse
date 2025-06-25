@@ -303,11 +303,12 @@ class HolzapfelOgden(HyperElasticMaterial):
     def _W8fs(self, I8fs: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
         return self._W8fs_func(I8fs)
 
-    def strain_energy(self, F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
-        I1 = invariants.I1(F)
-        I4f = self._I4f(F)
-        I4s = self._I4s(F)
-        I8fs = self._I8fs(F)
+    def strain_energy(self, C: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
+        dim = C.ufl_shape[0]
+        I1 = pow(invariants.I3(C), -1 / dim) * invariants.I1(C)
+        I4f = self._I4f(C)
+        I4s = self._I4s(C)
+        I8fs = self._I8fs(C)
         return self._W1(I1) + self._W4f(I4f) + self._W4s(I4s) + self._W8fs(I8fs)
 
     def __str__(self) -> str:

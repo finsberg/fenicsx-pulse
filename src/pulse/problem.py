@@ -107,6 +107,7 @@ class StaticProblem:
             self.p = None
             self.p_test = None
             self.dp = None
+        self.model.compressibility.register(self.p)
 
     def _init_u_space(self):
         u_family, u_degree = self.parameters["u_space"].split("_")
@@ -199,9 +200,17 @@ class StaticProblem:
 
     def _material_form(self, u: dolfinx.fem.Function, p: dolfinx.fem.Function):
         F = ufl.grad(u) + ufl.Identity(3)
-        internal_energy = self.model.strain_energy(F, p=p) * self.geometry.dx
+        J = ufl.det(F)
+        var_C = ufl.grad(self.u_test).T * F + F.T * ufl.grad(self.u_test)
+        C = ufl.variable(F.T * F)
 
-        return self._create_residual_form(internal_energy)
+        forms = self._empty_form()
+        forms[0] += ufl.inner(self.model.S(C), 0.5 * var_C) * self.geometry.dx
+
+        if self.is_incompressible:
+            forms[-1] += (J - 1.0) * self.p_test * self.geometry.dx
+
+        return forms
 
     def _robin_form(
         self,
@@ -432,15 +441,20 @@ class DynamicProblem(StaticProblem):
 
     def _material_form(self, u, v, p):
         F = ufl.grad(u) + ufl.Identity(3)
-        F_dot = ufl.grad(v)
-        l = F_dot * ufl.inv(F)  # Holzapfel eq: 2.139
-        d = 0.5 * (l + l.T)  # Holzapfel 2.146
-        E_dot = ufl.variable(F.T * d * F)  # Holzapfel 2.163
-        # Viscous part of the material model
-        forms = super()._material_form(u, p)
+        C = ufl.variable(F.T * F)
+        J = ufl.det(F)
 
-        P_v = F * ufl.diff(self.model.viscoelastic_strain_energy(E_dot), E_dot)
-        forms[0] += ufl.inner(P_v, ufl.grad(self.u_test)) * self.geometry.dx
+        F_dot = ufl.grad(v)
+        C_dot = ufl.variable(F_dot.T * F + F.T * F_dot)
+
+        var_C = ufl.grad(self.u_test).T * F + F.T * ufl.grad(self.u_test)
+
+        forms = self._empty_form()
+        forms[0] += ufl.inner(self.model.S(C, C_dot=C_dot), 0.5 * var_C) * self.geometry.dx
+
+        if self.is_incompressible:
+            forms[-1] += (J - 1.0) * self.p_test * self.geometry.dx
+
         return forms
 
     def _acceleration_form(self, a: dolfinx.fem.Function):

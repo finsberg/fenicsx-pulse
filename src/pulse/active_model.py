@@ -106,6 +106,21 @@ class ActiveModel(abc.ABC):
             The active strain energy density function
         """
 
+    def S(self, F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
+        """Cauchy stress tensor for the active model.
+
+        Parameters
+        ----------
+        F : ufl.core.expr.Expr
+            The deformation gradient
+
+        Returns
+        -------
+        ufl.core.expr.Expr
+            The Cauchy stress tensor
+        """
+        return 2.0 * ufl.diff(self.strain_energy(F), F)
+
 
 class Passive(ActiveModel):
     """Active model with no active component.
