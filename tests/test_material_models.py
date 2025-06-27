@@ -97,7 +97,7 @@ def test_holzapfel_ogden_pure_fiber_sheets(u, mesh):
 
 
 def test_neo_hookean(u, mesh):
-    model = pulse.NeoHookean(mu=1.0)
+    model = pulse.NeoHookean(mu=1.0, deviatoric=False)
     u.interpolate(lambda x: x / 10)
     F = pulse.kinematics.DeformationGradient(u)
     C = F.T * F
