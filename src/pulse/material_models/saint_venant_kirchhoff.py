@@ -55,13 +55,11 @@ class SaintVenantKirchhoff(HyperElasticMaterial):
                 expected_range=(0.0, np.inf),
             )
 
-    def strain_energy(self, F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
-        dim = ufl.domain.find_geometric_dimension(F)
-        gradu = F - ufl.Identity(dim)
-        epsilon = 0.5 * (gradu + gradu.T)
+    def strain_energy(self, C: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
+        dim = C.ufl_shape[0]
+        E = 0.5 * (C - ufl.Identity(dim))
+
         mu = self.mu.to_base_units()
         lmbda = self.lmbda.to_base_units()
 
-        return lmbda / 2 * (ufl.tr(epsilon) ** 2) + mu * ufl.tr(
-            epsilon * epsilon,
-        )
+        return lmbda / 2 * (ufl.tr(E) ** 2) + mu * ufl.tr(E * E)

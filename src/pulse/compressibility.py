@@ -31,12 +31,16 @@ class Compressibility(abc.ABC):
     """Base class for compressibility models."""
 
     @abc.abstractmethod
-    def strain_energy(self, J: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
+    def strain_energy(self, C: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
         """Strain energy density function"""
         pass
 
     def register(self, *args, **kwargs) -> None:
         pass
+
+    def S(self, C: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
+        """Cauchy stress tensor for the compressibility model."""
+        return 2.0 * ufl.diff(self.strain_energy(C), C)
 
     @abc.abstractmethod
     def is_compressible(self) -> bool:
@@ -63,7 +67,8 @@ class Incompressible(Compressibility):
     def register(self, p: dolfinx.fem.Function) -> None:
         self.p = p
 
-    def strain_energy(self, J: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
+    def strain_energy(self, C: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
+        J = ufl.sqrt(ufl.det(C))
         if self.p is None:
             raise exceptions.MissingModelAttribute(attr="p", model=type(self).__name__)
         return self.p * (J - 1.0)
@@ -105,7 +110,8 @@ class Compressible(Compressibility):
     def __str__(self) -> str:
         return "\u03ba (J ln(J) - J + 1)"
 
-    def strain_energy(self, J: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
+    def strain_energy(self, C: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
+        J = ufl.sqrt(ufl.det(C))
         kappa = self.kappa.to_base_units()
         return kappa * (J * ufl.ln(J) - J + 1)
 
@@ -129,6 +135,7 @@ class Compressible2(Compressible):
     def __str__(self) -> str:
         return "\u03ba (J ** 2 - 1 - 2 ln(J))"
 
-    def strain_energy(self, J: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
+    def strain_energy(self, C: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
+        J = ufl.sqrt(ufl.det(C))
         kappa = self.kappa.to_base_units()
         return 0.25 * kappa * (J**2 - 1 - 2 * ufl.ln(J))

@@ -24,11 +24,10 @@ where :math:`\mathbf{C} = \mathbf{F}^T\mathbf{F}` is the right Cauchy-Green tens
 
 import ufl
 
-from . import kinematics
 from ._types import FuncConst
 
 
-def I1(F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
+def I1(C: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
     r"""First principal invariant
 
     .. math::
@@ -36,7 +35,7 @@ def I1(F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
 
     Parameters
     ----------
-    F : ufl.core.expr.Expr
+    C : ufl.core.expr.Expr
         The deformation gradient
 
     Returns
@@ -45,12 +44,11 @@ def I1(F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
         First principal invariant
 
     """
-    C = kinematics.RightCauchyGreen(F)
     I1 = ufl.tr(C)
     return I1
 
 
-def I2(F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
+def I2(C: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
     r"""Second principal invariant
 
     .. math::
@@ -67,11 +65,10 @@ def I2(F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
         Second principal invariant
 
     """
-    C = kinematics.RightCauchyGreen(F)
-    return 0.5 * (I1(F) * I1(F) - ufl.tr(C * C))
+    return 0.5 * (I1(C) * I1(C) - ufl.tr(C * C))
 
 
-def I3(F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
+def I3(C: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
     r"""Third principal invariant
 
     .. math::
@@ -79,7 +76,7 @@ def I3(F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
 
     Parameters
     ----------
-    F : ufl.core.expr.Expr
+    C : ufl.core.expr.Expr
         The deformation gradient
 
     Returns
@@ -88,11 +85,10 @@ def I3(F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
         Third principal invariant
 
     """
-    C = kinematics.RightCauchyGreen(F)
     return ufl.det(C)
 
 
-def I4(F: ufl.core.expr.Expr, a0: FuncConst) -> ufl.core.expr.Expr:
+def I4(C: ufl.core.expr.Expr, a0: FuncConst) -> ufl.core.expr.Expr:
     r"""Fourth quasi invariant
 
     .. math::
@@ -100,7 +96,7 @@ def I4(F: ufl.core.expr.Expr, a0: FuncConst) -> ufl.core.expr.Expr:
 
     Parameters
     ----------
-    F : ufl.core.expr.Expr
+    C : ufl.core.expr.Expr
         The deformation gradient
     a0 : FuncConst
         Some direction
@@ -111,11 +107,10 @@ def I4(F: ufl.core.expr.Expr, a0: FuncConst) -> ufl.core.expr.Expr:
         Fourth quasi invariant in the direction a0
 
     """
-    C = kinematics.RightCauchyGreen(F)
     return ufl.inner(C * a0, a0)
 
 
-def I5(F: ufl.core.expr.Expr, a0: FuncConst) -> ufl.core.expr.Expr:
+def I5(C: ufl.core.expr.Expr, a0: FuncConst) -> ufl.core.expr.Expr:
     r"""Fifth quasi invariant
 
     .. math::
@@ -123,7 +118,7 @@ def I5(F: ufl.core.expr.Expr, a0: FuncConst) -> ufl.core.expr.Expr:
 
     Parameters
     ----------
-    F : ufl.core.expr.Expr
+    C : ufl.core.expr.Expr
         The deformation gradient
     a0 : FuncConst
         Some direction
@@ -134,11 +129,10 @@ def I5(F: ufl.core.expr.Expr, a0: FuncConst) -> ufl.core.expr.Expr:
         Fifth quasi invariant in the direction a0
 
     """
-    C = kinematics.RightCauchyGreen(F)
     return ufl.inner(C * a0, C * a0)
 
 
-def I8(F: ufl.core.expr.Expr, a0: FuncConst, b0: FuncConst) -> ufl.core.expr.Expr:
+def I8(C: ufl.core.expr.Expr, a0: FuncConst, b0: FuncConst) -> ufl.core.expr.Expr:
     r"""Eight quasi invariant
 
     .. math::
@@ -147,7 +141,7 @@ def I8(F: ufl.core.expr.Expr, a0: FuncConst, b0: FuncConst) -> ufl.core.expr.Exp
 
     Parameters
     ----------
-    F : ufl.core.expr.Expr
+    C : ufl.core.expr.Expr
         The deformation gradient
     a0 : FuncConst
         Some direction
@@ -160,4 +154,4 @@ def I8(F: ufl.core.expr.Expr, a0: FuncConst, b0: FuncConst) -> ufl.core.expr.Exp
         Eight quasi invariant in the direction a0
 
     """
-    return ufl.inner(F * a0, F * b0)
+    return ufl.inner(C * a0, b0)

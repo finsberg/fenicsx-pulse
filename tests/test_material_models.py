@@ -7,34 +7,6 @@ import ufl
 import pulse
 
 
-@pytest.mark.parametrize("obj_str", ("float", "Constant", "Function"))
-def test_linear_elastic_model(obj_str, mesh, P1, u) -> None:
-    E = 2.0
-    _nu = 0.2
-    nu = pulse.utils.float2object(f=_nu, obj_str=obj_str, mesh=mesh, V=P1)
-    model = pulse.LinearElastic(E=pulse.Variable(E, "Pa"), nu=nu)
-
-    u.interpolate(lambda x: x)
-    F = pulse.kinematics.DeformationGradient(u)
-    # F = 2I, e = I, tr(e) = 3
-    # sigma = (E / (1 + nu)) * (e + (nu / (1 - 2 * nu)) * tr(e) * I
-    # sigma = (E / (1 + nu)) * (1 + (nu / (1 - 2 * nu)) * 3) * I
-    sigma = model.sigma(F)
-    I = ufl.Identity(3)
-    zero = sigma - (E / (1 + _nu)) * (1 + (_nu / (1 - 2 * _nu)) * 3) * I
-    assert pulse.utils.matrix_is_zero(zero)
-
-
-@pytest.mark.parametrize("obj_str", ("float", "Constant", "Function"))
-def test_linear_elastic_model_with_invalid_range(obj_str, mesh, P1) -> None:
-    E = pulse.Variable(2.0, "kPa")
-    _nu = 0.5
-    nu = pulse.utils.float2object(f=_nu, obj_str=obj_str, mesh=mesh, V=P1)
-
-    with pytest.raises(pulse.exceptions.InvalidRangeError):
-        pulse.LinearElastic(E=E, nu=nu)
-
-
 @pytest.mark.parametrize(
     "params_func, expected_value",
     (
@@ -50,12 +22,13 @@ def test_holzapfel_ogden(params_func, expected_value, mesh, u) -> None:
     params = params_func()
     f0 = dolfinx.fem.Constant(mesh, (1.0, 0.0, 0.0))
     s0 = dolfinx.fem.Constant(mesh, (0.0, 1.0, 0.0))
-    model = pulse.HolzapfelOgden(f0=f0, s0=s0, **params)
+    model = pulse.HolzapfelOgden(f0=f0, s0=s0, **params, deviatoric=False)
 
     u.interpolate(lambda x: x / 10)
     F = pulse.kinematics.DeformationGradient(u)
+    C = F.T * F
     # F = I + 0.1 I, C = 1.21 I
-    psi = model.strain_energy(F)
+    psi = model.strain_energy(C)
     value = dolfinx.fem.assemble_scalar(dolfinx.fem.form(psi * ufl.dx))
 
     assert math.isclose(value, expected_value)
@@ -84,10 +57,11 @@ def test_holzapfel_ogden_raises_MissingModelAttribute(params, attr):
 
 
 def test_holzapfel_ogden_neohookean(u):
-    model = pulse.HolzapfelOgden(a=1.0)
+    model = pulse.HolzapfelOgden(a=1.0, deviatoric=False)
     u.interpolate(lambda x: x / 10)
     F = pulse.kinematics.DeformationGradient(u)
-    psi = model.strain_energy(F)
+    C = F.T * F
+    psi = model.strain_energy(C)
     value = dolfinx.fem.assemble_scalar(dolfinx.fem.form(psi * ufl.dx))
     # F = I + 0.1 I, C = 1.21 I, I1= 3*1.21
     # psi = (a / 2) * (I1 - 3) = 0.5 (3 * 1.21 - 3) = 0.315
@@ -98,10 +72,11 @@ def test_holzapfel_ogden_neohookean(u):
 
 def test_holzapfel_ogden_pure_fiber(u, mesh):
     f0 = dolfinx.fem.Constant(mesh, (1.0, 0.0, 0.0))
-    model = pulse.HolzapfelOgden(a_f=1.0, f0=f0)
+    model = pulse.HolzapfelOgden(a_f=1.0, f0=f0, deviatoric=False)
     u.interpolate(lambda x: x / 10)
     F = pulse.kinematics.DeformationGradient(u)
-    psi = model.strain_energy(F)
+    C = F.T * F
+    psi = model.strain_energy(C)
     value = dolfinx.fem.assemble_scalar(dolfinx.fem.form(psi * ufl.dx))
     # F = I + 0.1 I, C = 1.21 I, I4f = 1.21
     # psi = (a_f / 2) * (I4 - 1)**2 = 0.5 * 0.21**2
@@ -110,10 +85,11 @@ def test_holzapfel_ogden_pure_fiber(u, mesh):
 
 def test_holzapfel_ogden_pure_fiber_sheets(u, mesh):
     f0 = dolfinx.fem.Constant(mesh, (1.0, 0.0, 0.0))
-    model = pulse.HolzapfelOgden(a_fs=1.0, f0=f0, s0=f0)
+    model = pulse.HolzapfelOgden(a_fs=1.0, f0=f0, s0=f0, deviatoric=False)
     u.interpolate(lambda x: x / 10)
     F = pulse.kinematics.DeformationGradient(u)
-    psi = model.strain_energy(F)
+    C = F.T * F
+    psi = model.strain_energy(C)
     value = dolfinx.fem.assemble_scalar(dolfinx.fem.form(psi * ufl.dx))
     # F = I + 0.1 I, = 1.1 -> I8fs = 1.21
     # psi = (a_f / 2) * I8fs**2 = 0.5 * 1.21**2
@@ -121,10 +97,11 @@ def test_holzapfel_ogden_pure_fiber_sheets(u, mesh):
 
 
 def test_neo_hookean(u, mesh):
-    model = pulse.NeoHookean(mu=1.0)
+    model = pulse.NeoHookean(mu=1.0, deviatoric=False)
     u.interpolate(lambda x: x / 10)
     F = pulse.kinematics.DeformationGradient(u)
-    psi = model.strain_energy(F)
+    C = F.T * F
+    psi = model.strain_energy(C)
     value = dolfinx.fem.assemble_scalar(dolfinx.fem.form(psi * ufl.dx))
     # F = I + 0.1 I, C = 1.21 I
     # psi = (mu / 2) * (I1 - 3) = 0.5 * (3.63 - 3)
@@ -137,24 +114,27 @@ def test_saint_venant_kirchhoff(u):
     model = pulse.SaintVenantKirchhoff(lmbda=lmbda, mu=mu)
     u.interpolate(lambda x: x / 10)
     F = pulse.kinematics.DeformationGradient(u)
-    psi = model.strain_energy(F)
+    C = F.T * F
+    psi = model.strain_energy(C)
     value = dolfinx.fem.assemble_scalar(dolfinx.fem.form(psi * ufl.dx))
-    # gradu = 0.1 I, epsilon = 0.5 (gradu + gradu.T) = 0.1 I
-    # tr(epsilon) = 0.1 * 3 = 0.3, tr(epsilon * epsilon) = 0.1**2 * 3 = 0.03
-    # psi = lmbda / 2 * tr(epsilon)**2 + mu * tr(epsilon * epsilon)
-    expected = 0.5 * lmbda * 0.3**2 + mu * 0.03
+    # gradu = 0.1 I, C = 1.21 I , E = 0.5 * (C - I) = 0.105 I
+    # tr(E) = 0.105 * 3 = 0.315, tr(E * E) = 0.105**2 * 3
+    # psi = lmbda / 2 * tr(E)**2 + mu * tr(E * E)
+    expected = 0.5 * lmbda * 0.315**2 + mu * 3 * (0.105**2)
+
     assert math.isclose(value, expected)
 
 
 def test_guccione_isotropic(u):
     C = 10.0
     bf = bt = bfs = 1.0
-    model = pulse.Guccione(C=C, bf=bf, bt=bt, bfs=bfs)
+    model = pulse.Guccione(C=C, bf=bf, bt=bt, bfs=bfs, deviatoric=False)
     assert model.is_isotropic()
 
     u.interpolate(lambda x: x / 10)
     F = pulse.kinematics.DeformationGradient(u)
-    psi = model.strain_energy(F)
+    C = F.T * F
+    psi = model.strain_energy(C)
     value = dolfinx.fem.assemble_scalar(dolfinx.fem.form(psi * ufl.dx))
     # F = I + 0.1 I, C = 1.21 I, E = 0.5 * (C - I) = 0.105 I
     # E * E = 0.105**2 I, tr(E * E) = 0.105**2 * 3
@@ -171,12 +151,13 @@ def test_guccione_anisotropic(u, mesh):
     bf = 1.0
     bt = 2.0
     bfs = 3.0
-    model = pulse.Guccione(C=C, bf=bf, bt=bt, bfs=bfs, f0=f0, s0=s0, n0=n0)
+    model = pulse.Guccione(C=C, bf=bf, bt=bt, bfs=bfs, f0=f0, s0=s0, n0=n0, deviatoric=False)
     assert not model.is_isotropic()
 
     u.interpolate(lambda x: x / 10)
     F = pulse.kinematics.DeformationGradient(u)
-    psi = model.strain_energy(F)
+    C = F.T * F
+    psi = model.strain_energy(C)
     value = dolfinx.fem.assemble_scalar(dolfinx.fem.form(psi * ufl.dx))
     # F = I + 0.1 I, C = 1.21 I, E = 0.5 * (C - I) = 0.105 I
     # E11 = E22 = E33 = 0.105, E12 = E13 = E23 = 0

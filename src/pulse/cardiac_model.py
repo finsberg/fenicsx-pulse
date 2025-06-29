@@ -8,19 +8,21 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 import dolfinx
+import ufl
 
-from . import kinematics
 from .viscoelasticity import NoneViscoElasticity
 
 
 class ActiveModel(Protocol):
-    def strain_energy(self, F) -> dolfinx.fem.Form: ...
+    def strain_energy(self, C: ufl.core.expr.Expr) -> ufl.core.expr.Expr: ...
 
-    def Fe(self, F) -> dolfinx.fem.Form: ...
+    def S(self, C: ufl.core.expr.Expr) -> ufl.core.expr.Expr: ...
 
 
 class Compressibility(Protocol):
-    def strain_energy(self, J) -> dolfinx.fem.Form: ...
+    def strain_energy(self, C: ufl.core.expr.Expr) -> ufl.core.expr.Expr: ...
+
+    def S(self, C: ufl.core.expr.Expr) -> ufl.core.expr.Expr: ...
 
     def is_compressible(self) -> bool: ...
 
@@ -28,11 +30,15 @@ class Compressibility(Protocol):
 
 
 class HyperElasticMaterial(Protocol):
-    def strain_energy(self, F) -> dolfinx.fem.Form: ...
+    def strain_energy(self, C: ufl.core.expr.Expr) -> ufl.core.expr.Expr: ...
+
+    def S(self, C: ufl.core.expr.Expr) -> ufl.core.expr.Expr: ...
 
 
 class ViscoElasticity(Protocol):
-    def strain_energy(self, E_dot) -> dolfinx.fem.Form: ...
+    def strain_energy(self, C_dot: ufl.core.expr.Expr) -> ufl.core.expr.Expr: ...
+
+    def S(self, C_dot: ufl.core.expr.Expr) -> ufl.core.expr.Expr: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,25 +47,30 @@ class CardiacModel:
     active: ActiveModel
     compressibility: Compressibility
     viscoelasticity: ViscoElasticity = field(default_factory=NoneViscoElasticity)
-    decouple_deviatoric_volumetric: bool = False
 
-    def strain_energy(self, F, p: dolfinx.fem.Function | None = None):
-        self.compressibility.register(p)
-        # If active strain we would need to get the elastic
-        # part of the deformation gradient
-        Fe = self.active.Fe(F)
-        J = kinematics.Jacobian(Fe)
-
-        if self.decouple_deviatoric_volumetric:
-            Jm13 = J ** (-1 / 3)
-        else:
-            Jm13 = 1.0
-
-        return (
-            self.material.strain_energy(Jm13 * Fe)
-            + self.active.strain_energy(Jm13 * F)
-            + self.compressibility.strain_energy(J)
+    def strain_energy(
+        self,
+        C: ufl.core.expr.Expr,
+        C_dot: ufl.core.expr.Expr | None = None,
+    ) -> ufl.core.expr.Expr:
+        psi = (
+            self.material.strain_energy(C)
+            + self.active.strain_energy(C)
+            + self.compressibility.strain_energy(C)
         )
+        if C_dot is not None:
+            psi += self.viscoelasticity.strain_energy(C_dot)
 
-    def viscoelastic_strain_energy(self, E_dot):
-        return self.viscoelasticity.strain_energy(E_dot)
+        return psi
+
+    def S(
+        self,
+        C: ufl.core.expr.Expr,
+        C_dot: ufl.core.expr.Expr | None = None,
+    ) -> ufl.core.expr.Expr:
+        """Cauchy stress for the cardiac model."""
+
+        S = self.material.S(C) + self.active.S(C) + self.compressibility.S(C)
+        if C_dot is not None:
+            S += self.viscoelasticity.S(C_dot)
+        return S

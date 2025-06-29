@@ -5,7 +5,7 @@ import dolfinx
 import numpy as np
 import ufl
 
-from .. import exceptions, kinematics
+from .. import exceptions
 from ..material_model import HyperElasticMaterial
 from ..units import Variable
 
@@ -63,6 +63,7 @@ class Guccione(HyperElasticMaterial):
     bf: Variable = field(default_factory=lambda: Variable(8.0, "dimensionless"))
     bt: Variable = field(default_factory=lambda: Variable(2.0, "dimensionless"))
     bfs: Variable = field(default_factory=lambda: Variable(4.0, "dimensionless"))
+    deviatoric: bool = True
 
     def __post_init__(self):
         # Check that all values are positive
@@ -108,8 +109,12 @@ class Guccione(HyperElasticMaterial):
         except TypeError:
             return False
 
-    def _Q(self, F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
-        E = kinematics.GreenLagrangeStrain(F)
+    def _Q(self, C: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
+        dim = C.ufl_shape[0]
+        if self.deviatoric:
+            Jm23 = pow(ufl.det(C), -1.0 / dim)
+            C *= Jm23  # Make C deviatoric
+        E = 0.5 * (C - ufl.Identity(dim))
 
         bt = self.bt.to_base_units()
         bf = self.bf.to_base_units()
@@ -140,9 +145,9 @@ class Guccione(HyperElasticMaterial):
                 bf * E11**2 + bt * (E22**2 + E33**2 + 2 * E23**2) + bfs * (2 * E12**2 + 2 * E13**2)
             )
 
-    def strain_energy(self, F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
-        C = self.C.to_base_units()
-        return 0.5 * C * (ufl.exp(self._Q(F)) - 1.0)
+    def strain_energy(self, C: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
+        C_ = self.C.to_base_units()
+        return 0.5 * C_ * (ufl.exp(self._Q(C)) - 1.0)
 
     def __str__(self):
         return "0.5C (exp(Q) - 1)"

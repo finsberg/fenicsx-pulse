@@ -27,7 +27,9 @@ def test_transversely_active_stress(eta, Ta, mesh, u) -> None:
 
     u.interpolate(lambda x: x)
     F = kinematics.DeformationGradient(u)
-    W = active_model.strain_energy(F)
+    C = F.T * F
+
+    W = active_model.strain_energy(C)
 
     assert active_model.Fe(F) is F
     active_model.activation.assign(Ta)
@@ -53,7 +55,8 @@ def test_Passive(u) -> None:
 
     u.interpolate(lambda x: x)
     F = kinematics.DeformationGradient(u)
+    C = F.T * F
 
     assert active_model.Fe(F) is F
-    W = active_model.strain_energy(F)
+    W = active_model.strain_energy(C)
     assert np.isclose(dolfinx.fem.assemble_scalar(dolfinx.fem.form(W * ufl.dx)), 0.0)

@@ -16,7 +16,8 @@ from pulse import invariants, kinematics
 def test_I1(cls, expected, u) -> None:
     u.interpolate(lambda x: x)
     F = cls(u)
-    I1 = invariants.I1(F)
+    C = F.T * F
+    I1 = invariants.I1(C)
 
     assert np.isclose(
         dolfinx.fem.assemble_scalar(dolfinx.fem.form(I1 * ufl.dx)),
@@ -37,7 +38,8 @@ def test_I1(cls, expected, u) -> None:
 def test_I2(cls, expected, u) -> None:
     u.interpolate(lambda x: x)
     F = cls(u)
-    I2 = invariants.I2(F)
+    C = F.T * F
+    I2 = invariants.I2(C)
     assert np.isclose(
         dolfinx.fem.assemble_scalar(dolfinx.fem.form(I2 * ufl.dx)),
         expected,
@@ -54,7 +56,8 @@ def test_I2(cls, expected, u) -> None:
 def test_I3(cls, expected, u) -> None:
     u.interpolate(lambda x: x)
     F = cls(u)
-    I3 = invariants.I3(F)
+    C = F.T * F
+    I3 = invariants.I3(C)
 
     assert np.isclose(
         dolfinx.fem.assemble_scalar(dolfinx.fem.form(I3 * ufl.dx)),
@@ -72,8 +75,9 @@ def test_I3(cls, expected, u) -> None:
 def test_I4(cls, expected, u, mesh) -> None:
     u.interpolate(lambda x: x)
     F = cls(u)
+    C = F.T * F
     a0 = dolfinx.fem.Constant(mesh, (1.0, 0.0, 0.0))
-    I4 = invariants.I4(F, a0)
+    I4 = invariants.I4(C, a0)
 
     assert np.isclose(
         dolfinx.fem.assemble_scalar(dolfinx.fem.form(I4 * ufl.dx)),
@@ -91,8 +95,9 @@ def test_I4(cls, expected, u, mesh) -> None:
 def test_I5(cls, expected, u, mesh) -> None:
     u.interpolate(lambda x: x)
     F = cls(u)
+    C = F.T * F
     a0 = dolfinx.fem.Constant(mesh, (1.0, 0.0, 0.0))
-    I5 = invariants.I5(F, a0)
+    I5 = invariants.I5(C, a0)
 
     assert np.isclose(
         dolfinx.fem.assemble_scalar(dolfinx.fem.form(I5 * ufl.dx)),
@@ -107,9 +112,10 @@ def test_I5(cls, expected, u, mesh) -> None:
 def test_I8(cls, expected, u, mesh) -> None:
     u.interpolate(lambda x: x)
     F = cls(u)
+    C = F.T * F
     a0 = dolfinx.fem.Constant(mesh, (1.0, 0.0, 0.0))
     b0 = dolfinx.fem.Constant(mesh, (0.0, 1.0, 0.0))
-    I8 = invariants.I8(F, a0, b0)
+    I8 = invariants.I8(C, a0, b0)
     assert np.isclose(
         dolfinx.fem.assemble_scalar(dolfinx.fem.form(I8 * ufl.dx)),
         expected,
