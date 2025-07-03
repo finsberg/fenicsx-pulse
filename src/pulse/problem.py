@@ -66,6 +66,17 @@ class BaseBC(str, Enum):
     free = "free"
 
 
+class CirculationModel(typing.Protocol):
+    def rhs(self, t: float, y: np.ndarray) -> np.ndarray:
+        """Right-hand side of the circulation model ODE"""
+        ...
+
+    @property
+    def state(self) -> np.ndarray:
+        """Current state of the circulation model"""
+        ...
+
+
 @dataclass
 class StaticProblem:
     model: CardiacModel
@@ -73,23 +84,98 @@ class StaticProblem:
     parameters: dict[str, typing.Any] = field(default_factory=dict)
     bcs: BoundaryConditions = field(default_factory=BoundaryConditions)
     cavities: list[Cavity] = field(default_factory=list)
+    circulation_model: CirculationModel | None = None
 
     def __post_init__(self):
         parameters = type(self).default_parameters()
         parameters.update(self.parameters)
         self.parameters = parameters
+        self.dt = dolfinx.fem.Constant(self.geometry.mesh, self.parameters["dt"])
+        self.theta = dolfinx.fem.Constant(self.geometry.mesh, self.parameters["theta"])
         self._init_spaces()
         self._init_forms()
 
     def _init_spaces(self):
         """Initialize function spaces"""
-        self._init_u_space()
-        self._init_p_space()
 
-        self._init_cavity_pressure_spaces()
-        self._init_rigid_body()
+        index = 0
+        self._indices = {}
+        self._states = []
+        self._test_functions = []
+        self._trial_functions = []
+        if self._init_u_space():
+            self._indices["u"] = index
+            index += 1
+            self._states.append(self.u)
+            self._test_functions.append(self.u_test)
+            self._trial_functions.append(self.du)
 
-    def _init_p_space(self):
+        if self._init_p_space():
+            self._indices["p"] = index
+            index += 1
+            self._states.append(self.p)
+            self._test_functions.append(self.p_test)
+            self._trial_functions.append(self.dp)
+
+        if self._init_cavity_pressure_spaces():
+            self._states += self.cavity_pressures
+            self._test_functions += self.cavity_pressures_test
+            self._trial_functions += self.cavity_pressures_trial
+            for i in range(len(self.cavity_pressures)):
+                self._indices[f"cavity_pressure_{i}"] = index
+                index += 1
+
+        if self._init_rigid_body():
+            self._indices["rigid_body"] = index
+            index += 1
+            self._states.append(self.r)
+            self._test_functions.append(self.q)
+            self._trial_functions.append(self.dr)
+
+        if self._init_circulation_model():
+            self._indices["circulation"] = index
+            index += 1
+            self._states.append(self.circ)
+            self._test_functions.append(self.circ_test)
+            self._trial_functions.append(self.circ_trial)
+
+    def _init_circulation_model(self) -> bool:
+        if self.circulation_model is None:
+            return False
+
+        y0 = self.circulation_model.state.copy()
+        self.circ_space = scifem.create_real_functionspace(
+            self.geometry.mesh,
+            value_shape=(len(y0),),
+        )
+        self.circ_prev = dolfinx.fem.Function(self.circ_space)
+        self.circ = dolfinx.fem.Function(self.circ_space)
+        self.circ_prev.x.array[:] = y0
+        self.circ.x.array[:] = y0
+        self.dcirc_next = dolfinx.fem.Function(self.circ_space)
+        self.dcirc_prev = dolfinx.fem.Function(self.circ_space)
+        self.dcirc_next.x.array[:] = self.circulation_model.rhs(0.0, self.circ_prev.x.array[:])
+        self.circ_test = ufl.TestFunction(self.circ_space)
+        self.circ_trial = ufl.TrialFunction(self.circ_space)
+        return True
+
+    def _circulation_form(self):
+        forms = self._empty_form()
+        F = (
+            ufl.inner(
+                (
+                    self.circ
+                    - self.circ_prev
+                    - self.dt * (self.theta * self.dcirc_prev + (1 - self.theta) * self.dcirc_next)
+                ),
+                self.circ_test,
+            )
+            * self.geometry.dx
+        )
+        forms[self._indices["circulation"]] += F
+        return forms
+
+    def _init_p_space(self) -> bool:
         if self.is_incompressible:
             # Need lagrange multiplier for incompressible model
             p_family, p_degree = self.parameters["p_space"].split("_")
@@ -102,14 +188,19 @@ class StaticProblem:
             self.p = dolfinx.fem.Function(self.p_space)
             self.p_test = ufl.TestFunction(self.p_space)
             self.dp = ufl.TrialFunction(self.p_space)
+            ret = True
         else:
             self.p_space = None
             self.p = None
             self.p_test = None
             self.dp = None
+            ret = False
         self.model.compressibility.register(self.p)
+        return ret
 
-    def _init_u_space(self):
+    def _init_u_space(self) -> bool:
+        if self.parameters["0D"]:
+            return False
         u_family, u_degree = self.parameters["u_space"].split("_")
 
         u_element = basix.ufl.element(
@@ -122,6 +213,7 @@ class StaticProblem:
         self.u = dolfinx.fem.Function(self.u_space)
         self.u_test = ufl.TestFunction(self.u_space)
         self.du = ufl.TrialFunction(self.u_space)
+        return True
 
     @property
     def is_incompressible(self):
@@ -136,6 +228,9 @@ class StaticProblem:
             "rigid_body_constraint": False,
             "mesh_unit": "m",
             "base_marker": "BASE",
+            "0D": False,
+            "dt": 0.001,
+            "theta": 0.5,
             "petsc_options": {
                 "ksp_type": "preonly",
                 "pc_type": "lu",
@@ -147,13 +242,13 @@ class StaticProblem:
     def num_cavity_pressure_states(self):
         return len(self.cavities)
 
-    def _init_cavity_pressure_spaces(self):
+    def _init_cavity_pressure_spaces(self) -> bool:
         self.cavity_pressures = []
         self.cavity_pressures_test = []
         self.cavity_pressures_trial = []
-        self.real_space = scifem.create_real_functionspace(self.geometry.mesh)
 
         if self.num_cavity_pressure_states > 0:
+            self.real_space = scifem.create_real_functionspace(self.geometry.mesh)
             for _ in range(self.num_cavity_pressure_states):
                 cavity_pressure = dolfinx.fem.Function(self.real_space)
                 cavity_pressure_test = ufl.TestFunction(self.real_space)
@@ -162,8 +257,11 @@ class StaticProblem:
                 self.cavity_pressures.append(cavity_pressure)
                 self.cavity_pressures_test.append(cavity_pressure_test)
                 self.cavity_pressures_trial.append(cavity_pressure_trial)
+            return True
+        else:
+            return False
 
-    def _init_rigid_body(self):
+    def _init_rigid_body(self) -> bool:
         if self.parameters["rigid_body_constraint"]:
             self.rigid_space = scifem.create_real_functionspace(
                 self.geometry.mesh,
@@ -172,6 +270,8 @@ class StaticProblem:
             self.r = dolfinx.fem.Function(self.rigid_space)
             self.dr = ufl.TrialFunction(self.rigid_space)
             self.q = ufl.TestFunction(self.rigid_space)
+            return True
+        return False
 
     def _create_residual_form(self, form: dolfinx.fem.Form) -> list[dolfinx.fem.Form]:
         return [
@@ -199,7 +299,7 @@ class StaticProblem:
         return forms
 
     def _material_form(self, u: dolfinx.fem.Function, p: dolfinx.fem.Function):
-        F = ufl.grad(u) + ufl.Identity(3)
+        F = ufl.grad(u) + ufl.Identity(len(u))
         J = ufl.det(F)
         var_C = ufl.grad(self.u_test).T * F + F.T * ufl.grad(self.u_test)
         C = ufl.variable(F.T * F)
@@ -233,7 +333,7 @@ class StaticProblem:
         return forms
 
     def _neumann_form(self, u: dolfinx.fem.Function) -> list[dolfinx.fem.Form]:
-        F = ufl.grad(u) + ufl.Identity(3)
+        F = ufl.grad(u) + ufl.Identity(len(u))
         N = self.geometry.facet_normal
         ds = self.geometry.ds
 
@@ -303,24 +403,28 @@ class StaticProblem:
 
     @property
     def num_states(self):
-        return (
-            1
-            + self.num_cavity_pressure_states
-            + int(self.parameters["rigid_body_constraint"])
-            + int(self.is_incompressible)
-        )
+        return len(self._indices)
 
     @property
     def R(self):
         # Order is always (u, cavity pressures, rigid body, p)
 
         R = self._empty_form()
-        R_material = self._material_form(self.u, p=self.p)
-        R_cavity = self._cavity_pressure_form(self.u, self.cavity_pressures)
-        R_robin = self._robin_form(self.u)
-        R_neumann = self._neumann_form(self.u)
-        R_rigid = self._rigid_body_form(self.u)
-        R_body_force = self._body_force_form(self.u)
+        if not self.parameters["0D"]:
+            R_material = self._material_form(self.u, p=self.p)
+            R_cavity = self._cavity_pressure_form(self.u, self.cavity_pressures)
+            R_robin = self._robin_form(self.u)
+            R_neumann = self._neumann_form(self.u)
+            R_rigid = self._rigid_body_form(self.u)
+            R_body_force = self._body_force_form(self.u)
+        else:
+            R_material = self._empty_form()
+            R_cavity = self._empty_form()
+            R_robin = self._empty_form()
+            R_neumann = self._empty_form()
+            R_rigid = self._empty_form()
+            R_body_force = self._empty_form()
+        R_circulation = self._circulation_form()
 
         for i in range(self.num_states):
             R[i] += R_material[i]
@@ -329,41 +433,21 @@ class StaticProblem:
             R[i] += R_neumann[i]
             R[i] += R_rigid[i]
             R[i] += R_body_force[i]
+            R[i] += R_circulation[i]
 
         return R
 
     @property
     def states(self):
-        u = [self.u]
-        if self.num_cavity_pressure_states > 0:
-            u += self.cavity_pressures
-        if self.parameters["rigid_body_constraint"]:
-            u.append(self.r)
-        if self.is_incompressible:
-            u.append(self.p)
-        return u
+        return self._states
 
     @property
     def test_functions(self):
-        u = [self.u_test]
-        if self.num_cavity_pressure_states > 0:
-            u += self.cavity_pressures_test
-        if self.parameters["rigid_body_constraint"]:
-            u.append(self.q)
-        if self.is_incompressible:
-            u.append(self.p_test)
-        return u
+        return self._test_functions
 
     @property
     def trial_functions(self):
-        u = [self.du]
-        if self.num_cavity_pressure_states > 0:
-            u += self.cavity_pressures_trial
-        if self.parameters["rigid_body_constraint"]:
-            u.append(self.dr)
-        if self.is_incompressible:
-            u.append(self.dp)
-        return u
+        return self._trial_functions
 
     def K(self, R):
         K = []
@@ -400,13 +484,21 @@ class StaticProblem:
             petsc_options=self.parameters["petsc_options"],
         )
 
-    def update_fields(self):
-        pass
+    def update_fields_post(self, t: float = 0.0) -> None:
+        """Update the circulation model state"""
+        if self.circulation_model is not None:
+            self.circ_prev.x.array[:] = self.circ.x.array[:]
+            self.dcirc_prev.x.array[:] = self.dcirc_next.x.array[:]
 
-    def solve(self) -> bool:
+    def update_fields_pre(self, t: float = 0.0) -> None:
+        if self.circulation_model is not None:
+            self.dcirc_next.x.array[:] = self.circulation_model.rhs(t, self.circ_prev.x.array[:])
+
+    def solve(self, t: float = 0.0) -> bool:
         """Solve the system"""
+        self.update_fields_pre(t=t)
         ret = self._solver.solve(rtol=1e-10, atol=1e-6)
-        self.update_fields()
+        self.update_fields_post(t=t)
 
         return ret
 
@@ -440,7 +532,7 @@ class DynamicProblem(StaticProblem):
             self.cavity_pressures_old.append(cavity_pressure_old)
 
     def _material_form(self, u, v, p):
-        F = ufl.grad(u) + ufl.Identity(3)
+        F = ufl.grad(u) + ufl.Identity(len(u))
         C = ufl.variable(F.T * F)
         J = ufl.det(F)
 
@@ -587,7 +679,7 @@ class DynamicProblem(StaticProblem):
         beta = self._beta
         return (u - (u_old + dt * v_old + (0.5 - beta) * dt2 * a_old)) / (beta * dt2)
 
-    def update_fields(self) -> None:
+    def update_fields_post(self, t: float = 0.0) -> None:
         """Update old values of displacement, velocity
         and acceleration
         """

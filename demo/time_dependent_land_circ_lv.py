@@ -120,10 +120,12 @@ parameters = {"base_bc": pulse.problem.BaseBC.free, "mesh_unit": "m"}
 static = True
 
 
+
+
 if static:
     outdir = Path("lv_ellipsoid_time_dependent_circulation_static")
     bcs = pulse.BoundaryConditions(robin=(robin_epi, robin_base))
-    problem = pulse.problem.StaticProblem(model=model, geometry=geometry, bcs=bcs, cavities=[cavity], parameters=parameters)
+    problem = pulse.problem.StaticProblem(model=model, geometry=geometry, bcs=bcs, cavities=[cavity], parameters=parameters, circulation_model=circulation.regazzoni2020.Regazzoni2020)
 else:
     outdir = Path("lv_ellipsoid_time_dependent_circulation_dynamic")
     beta_epi = pulse.Variable(
@@ -351,7 +353,7 @@ init_state = {"V_LV": initial_volume * mL}
 circulation_model_3D = circulation.regazzoni2020.Regazzoni2020(
     add_units=add_units,
     callback=callback,
-    p_LV_func=p_LV_func,
+    p_LV=p_LV_func,
     verbose=True,
     comm=comm,
     outdir=outdir,
