@@ -10,6 +10,9 @@ from typing import Protocol
 import dolfinx
 import ufl
 
+from .active_model import Passive
+from .compressibility import Compressible
+from .material_models import NeoHookean
 from .viscoelasticity import NoneViscoElasticity
 
 
@@ -43,9 +46,9 @@ class ViscoElasticity(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class CardiacModel:
-    material: HyperElasticMaterial
-    active: ActiveModel
-    compressibility: Compressibility
+    material: HyperElasticMaterial = field(default_factory=NeoHookean)
+    active: ActiveModel = field(default_factory=Passive)
+    compressibility: Compressibility = field(default_factory=Compressible)
     viscoelasticity: ViscoElasticity = field(default_factory=NoneViscoElasticity)
 
     def strain_energy(
