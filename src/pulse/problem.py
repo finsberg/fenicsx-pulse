@@ -159,17 +159,14 @@ class StaticProblem:
         self.circ_trial = ufl.TrialFunction(self.circ_space)
         return True
 
-    def _circulation_form(
-        self,
-        cavity_pressures: list[dolfinx.fem.Function] = None,
-    ):
+    def _circulation_form(self):
         forms = self._empty_form()
         if self.circulation_model is None:
             return forms
 
-        # Noe sånt?
+        # Something like this?
         # self.circulation_model.p_LV = lambda t, V: cavity_pressures.x.array[0]
-        breakpoint()
+
         F = (
             ufl.inner(
                 (
@@ -426,7 +423,7 @@ class StaticProblem:
             R_neumann = self._neumann_form(self.u)
             R_rigid = self._rigid_body_form(self.u)
             R_body_force = self._body_force_form(self.u)
-            R_circulation = self._circulation_form(self.u, self.cavity_pressures)
+            R_circulation = self._circulation_form(self.u)
         else:
             R_material = self._empty_form()
             R_cavity = self._empty_form()
@@ -436,7 +433,6 @@ class StaticProblem:
             R_body_force = self._empty_form()
             R_circulation = self._circulation_form()
 
-        breakpoint()
         for i in range(self.num_states):
             R[i] += R_material[i]
             R[i] += R_cavity[i]
