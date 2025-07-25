@@ -39,6 +39,7 @@ class RobinBC:
     value: Variable
     marker: int
     damping: bool = False
+    perpendicular: bool = False
 
     def __post_init__(self):
         if not isinstance(self.value, Variable):

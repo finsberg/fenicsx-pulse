@@ -121,6 +121,21 @@ class ActiveModel(abc.ABC):
         """
         return 2.0 * ufl.diff(self.strain_energy(F), F)
 
+    def P(self, F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
+        """First Piola-Kirchhoff stress tensor for the active model.
+
+        Parameters
+        ----------
+        F : ufl.core.expr.Expr
+            The deformation gradient
+
+        Returns
+        -------
+        ufl.core.expr.Expr
+            The first Piola-Kirchhoff stress tensor
+        """
+        return ufl.diff(self.strain_energy(F), F)
+
 
 class Passive(ActiveModel):
     """Active model with no active component.
