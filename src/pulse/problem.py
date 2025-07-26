@@ -479,46 +479,20 @@ class DynamicProblem(StaticProblem):
         forms[0] += ufl.inner(rho * a, self.u_test) * self.geometry.dx
         return forms
 
-    def _robin_form(
-        self,
-        u: dolfinx.fem.Function,
-        v: dolfinx.fem.Function | None = None,
-    ) -> list[dolfinx.fem.Form]:
-        form = ufl.as_ufl(0.0)
+    def _robin_form(self, u: dolfinx.fem.Function, v: dolfinx.fem.Function | None = None):
+        forms = super()._robin_form(u)
+
         N = self.geometry.facet_normal
 
         for robin in self.bcs.robin:
-            if robin.damping:
+            if not robin.damping:
                 # Should be applied to the velocity
                 continue
+            assert v is not None
             k = robin.value.to_base_units() * mesh_factor(str(self.parameters["mesh_unit"]))
-
-            if robin.perpendicular:
-                nn = ufl.Identity(u.ufl_shape[0]) - ufl.outer(N, N)
-            else:
-                nn = ufl.outer(N, N)
-
-            value = k * nn * u
-            form += -ufl.dot(value, self.u_test) * self.geometry.ds(robin.marker)
-
-        forms = self._empty_form()
-        forms[0] += form
+            value = ufl.inner(k * v, N)
+            forms[0] += ufl.inner(value * self.u_test, N) * self.geometry.ds(robin.marker)
         return forms
-
-    # def _robin_form(self, u: dolfinx.fem.Function, v: dolfinx.fem.Function | None = None):
-    #     forms = super()._robin_form(u)
-
-    #     N = self.geometry.facet_normal
-
-    #     for robin in self.bcs.robin:
-    #         if not robin.damping:
-    #             # Should be applied to the velocity
-    #             continue
-    #         assert v is not None
-    #         k = robin.value.to_base_units() * mesh_factor(str(self.parameters["mesh_unit"]))
-    #         value = ufl.inner(k * v, N)
-    #         forms[0] += ufl.inner(value * self.u_test, N) * self.geometry.ds(robin.marker)
-    #     return forms
 
     @property
     def R(self):
