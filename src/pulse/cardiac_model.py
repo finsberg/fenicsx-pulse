@@ -18,11 +18,15 @@ class ActiveModel(Protocol):
 
     def S(self, C: ufl.core.expr.Expr) -> ufl.core.expr.Expr: ...
 
+    def P(self, F: ufl.core.expr.Expr) -> ufl.core.expr.Expr: ...
+
 
 class Compressibility(Protocol):
     def strain_energy(self, C: ufl.core.expr.Expr) -> ufl.core.expr.Expr: ...
 
     def S(self, C: ufl.core.expr.Expr) -> ufl.core.expr.Expr: ...
+
+    def P(self, F: ufl.core.expr.Expr) -> ufl.core.expr.Expr: ...
 
     def is_compressible(self) -> bool: ...
 
@@ -32,11 +36,15 @@ class Compressibility(Protocol):
 class HyperElasticMaterial(Protocol):
     def strain_energy(self, C: ufl.core.expr.Expr) -> ufl.core.expr.Expr: ...
 
+    def P(self, F: ufl.core.expr.Expr) -> ufl.core.expr.Expr: ...
+
     def S(self, C: ufl.core.expr.Expr) -> ufl.core.expr.Expr: ...
 
 
 class ViscoElasticity(Protocol):
     def strain_energy(self, C_dot: ufl.core.expr.Expr) -> ufl.core.expr.Expr: ...
+
+    def P(self, F: ufl.core.expr.Expr) -> ufl.core.expr.Expr: ...
 
     def S(self, C_dot: ufl.core.expr.Expr) -> ufl.core.expr.Expr: ...
 
@@ -74,3 +82,14 @@ class CardiacModel:
         if C_dot is not None:
             S += self.viscoelasticity.S(C_dot)
         return S
+
+    def P(
+        self,
+        F: ufl.core.expr.Expr,
+        F_dot: ufl.core.expr.Expr | None = None,
+    ) -> ufl.core.expr.Expr:
+        """First Piola-Kirchhoff stress for the cardiac model."""
+        P = self.material.P(F) + self.active.P(F) + self.compressibility.P(F)
+        if F_dot is not None:
+            P += self.viscoelasticity.P(F_dot)
+        return P

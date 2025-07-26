@@ -200,6 +200,7 @@ class StaticProblem:
 
     def _material_form(self, u: dolfinx.fem.Function, p: dolfinx.fem.Function):
         F = ufl.grad(u) + ufl.Identity(3)
+
         J = ufl.det(F)
         var_C = ufl.grad(self.u_test).T * F + F.T * ufl.grad(self.u_test)
         C = ufl.variable(F.T * F)
@@ -219,14 +220,27 @@ class StaticProblem:
     ) -> list[dolfinx.fem.Form]:
         form = ufl.as_ufl(0.0)
         N = self.geometry.facet_normal
+        F = ufl.grad(u) + ufl.Identity(3)
+        J = ufl.det(F)
+        # Pull back normal vector to the reference configuration
+        cof = J * ufl.inv(F).T
+        cofnorm = ufl.sqrt(ufl.dot(cof * N, cof * N))
+        NN = 1 / cofnorm * cof * N
 
         for robin in self.bcs.robin:
             if robin.damping:
                 # Should be applied to the velocity
                 continue
             k = robin.value.to_base_units() * mesh_factor(str(self.parameters["mesh_unit"]))
-            value = ufl.inner(k * u, N)
-            form += ufl.inner(value * self.u_test, N) * self.geometry.ds(robin.marker)
+
+            if robin.perpendicular:
+                nn = ufl.Identity(u.ufl_shape[0]) - ufl.outer(NN, NN)
+            else:
+                nn = ufl.outer(NN, NN)
+
+            value = -nn * k * u
+
+            form += -ufl.dot(value, self.u_test) * cofnorm * self.geometry.ds(robin.marker)
 
         forms = self._empty_form()
         forms[0] += form
@@ -234,6 +248,7 @@ class StaticProblem:
 
     def _neumann_form(self, u: dolfinx.fem.Function) -> list[dolfinx.fem.Form]:
         F = ufl.grad(u) + ufl.Identity(3)
+
         N = self.geometry.facet_normal
         ds = self.geometry.ds
 
@@ -405,6 +420,7 @@ class StaticProblem:
 
     def solve(self) -> bool:
         """Solve the system"""
+
         ret = self._solver.solve(rtol=1e-10, atol=1e-6)
         self.update_fields()
 

@@ -42,6 +42,13 @@ class ViscoElasticity(ABC):
         """
         return 2.0 * ufl.diff(self.strain_energy(C_dot), C_dot)
 
+    def P(self, F_dot: ufl.core.expr.Expr | None = None) -> ufl.core.expr.Expr:
+        """First Piola-Kirchhoff stress for the viscoelasticity model."""
+        if F_dot is None:
+            raise ValueError("F_dot must be provided for P calculation.")
+        C_dot = F_dot.T * F_dot
+        return ufl.diff(self.strain_energy(C_dot), F_dot)
+
 
 class NoneViscoElasticity(ViscoElasticity):
     def strain_energy(self, C_dot: ufl.core.expr.Expr) -> ufl.core.expr.Expr:

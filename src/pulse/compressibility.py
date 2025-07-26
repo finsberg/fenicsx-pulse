@@ -42,6 +42,11 @@ class Compressibility(abc.ABC):
         """Cauchy stress tensor for the compressibility model."""
         return 2.0 * ufl.diff(self.strain_energy(C), C)
 
+    def P(self, F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
+        """First Piola-Kirchhoff stress tensor for the compressibility model."""
+        C = F.T * F
+        return ufl.diff(self.strain_energy(C), F)
+
     @abc.abstractmethod
     def is_compressible(self) -> bool:
         """Returns True if the material model is compressible."""
@@ -126,16 +131,38 @@ class Compressible2(Compressible):
     Strain energy density function is given by
 
     .. math::
-        \Psi = \kappa (J^2 - 1 - 2 \ln(J))
+        \Psi = \kappa / 4 (J^2 - 1 - 2 \ln(J))
 
     """
 
     kappa: Variable = field(default_factory=lambda: Variable(1e6, "Pa"))
 
     def __str__(self) -> str:
-        return "\u03ba (J ** 2 - 1 - 2 ln(J))"
+        return "\u03ba / 4 (J ** 2 - 1 - 2 ln(J))"
 
     def strain_energy(self, C: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
         J = ufl.sqrt(ufl.det(C))
         kappa = self.kappa.to_base_units()
         return 0.25 * kappa * (J**2 - 1 - 2 * ufl.ln(J))
+
+
+@dataclass(slots=True)
+class Compressible3(Compressible):
+    r"""Compressible material model used in Usyk et al. 2002
+
+    Strain energy density function is given by
+
+    .. math::
+        \Psi = \kappa / 2 (J - 1) * \ln(J)
+
+    """
+
+    kappa: Variable = field(default_factory=lambda: Variable(5e4, "Pa"))
+
+    def __str__(self) -> str:
+        return "\u03ba / 2 * (J - 1) * ln(J)"
+
+    def strain_energy(self, C: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
+        J = ufl.sqrt(ufl.det(C))
+        kappa = self.kappa.to_base_units()
+        return 0.5 * kappa * (J - 1) * ufl.ln(J)
