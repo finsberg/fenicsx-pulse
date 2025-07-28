@@ -487,91 +487,86 @@ def run_3D_model(
     regazzoni.print_info()
 
 
-def main():
-    circulation.log.setup_logging(logging.INFO)
-    log.set_log_level(log.LogLevel.INFO)
-    logger = logging.getLogger("pulse")
-    comm = MPI.COMM_WORLD
+circulation.log.setup_logging(logging.INFO)
+log.set_log_level(log.LogLevel.INFO)
+logger = logging.getLogger("pulse")
+comm = MPI.COMM_WORLD
 
-    geodir = Path("ukb")
-    if not geodir.exists():
-        comm.barrier()
-        cardiac_geometries.mesh.ukb(
-            outdir=geodir,
-            comm=comm,
-            mode=-1,
-            case="ED",
-            char_length_max=10.0,
-            char_length_min=10.0,
-            fiber_angle_endo=60,
-            fiber_angle_epi=-60,
-            fiber_space="DG_0",
-            clipped=True,
-        )
-
-    outdir = Path("bleeding_biv")
-    outdir.mkdir(exist_ok=True)
-
-    geo = cardiac_geometries.geometry.Geometry.from_folder(
+geodir = Path("ukb")
+if not geodir.exists():
+    comm.barrier()
+    cardiac_geometries.mesh.ukb(
+        outdir=geodir,
         comm=comm,
-        folder=geodir,
-    )
-    dt = 0.001
-    zenker_history = run_zenker(outdir=outdir)
-    HR_before = zenker_history["HR_before"]
-    R_TPR_factor = zenker_history["R_TPR_factor"]
-    C_PRSW_factor = zenker_history["C_PRSW_factor"]
-    HR_after = zenker_history["HR_after"]
-    Pa_before = zenker_history["Pa"][zenker_history["before_index"]]
-    Pcvp_before = zenker_history["Pcvp"][zenker_history["before_index"]]
-
-    Pa_after = zenker_history["Pa"][zenker_history["after_index"]]
-    Pcvp_after = zenker_history["Pcvp"][zenker_history["after_index"]]
-    print(f"Pa: {Pa_before} mmHg, Pcvp: {Pcvp_before} mmHg")
-    print(f"Pa: {Pa_after} mmHg, Pcvp: {Pcvp_after} mmHg")
-    print(f"HR before: {HR_before}, HR after: {HR_after}")
-
-    get_activation_before = run_TorOrdLand(
-        comm, outdir, HR_before, Ta_factor=1, label="before", dt=dt,
-    )
-    get_activation_after = run_TorOrdLand(
-        comm, outdir, HR_after, Ta_factor=C_PRSW_factor, label="after", dt=dt,
+        mode=-1,
+        case="ED",
+        char_length_max=10.0,
+        char_length_min=10.0,
+        fiber_angle_endo=60,
+        fiber_angle_epi=-60,
+        fiber_space="DG_0",
+        clipped=True,
     )
 
-    run_3D_model(
-        comm=comm,
-        geo=geo,
-        get_activation=get_activation_before,
-        outdir=outdir,
-        label="before",
-        num_beats=5,
-        dt=dt,
-        HR=HR_before,
-        p_AR_SYS=Pa_before,
-        p_AR_PUL=Pa_before * 0.4375,
-        p_VEN_SYS=Pcvp_before,
-        p_VEN_PUL=Pcvp_before * 0.8,
-    )
-    run_3D_model(
-        comm=comm,
-        geo=geo,
-        get_activation=get_activation_after,
-        outdir=outdir,
-        label="after",
-        num_beats=5,
-        dt=dt,
-        HR=HR_after,
-        R_TPR_factor=R_TPR_factor,
-        C_PRSW_factor=C_PRSW_factor,
-        p_AR_SYS=Pa_after,
-        p_AR_PUL=Pa_after * 0.4375,
-        p_VEN_SYS=Pcvp_after,
-        p_VEN_PUL=Pcvp_after * 0.8,
-    )
+outdir = Path("bleeding_biv")
+outdir.mkdir(exist_ok=True)
 
+geo = cardiac_geometries.geometry.Geometry.from_folder(
+    comm=comm,
+    folder=geodir,
+)
+dt = 0.001
+zenker_history = run_zenker(outdir=outdir)
+HR_before = zenker_history["HR_before"]
+R_TPR_factor = zenker_history["R_TPR_factor"]
+C_PRSW_factor = zenker_history["C_PRSW_factor"]
+HR_after = zenker_history["HR_after"]
+Pa_before = zenker_history["Pa"][zenker_history["before_index"]]
+Pcvp_before = zenker_history["Pcvp"][zenker_history["before_index"]]
 
-if __name__ == "__main__":
-    main()
+Pa_after = zenker_history["Pa"][zenker_history["after_index"]]
+Pcvp_after = zenker_history["Pcvp"][zenker_history["after_index"]]
+print(f"Pa: {Pa_before} mmHg, Pcvp: {Pcvp_before} mmHg")
+print(f"Pa: {Pa_after} mmHg, Pcvp: {Pcvp_after} mmHg")
+print(f"HR before: {HR_before}, HR after: {HR_after}")
+
+get_activation_before = run_TorOrdLand(
+    comm, outdir, HR_before, Ta_factor=1, label="before", dt=dt,
+)
+get_activation_after = run_TorOrdLand(
+    comm, outdir, HR_after, Ta_factor=C_PRSW_factor, label="after", dt=dt,
+)
+
+run_3D_model(
+    comm=comm,
+    geo=geo,
+    get_activation=get_activation_before,
+    outdir=outdir,
+    label="before",
+    num_beats=5,
+    dt=dt,
+    HR=HR_before,
+    p_AR_SYS=Pa_before,
+    p_AR_PUL=Pa_before * 0.4375,
+    p_VEN_SYS=Pcvp_before,
+    p_VEN_PUL=Pcvp_before * 0.8,
+)
+run_3D_model(
+    comm=comm,
+    geo=geo,
+    get_activation=get_activation_after,
+    outdir=outdir,
+    label="after",
+    num_beats=5,
+    dt=dt,
+    HR=HR_after,
+    R_TPR_factor=R_TPR_factor,
+    C_PRSW_factor=C_PRSW_factor,
+    p_AR_SYS=Pa_after,
+    p_AR_PUL=Pa_after * 0.4375,
+    p_VEN_SYS=Pcvp_after,
+    p_VEN_PUL=Pcvp_after * 0.8,
+)
 
 # Below we plot the pressure volume loop, volumes, pressures and flows for 50 beats
 
