@@ -75,7 +75,7 @@ class ActiveModel(abc.ABC):
         """
 
     @abc.abstractmethod
-    def strain_energy(self, F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
+    def strain_energy(self, C: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
         r"""Active strain energy function. For example in the
         active stress approach, the active stress is added
         as an extra stress component
@@ -97,8 +97,8 @@ class ActiveModel(abc.ABC):
 
         Parameters
         ----------
-        F : ufl.core.expr.Expr
-            The deformation gradient
+        C : ufl.core.expr.Expr
+            The right Cauchy-Green deformation tensor
 
         Returns
         -------
@@ -106,20 +106,20 @@ class ActiveModel(abc.ABC):
             The active strain energy density function
         """
 
-    def S(self, F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
+    def S(self, C: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
         """Cauchy stress tensor for the active model.
 
         Parameters
         ----------
         F : ufl.core.expr.Expr
-            The deformation gradient
+            The right Cauchy-Green deformation tensor
 
         Returns
         -------
         ufl.core.expr.Expr
             The Cauchy stress tensor
         """
-        return 2.0 * ufl.diff(self.strain_energy(F), F)
+        return 2.0 * ufl.diff(self.strain_energy(C), C)
 
     def P(self, F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
         """First Piola-Kirchhoff stress tensor for the active model.
@@ -134,7 +134,7 @@ class ActiveModel(abc.ABC):
         ufl.core.expr.Expr
             The first Piola-Kirchhoff stress tensor
         """
-        return ufl.diff(self.strain_energy(F), F)
+        return ufl.diff(self.strain_energy(F.T * F), F)
 
 
 class Passive(ActiveModel):
@@ -146,5 +146,5 @@ class Passive(ActiveModel):
     def Fe(self, F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
         return F
 
-    def strain_energy(self, F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
-        return dolfinx.fem.Constant(ufl.domain.extract_unique_domain(F), 0.0)
+    def strain_energy(self, C: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
+        return dolfinx.fem.Constant(ufl.domain.extract_unique_domain(C), 0.0)
