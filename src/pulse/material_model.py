@@ -94,8 +94,8 @@ class HyperElasticMaterial(Material, abc.ABC):
         .. math::
             \mathbf{P} = \frac{\partial \Psi}{\partial \mathbf{F}}
         """
-        F = ufl.variable(F)
-        return ufl.diff(self.strain_energy(F), F)
+        C = F.T * F
+        return ufl.diff(self.strain_energy(C), F)
 
     def sigma(self, F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
         return kinematics.InversePiolaTransform(self.P(F), F)

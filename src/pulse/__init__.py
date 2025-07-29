@@ -22,6 +22,7 @@ from . import (
     kinematics,
     material_model,
     material_models,
+    prestress,
     problem,
     units,
     utils,
@@ -30,7 +31,13 @@ from . import (
 from .active_stress import ActiveStress
 from .boundary_conditions import BoundaryConditions, NeumannBC, RobinBC
 from .cardiac_model import CardiacModel
-from .compressibility import Compressibility, Compressible, Incompressible
+from .compressibility import (
+    Compressibility,
+    Compressible,
+    Compressible2,
+    Compressible3,
+    Incompressible,
+)
 from .geometry import Geometry, HeartGeometry, Marker
 from .material_model import HyperElasticMaterial, Material
 from .material_models import (
@@ -38,7 +45,9 @@ from .material_models import (
     HolzapfelOgden,
     NeoHookean,
     SaintVenantKirchhoff,
+    Usyk,
 )
+from .prestress import PrestressProblem
 from .problem import BaseBC, DynamicProblem, StaticProblem
 from .units import Variable, ureg
 from .viscoelasticity import NoneViscoElasticity, ViscoElasticity, Viscous
@@ -87,4 +96,9 @@ __all__ = [
     "ViscoElasticity",
     "Viscous",
     "__version__",
+    "prestress",
+    "PrestressProblem",
+    "Usyk",
+    "Compressible2",
+    "Compressible3",
 ]

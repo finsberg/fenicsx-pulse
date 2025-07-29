@@ -97,7 +97,7 @@ class ActiveStress(ActiveModel):
         Parameters
         ----------
         C : ufl.core.expr.Expr
-            The deformation gradient
+            The right Cauchy-Green deformation tensor
 
         Returns
         -------
