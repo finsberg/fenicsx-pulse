@@ -81,6 +81,26 @@ class Geometry:
             metadata=self.metadata,
         )
 
+    def deform(self, u: dolfinx.fem.Function) -> None:
+        """Deform the geometry by a displacement field.
+        Note that this will modify the mesh geometry in place.
+
+        Parameters
+        ----------
+        u : dolfinx.fem.Function
+            Displacement field to deform the geometry with.
+        """
+        if not isinstance(u, dolfinx.fem.Function):
+            raise TypeError("Displacement field must be a dolfinx.fem.Function")
+
+        import scifem
+
+        self.mesh.geometry.x[:] += scifem.evaluate_function(
+            u,
+            self.mesh.geometry.x,
+            broadcast=False,
+        )
+
     @classmethod
     def from_cardiac_geometries(
         cls,

@@ -33,6 +33,7 @@ demo = [
     "gotranx",
     "adios4dolfinx",
     "scipy",
+    "ukb-atlas",
 ]
 docs = [
    "jupyter-book",

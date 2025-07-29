@@ -4,6 +4,7 @@ allreduce
 argsort
 astype
 atol
+Barnafi
 Bartolucci
 basix
 bcast
@@ -17,9 +18,11 @@ cardiomyocytes
 cellname
 Chiara
 cofac
+cofnorm
 cpus
 Cristobal
 Culloch
+Davide
 deviatoric
 dirichletbc
 dofmap
@@ -40,6 +43,7 @@ Francesco
 functionspace
 geodir
 gradu
+Grice
 Guccione
 Holohan
 Holzapfel
@@ -90,6 +94,7 @@ Quarteroni
 regazzoni
 Regazzoni
 Remedios
+Riccobelli
 rique
 rtol
 scifem
@@ -99,10 +104,12 @@ Silvano
 Sorine
 Stefano
 subplus
+Taras
 tomek
 Tomek
 TRAME
 ureg
+Usyk
 varepsilon
 Venant
 Verlag
