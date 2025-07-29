@@ -202,7 +202,7 @@ def run_TorOrdLand(
                 monitor = mon(ti, states, p)
                 Tas[i] = monitor[Ta_index]
 
-        # Time in milliseconds
+
         nbeats = 200
         times = np.arange(0, T, dt_cell)
         all_times = np.arange(0, T * nbeats, dt_cell)
@@ -258,16 +258,9 @@ def run_3D_model(
     p_AR_PUL: float = 35.0,
     p_VEN_SYS: float = 30.0,
     p_VEN_PUL: float = 24.0,
+    mesh_unit: str = "m",
+    volume2ml: float = 1000.0,
 ):
-    scale_mesh = True
-
-    if scale_mesh:
-        geo.mesh.geometry.x[:] *= 1e-3
-        volume2ml = 1e6
-        mesh_unit = "m"
-    else:
-        volume2ml = 1e-3
-        mesh_unit = "mm"
 
     geometry = pulse.HeartGeometry.from_cardiac_geometries(
         geo,
@@ -483,7 +476,6 @@ def run_3D_model(
     # Set end time for early stopping if running in CI
     end_time = 2 * dt if os.getenv("CI") else None
     regazzoni.solve(num_beats=num_beats, initial_state=init_state, dt=dt, T=end_time) #, checkpoint=RR)
-
     regazzoni.print_info()
 
 
@@ -515,6 +507,17 @@ geo = cardiac_geometries.geometry.Geometry.from_folder(
     comm=comm,
     folder=geodir,
 )
+scale_mesh = True
+
+if scale_mesh:
+    geo.mesh.geometry.x[:] *= 1e-3
+    volume2ml = 1e6
+    mesh_unit = "m"
+else:
+    volume2ml = 1e-3
+    mesh_unit = "mm"
+
+
 dt = 0.001
 zenker_history = run_zenker(outdir=outdir)
 HR_before = zenker_history["HR_before"]
@@ -550,7 +553,10 @@ run_3D_model(
     p_AR_PUL=Pa_before * 0.4375,
     p_VEN_SYS=Pcvp_before,
     p_VEN_PUL=Pcvp_before * 0.8,
+    mesh_unit=mesh_unit,
+    volume2ml=volume2ml,
 )
+
 run_3D_model(
     comm=comm,
     geo=geo,
@@ -566,6 +572,8 @@ run_3D_model(
     p_AR_PUL=Pa_after * 0.4375,
     p_VEN_SYS=Pcvp_after,
     p_VEN_PUL=Pcvp_after * 0.8,
+    mesh_unit=mesh_unit,
+    volume2ml=volume2ml,
 )
 
 # Below we plot the pressure volume loop, volumes, pressures and flows for 50 beats
