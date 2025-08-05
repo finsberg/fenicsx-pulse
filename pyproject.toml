@@ -6,7 +6,8 @@ name = "fenicsx-pulse"
 version = "0.4.0"
 description = "Next generation cardiac mechanics solver based on FEniCSx"
 authors = [{name = "Henrik Finsberg", email = "henriknf@simula.no"}]
-license = {file = "LICENSE"}
+license = "MIT"
+license-files = ["LICENSE"]
 readme = "README.md"
 requires-python = ">=3.10.0"
 dependencies = ["fenics-dolfinx", "pint", "scifem", "rich", "rich-argparse"]
