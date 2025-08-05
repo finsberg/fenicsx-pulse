@@ -42,6 +42,7 @@ finsberg
 Francesco
 functionspace
 geodir
+gmsh
 gradu
 Grice
 Guccione
