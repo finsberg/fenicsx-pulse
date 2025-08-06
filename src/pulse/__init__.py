@@ -5,7 +5,7 @@ from importlib.metadata import metadata
 meta = metadata("fenicsx_pulse")
 __version__ = meta["Version"]
 __author__ = meta["Author-email"]
-__license__ = meta["License"]
+__license__ = meta["license-expression"]
 __email__ = meta["Author-email"]
 __program_name__ = meta["Name"]
 
