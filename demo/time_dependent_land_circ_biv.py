@@ -85,11 +85,11 @@ alpha_base = pulse.Variable(
 robin_base = pulse.RobinBC(value=alpha_base, marker=geometry.markers["BASE"][0])
 
 
-lvv_initial = geometry.volume("ENDO_LV")
+lvv_initial = geo.mesh.comm.allreduce(geometry.volume("ENDO_LV"), op=MPI.SUM)
 lv_volume = dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(lvv_initial))
 lv_cavity = pulse.problem.Cavity(marker="ENDO_LV", volume=lv_volume)
 
-rvv_initial = geometry.volume("ENDO_RV")
+rvv_initial = geo.mesh.comm.allreduce(geometry.volume("ENDO_RV"), op=MPI.SUM)
 rv_volume = dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(rvv_initial))
 rv_cavity = pulse.problem.Cavity(marker="ENDO_RV", volume=rv_volume)
 
@@ -179,7 +179,8 @@ if not state_file.is_file():
     ax[2, 1].set_xlabel("Time [ms]")
 
     fig.savefig(outdir / "Ta_ORdLand.png")
-    np.save(state_file, y)
+    if comm.rank == 0:
+        np.save(state_file, y)
 
 y = np.load(state_file)
 
@@ -287,9 +288,7 @@ def p_BiV_func(V_LV, V_RV, t):
 
 mL = circulation.units.ureg("mL")
 add_units = False
-surface_area_lv = geometry.surface_area("ENDO_LV")
 lvv_init = geo.mesh.comm.allreduce(geometry.volume("ENDO_LV", u=problem.u), op=MPI.SUM) * 1e6 * 1.0  # Increase the volume by 5%
-surface_area_rv = geometry.surface_area("ENDO_RV")
 rvv_init = geo.mesh.comm.allreduce(geometry.volume("ENDO_RV", u=problem.u), op=MPI.SUM) * 1e6 * 1.0  # Increase the volume by 5%
 logger.info(f"Initial volume (LV): {lvv_init} mL and (RV): {rvv_init} mL")
 init_state = {"V_LV": lvv_initial * 1e6 * mL, "V_RV": rvv_initial * 1e6 * mL}
