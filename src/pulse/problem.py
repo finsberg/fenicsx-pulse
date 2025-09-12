@@ -100,10 +100,12 @@ class StaticProblem:
             )
             self.p_space = dolfinx.fem.functionspace(self.geometry.mesh, p_element)
             self.p = dolfinx.fem.Function(self.p_space)
+            self.p_old = dolfinx.fem.Function(self.p_space)
             self.p_test = ufl.TestFunction(self.p_space)
             self.dp = ufl.TrialFunction(self.p_space)
         else:
             self.p_space = None
+            self.p_old = None
             self.p = None
             self.p_test = None
             self.dp = None
@@ -120,6 +122,7 @@ class StaticProblem:
         )
         self.u_space = dolfinx.fem.functionspace(self.geometry.mesh, u_element)
         self.u = dolfinx.fem.Function(self.u_space)
+        self.u_old = dolfinx.fem.Function(self.u_space)
         self.u_test = ufl.TestFunction(self.u_space)
         self.du = ufl.TrialFunction(self.u_space)
 
@@ -151,15 +154,18 @@ class StaticProblem:
         self.cavity_pressures = []
         self.cavity_pressures_test = []
         self.cavity_pressures_trial = []
+        self.cavity_pressures_old = []
         self.real_space = scifem.create_real_functionspace(self.geometry.mesh)
 
         if self.num_cavity_pressure_states > 0:
             for _ in range(self.num_cavity_pressure_states):
                 cavity_pressure = dolfinx.fem.Function(self.real_space)
+                cavity_pressure_old = dolfinx.fem.Function(self.real_space)
                 cavity_pressure_test = ufl.TestFunction(self.real_space)
                 cavity_pressure_trial = ufl.TrialFunction(self.real_space)
 
                 self.cavity_pressures.append(cavity_pressure)
+                self.cavity_pressures_old.append(cavity_pressure_old)
                 self.cavity_pressures_test.append(cavity_pressure_test)
                 self.cavity_pressures_trial.append(cavity_pressure_trial)
 
@@ -170,6 +176,7 @@ class StaticProblem:
                 value_shape=(6,),
             )
             self.r = dolfinx.fem.Function(self.rigid_space)
+            self.r_old = dolfinx.fem.Function(self.rigid_space)
             self.dr = ufl.TrialFunction(self.rigid_space)
             self.q = ufl.TestFunction(self.rigid_space)
 
@@ -359,6 +366,37 @@ class StaticProblem:
         return u
 
     @property
+    def old_states(self):
+        u = [self.u_old]
+        if self.num_cavity_pressure_states > 0:
+            u += self.cavity_pressures_old
+        if self.parameters["rigid_body_constraint"]:
+            u.append(self.r_old)
+        if self.is_incompressible:
+            u.append(self.p_old)
+        return u
+
+    def update_old_states(self):
+        """Update old states to current values"""
+        self.u_old.x.array[:] = self.u.x.array.copy()
+        for i in range(self.num_cavity_pressure_states):
+            self.cavity_pressures_old[i].x.array[:] = self.cavity_pressures[i].x.array.copy()
+        if self.parameters["rigid_body_constraint"]:
+            self.r_old.x.array[:] = self.r.x.array.copy()
+        if self.is_incompressible:
+            self.p_old.x.array[:] = self.p.x.array.copy()
+
+    def reset_states(self):
+        """Reset states to old values"""
+        self.u.x.array[:] = self.u_old.x.array.copy()
+        for i in range(self.num_cavity_pressure_states):
+            self.cavity_pressures[i].x.array[:] = self.cavity_pressures_old[i].x.array.copy()
+        if self.parameters["rigid_body_constraint"]:
+            self.r.x.array[:] = self.r_old.x.array.copy()
+        if self.is_incompressible:
+            self.p.x.array[:] = self.p_old.x.array.copy()
+
+    @property
     def test_functions(self):
         u = [self.u_test]
         if self.num_cavity_pressure_states > 0:
@@ -418,9 +456,13 @@ class StaticProblem:
     def update_fields(self):
         pass
 
+    def reset(self):
+        self.reset_states()
+        self._init_forms()
+
     def solve(self) -> bool:
         """Solve the system"""
-
+        self.update_old_states()
         ret = self._solver.solve(rtol=1e-10, atol=1e-6)
         self.update_fields()
 
