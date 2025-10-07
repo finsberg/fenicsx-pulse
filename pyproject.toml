@@ -40,10 +40,14 @@ docs = [
    "jupyter-book",
    "jupytext",
    "jupyter",
-   "pyvista[all]>=0.43.0",
+   "pyvista[all]>=0.45.0",
+   "vtk>=9.5.0",
    "trame-vuetify",
    "ipywidgets",
    "fenicsx-pulse[demo]",
+   "sphinx-codeautolink",
+   "sphinxcontrib-bibtex",
+   "sphinx-copybutton",
 ]
 benchmark = [
     "pytest-codspeed",

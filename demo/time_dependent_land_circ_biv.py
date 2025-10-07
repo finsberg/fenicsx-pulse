@@ -72,7 +72,7 @@ model = pulse.CardiacModel(
     material=material,
     active=active_model,
     compressibility=comp_model,
-    viscoelasticity=viscoeleastic_model,
+    # viscoelasticity=viscoeleastic_model,
 )
 
 alpha_epi = pulse.Variable(

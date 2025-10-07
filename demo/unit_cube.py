@@ -122,9 +122,6 @@ try:
 except ImportError:
     print("Pyvista is not installed")
 else:
-
-    pyvista.start_xvfb()
-
     # Create plotter and pyvista grid
     p = pyvista.Plotter()
 

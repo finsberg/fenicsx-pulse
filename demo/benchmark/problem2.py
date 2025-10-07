@@ -155,7 +155,6 @@ try:
 except ImportError:
     print("Pyvista is not installed")
 else:
-    pyvista.start_xvfb()
     V = dolfinx.fem.functionspace(geometry.mesh, ("Lagrange", 1, (geometry.mesh.geometry.dim,)))
     uh = dolfinx.fem.Function(V)
     uh.interpolate(problem.u)
