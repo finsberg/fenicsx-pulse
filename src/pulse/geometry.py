@@ -299,7 +299,7 @@ class HeartGeometry(Geometry):
 
     def volume(
         self,
-        marker: str,
+        marker: str | typing.Sequence[str],
         u: dolfinx.fem.Function | None = None,
     ) -> float:
         """Return the volume of the cavity for a given marker
@@ -321,13 +321,23 @@ class HeartGeometry(Geometry):
         exceptions.MarkerNotFoundError
             If the marker is not found in the geometry
         """
-        if marker not in self.markers:
-            raise exceptions.MarkerNotFoundError(marker)
-        marker_id = self.markers[marker][0]
 
-        if marker not in self.markers:
-            raise exceptions.MarkerNotFoundError(marker)
-        marker_id = self.markers[marker][0]
-
+        marker_id = self.get_marker_ids(marker)
         form = self.volume_form(u=u)
         return dolfinx.fem.assemble_scalar(dolfinx.fem.form(form * self.ds(marker_id)))
+
+    def get_marker_ids(
+        self: typing.Self,
+        marker: str | typing.Sequence[str],
+    ) -> int | tuple[int, ...]:
+        if isinstance(marker, str):
+            if marker not in self.markers:
+                raise exceptions.MarkerNotFoundError(marker)
+            return self.markers[marker][0]
+        else:
+            ids = []
+            for m in marker:
+                if m not in self.markers:
+                    raise exceptions.MarkerNotFoundError(m)
+                ids.append(self.markers[m][0])
+            return tuple(ids)
