@@ -211,6 +211,7 @@ def test_static_problem_lv(
     tmp_path_factory,
 ):
     geo = get_geo(geo_str, tmp_path_factory)
+
     geometry = pulse.HeartGeometry.from_cardiac_geometries(
         geo,
         metadata={"quadrature_degree": 6},
