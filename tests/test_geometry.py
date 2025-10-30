@@ -119,18 +119,7 @@ def test_HeartGeometry_biv(tmp_path):
     )
     geo2 = pulse.HeartGeometry.from_cardiac_geometries(geo1)
 
-    endo_lv_volume = 4.984208611265616
-    assert np.isclose(geo2.volume("ENDO_LV"), endo_lv_volume, rtol=0.05)
-    endo_rv_volume = 8.1843844475988
-    assert np.isclose(geo2.volume("ENDO_RV"), endo_rv_volume, rtol=0.05)
-
-    # # Now we rotate the geometry
-    # rotate_geo(geo2, np.pi)
-
-    # # But volume should be the same
-    # assert np.isclose(geo2.volume("ENDO_LV"), endo_lv_volume, rtol=0.05)
-    # assert np.isclose(geo2.volume("ENDO_RV"), endo_rv_volume, rtol=0.05)
-
-    # rotate_geo(geo2, np.pi / 2)
-    # assert np.isclose(geo2.volume("ENDO_LV"), endo_lv_volume, rtol=0.05)
-    # assert np.isclose(geo2.volume("ENDO_RV"), endo_rv_volume, rtol=0.05)
+    endo_lv_volume = 42.70917017680274
+    assert np.isclose(geo2.volume(["LV_ENDO_FW", "LV_SEPTUM"]), endo_lv_volume, rtol=0.05)
+    endo_rv_volume = 37.19190435464537
+    assert np.isclose(geo2.volume(["RV_ENDO_FW", "RV_SEPTUM"]), endo_rv_volume, rtol=0.05)
