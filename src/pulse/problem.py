@@ -118,7 +118,7 @@ class StaticProblem:
             family=u_family,
             cell=self.geometry.mesh.basix_cell(),
             degree=int(u_degree),
-            shape=(self.geometry.mesh.ufl_cell().topological_dimension(),),
+            shape=(self.geometry.mesh.basix_cell().value,),
         )
         self.u_space = dolfinx.fem.functionspace(self.geometry.mesh, u_element)
         self.u = dolfinx.fem.Function(self.u_space)
