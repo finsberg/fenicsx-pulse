@@ -47,7 +47,7 @@ geo = cardiac_geometries.geometry.Geometry.from_folder(
     folder=geodir,
 )
 # Scale the geometry to meters and adjust the size so that LV and RV volumes are reasonable
-geo.mesh.geometry.x[:] *= 1.4e-2
+geo.mesh.geometry.x[:] *= 1.5e-2
 
 # Now we need to redefine the markers to have so that facets on the endo- and epicardium combine both
 # free wall and the septum.
@@ -115,6 +115,8 @@ lv_cavity = pulse.problem.Cavity(marker="ENDO_LV", volume=lv_volume)
 rvv_initial = geo.mesh.comm.allreduce(geometry.volume("ENDO_RV"), op=MPI.SUM)
 rv_volume = dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(rvv_initial))
 rv_cavity = pulse.problem.Cavity(marker="ENDO_RV", volume=rv_volume)
+
+
 
 cavities = [lv_cavity, rv_cavity]
 
@@ -244,7 +246,7 @@ Ta_history = []
 
 def callback(model, i: int, t: float, save=True):
     Ta_history.append(get_activation(t))
-    if save:
+    if save and i % 100 == 0:
         adios4dolfinx.write_function(filename, problem.u, time=t, name="displacement")
         vtx.write(t)
 

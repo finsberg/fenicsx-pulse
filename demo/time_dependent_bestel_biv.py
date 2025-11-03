@@ -44,7 +44,7 @@ geo = cardiac_geometries.geometry.Geometry.from_folder(
 
 # In this case we scale the geometry to be in meters
 
-geo.mesh.geometry.x[:] *= 1.4e-2
+geo.mesh.geometry.x[:] *= 1.5e-2
 
 # Now we need to redefine the markers to have so that facets on the endo- and epicardium combine both
 # free wall and the septum.
