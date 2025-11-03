@@ -205,44 +205,36 @@ if not state_file.is_file():
     if comm.rank == 0:
         np.save(state_file, y)
 
+    np.save(outdir / "ode_times.npy", times)
+    np.save(outdir / "ode_Tas.npy", Tas[-len(times):])  # Save only last beat
+
 comm.barrier()
 y = np.load(state_file)
+ode_ts = np.load(outdir / "ode_times.npy")
+ode_Tas = np.load(outdir / "ode_Tas.npy")
 
-
-class ODEState:
-    def __init__(self, y, dt_cell, p, t=0.0):
-        self.y = y
-        self.dt_cell = dt_cell
-        self.p = p
-        self.t = t
-
-    def forward(self, t):
-        for t_cell in np.arange(self.t, t, self.dt_cell):
-            self.y[:] = fgr(self.y, t_cell, self.dt_cell, self.p)
-        self.t = t
-        return self.y[:]
-
-    def Ta(self, t):
-        monitor = mon(t, self.y, p)
-        return monitor[Ta_index]
-
-
-ode_state = ODEState(y, dt_cell, p)
 
 num_beats = 5
 BCL = 1.0
-ts = np.arange(0, num_beats * BCL, dt)
-all_Ta = np.zeros_like(ts)
-for i, t in enumerate(ts):
-    t_cell_next = t * 1000
-    ode_state.forward(t_cell_next)
-    all_Ta[i] = ode_state.Ta(t_cell_next) * 5.0
+
 
 @lru_cache
 def get_activation(t: float):
-    return np.interp(t, ts, all_Ta)
+    return np.interp((t % BCL) * 1000, ode_ts, ode_Tas) * 5.0
+
 vtx = dolfinx.io.VTXWriter(geometry.mesh.comm, f"{outdir}/displacement.bp", [problem.u], engine="BP4")
 vtx.write(0.0)
+
+
+ts = np.arange(0.0, num_beats * BCL, dt)
+Tas = [get_activation(ti) for ti in ts]
+
+# fig, ax = plt.subplots(figsize=(10, 5))
+# ax.plot(ts, Tas)
+# ax.set_title("Activation over time")
+# fig.savefig(outdir / "activation_time.png")
+
+
 
 filename = Path("function_checkpoint.bp")
 adios4dolfinx.write_mesh(filename, geometry.mesh)
