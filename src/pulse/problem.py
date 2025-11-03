@@ -95,7 +95,7 @@ class StaticProblem:
             p_family, p_degree = self.parameters["p_space"].split("_")
             p_element = basix.ufl.element(
                 family=p_family,
-                cell=self.geometry.mesh.ufl_cell().cellname(),
+                cell=self.geometry.mesh.basix_cell(),
                 degree=int(p_degree),
             )
             self.p_space = dolfinx.fem.functionspace(self.geometry.mesh, p_element)
@@ -116,9 +116,9 @@ class StaticProblem:
 
         u_element = basix.ufl.element(
             family=u_family,
-            cell=self.geometry.mesh.ufl_cell().cellname(),
+            cell=self.geometry.mesh.basix_cell(),
             degree=int(u_degree),
-            shape=(self.geometry.mesh.ufl_cell().topological_dimension(),),
+            shape=(self.geometry.mesh.topology.dim,),
         )
         self.u_space = dolfinx.fem.functionspace(self.geometry.mesh, u_element)
         self.u = dolfinx.fem.Function(self.u_space)

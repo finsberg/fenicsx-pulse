@@ -6,6 +6,7 @@
 
 from pathlib import Path
 from mpi4py import MPI
+import numpy as np
 import dolfinx
 from dolfinx import log
 import ldrb
@@ -24,7 +25,9 @@ outdir.mkdir(parents=True, exist_ok=True)
 geodir = outdir / "geometry"
 if not geodir.exists():
     geo = cardiac_geometries.mesh.biv_ellipsoid(outdir=geodir)
-    system = ldrb.dolfinx_ldrb(mesh=geo.mesh, ffun=geo.ffun, markers=geo.markers, alpha_endo_lv=60, alpha_epi_lv=-60, beta_endo_lv=0, beta_epi_lv=0, fiber_space="P_2")
+    markers = cardiac_geometries.mesh.transform_biv_markers(geo.markers)
+
+    system = ldrb.dolfinx_ldrb(mesh=geo.mesh, ffun=geo.ffun, markers=markers, alpha_endo_lv=60, alpha_epi_lv=-60, beta_endo_lv=0, beta_epi_lv=0, fiber_space="P_2")
     cardiac_geometries.fibers.utils.save_microstructure(mesh=geo.mesh, functions=[system.f0, system.s0, system.n0], outdir=geodir)
 
 # If the folder exist we just load it
@@ -33,6 +36,33 @@ geo = cardiac_geometries.geometry.Geometry.from_folder(
     comm=MPI.COMM_WORLD,
     folder=geodir,
 )
+
+
+# Now we need to redefine the markers to have so that facets on the endo- and epicardium combine both
+# free wall and the septum.
+
+markers = {"ENDO_LV": [1, 2], "ENDO_RV": [2, 2], "BASE": [3, 2], "EPI": [4, 2]}
+marker_values = geo.ffun.values.copy()
+marker_values[np.isin(geo.ffun.indices, geo.ffun.find(geo.markers["LV_ENDO_FW"][0]))] = markers["ENDO_LV"][0]
+marker_values[np.isin(geo.ffun.indices, geo.ffun.find(geo.markers["LV_SEPTUM"][0]))] = markers["ENDO_LV"][0]
+marker_values[np.isin(geo.ffun.indices, geo.ffun.find(geo.markers["RV_ENDO_FW"][0]))] = markers["ENDO_RV"][0]
+marker_values[np.isin(geo.ffun.indices, geo.ffun.find(geo.markers["RV_SEPTUM"][0]))] = markers["ENDO_RV"][0]
+marker_values[np.isin(geo.ffun.indices, geo.ffun.find(geo.markers["BASE"][0]))] = markers["BASE"][0]
+marker_values[np.isin(geo.ffun.indices, geo.ffun.find(geo.markers["LV_EPI_FW"][0]))] = markers["EPI"][0]
+marker_values[np.isin(geo.ffun.indices, geo.ffun.find(geo.markers["RV_EPI_FW"][0]))] = markers["EPI"][0]
+geo.markers = markers
+ffun = dolfinx.mesh.meshtags(
+    geo.mesh,
+    geo.ffun.dim,
+    geo.ffun.indices,
+    marker_values,
+)
+geo.ffun = ffun
+
+# Scale the geometry to be in meters
+
+geo.mesh.geometry.x[:] *= 1.4e-2
+
 
 # In order to use the geometry with `pulse` we need to convert it to a `pulse.Geometry` object. We can do this by using the `from_cardiac_geometries` method. We also specify that we want to use a quadrature degree of 4
 #
