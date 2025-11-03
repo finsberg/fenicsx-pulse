@@ -58,7 +58,14 @@ marker_values[np.isin(geo.ffun.indices, geo.ffun.find(geo.markers["RV_SEPTUM"][0
 marker_values[np.isin(geo.ffun.indices, geo.ffun.find(geo.markers["BASE"][0]))] = markers["BASE"][0]
 marker_values[np.isin(geo.ffun.indices, geo.ffun.find(geo.markers["LV_EPI_FW"][0]))] = markers["EPI"][0]
 marker_values[np.isin(geo.ffun.indices, geo.ffun.find(geo.markers["RV_EPI_FW"][0]))] = markers["EPI"][0]
-
+geo.markers = markers
+ffun = dolfinx.mesh.meshtags(
+    geo.mesh,
+    geo.ffun.dim,
+    geo.ffun.indices,
+    marker_values,
+)
+geo.ffun = ffun
 
 # We create the geometry object and print the volumes of the LV and RV cavities
 
