@@ -37,7 +37,7 @@ demo = [
     "ukb-atlas",
 ]
 docs = [
-   "jupyter-book<2.0",
+   "jupyter-book",
    "jupytext",
    "jupyter",
    "pyvista[all]>=0.45.0",
