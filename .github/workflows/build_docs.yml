@@ -25,8 +25,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Install dependencies for pyvista
-        run: apt-get update && apt-get install -y libxrender1
+      - name: Install dependencies for pyvista and node
+        run: apt-get update && apt-get install -y libxrender1 nodejs npm
+
 
       - name: Install dependencies
         run: |
