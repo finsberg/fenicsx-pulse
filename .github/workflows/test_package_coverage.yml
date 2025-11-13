@@ -43,7 +43,7 @@ jobs:
 
       - name: Upload HTML report.
         if: ${{ matrix.container == 'ghcr.io/fenics/dolfinx/dolfinx:v0.9.0' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: html-report
           path: htmlcov
