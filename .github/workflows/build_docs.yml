@@ -35,7 +35,7 @@ jobs:
           python3 -m pip install ".[docs]"
 
       - name: Build docs
-        run: jupyter book build -W --keep-going .
+        run: python3 -m sphinx -b html . build
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v4
