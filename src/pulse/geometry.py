@@ -73,6 +73,7 @@ class Geometry:
             )
         if not self.markers:
             self.markers = dict((x[0], (x[1], x[2])) for x in self.boundaries)
+        self.mesh.topology.create_connectivity(self.facet_dimension, self.dim)
         self._set_measures()
         logger.debug("Created Geometry with %d boundaries", len(self.markers))
         logger.debug("Markers: %s", ", ".join(self.markers.keys()))

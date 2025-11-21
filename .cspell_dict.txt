@@ -1,6 +1,7 @@
 Alfio
 allclose
 allreduce
+Arens
 argsort
 astype
 atol
@@ -8,6 +9,7 @@ Barnafi
 Bartolucci
 basix
 bcast
+behaviour
 bestel
 Bestel
 booktitle
@@ -46,6 +48,7 @@ gmsh
 gradu
 Grice
 Guccione
+Gurev
 Holohan
 Holzapfel
 holzapfelogden
@@ -97,6 +100,7 @@ Regazzoni
 Remedios
 Riccobelli
 rique
+rspa
 rtol
 scifem
 Severi
