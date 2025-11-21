@@ -21,7 +21,7 @@ repos:
         args: [ --fix ]
       # Run the formatter.
       - id: ruff-format
-        exclude: 'demos/.*.py$'
+        exclude: 'demo/.*.py$'
 
 
   - repo: https://github.com/asottile/add-trailing-comma

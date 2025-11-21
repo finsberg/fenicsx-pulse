@@ -32,6 +32,7 @@ class NeumannBC:
             unit = "kPa"
             logger.warning("Traction is not a Variable, defaulting to kPa")
             self.traction = Variable(self.traction, unit)
+        logger.debug(f"Created NeumannBC on marker {self.marker} with traction {self.traction}")
 
 
 @dataclass(slots=True)
@@ -46,6 +47,10 @@ class RobinBC:
             unit = "Pa s / m" if self.damping else "Pa / m"
             logger.warning(f"Value is not a Variable, defaulting to {unit}")
             self.value = Variable(self.value, unit)
+        logger.debug(
+            f"Created RobinBC on marker {self.marker} with value {self.value} "
+            f"({'damping' if self.damping else 'stiffness'})",
+        )
 
 
 class BoundaryConditions(typing.NamedTuple):

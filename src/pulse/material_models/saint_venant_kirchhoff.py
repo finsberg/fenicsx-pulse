@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 import numpy as np
@@ -8,6 +9,8 @@ import ufl
 from .. import exceptions
 from ..material_model import HyperElasticMaterial
 from ..units import Variable
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -54,6 +57,12 @@ class SaintVenantKirchhoff(HyperElasticMaterial):
                 name="mu",
                 expected_range=(0.0, np.inf),
             )
+        logger.debug(f"Created material model: {type(self).__name__}")
+        logger.debug(f"Material parameters: {self.parameters}")
+
+    @property
+    def parameters(self) -> dict[str, Variable]:
+        return {"mu": self.mu, "lmbda": self.lmbda}
 
     def strain_energy(self, C: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
         dim = C.ufl_shape[0]

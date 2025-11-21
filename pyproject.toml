@@ -37,7 +37,7 @@ demo = [
     "ukb-atlas",
 ]
 docs = [
-   "jupyter-book<2.0",
+   "sphinx",
    "jupytext",
    "jupyter",
    "pyvista[all]>=0.45.0",
@@ -48,6 +48,15 @@ docs = [
    "sphinx-codeautolink",
    "sphinxcontrib-bibtex",
    "sphinx-copybutton",
+   "sphinx-codeautolink",
+   "sphinx-togglebutton",
+   "sphinx-comments",
+   "sphinx-external-toc",
+   "linkify-it-py",
+   "sphinx-design",
+   "sphinx-book-theme",
+   "myst-nb",
+   "sphinx-multitoc-numbering",
 ]
 benchmark = [
     "pytest-codspeed",

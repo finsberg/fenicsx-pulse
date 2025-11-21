@@ -1,3 +1,4 @@
+import logging
 import typing
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -11,6 +12,8 @@ import numpy.typing as npt
 import ufl
 
 from . import exceptions
+
+logger = logging.getLogger(__name__)
 
 
 class Marker(NamedTuple):
@@ -71,6 +74,9 @@ class Geometry:
         if not self.markers:
             self.markers = dict((x[0], (x[1], x[2])) for x in self.boundaries)
         self._set_measures()
+        logger.debug("Created Geometry with %d boundaries", len(self.markers))
+        logger.debug("Markers: %s", ", ".join(self.markers.keys()))
+        logger.debug("Metadata: %s", self.metadata)
 
     def _set_measures(self) -> None:
         self.dx = ufl.Measure("dx", domain=self.mesh, metadata=self.metadata)

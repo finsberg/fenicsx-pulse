@@ -4,6 +4,7 @@ The cardiac model is a combination of a material model,
 an active model, and a compressibility model.
 """
 
+import logging
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -11,6 +12,8 @@ import dolfinx
 import ufl
 
 from .viscoelasticity import NoneViscoElasticity
+
+logger = logging.getLogger(__name__)
 
 
 class ActiveModel(Protocol):
@@ -56,6 +59,13 @@ class CardiacModel:
     compressibility: Compressibility
     viscoelasticity: ViscoElasticity = field(default_factory=NoneViscoElasticity)
 
+    def __post_init__(self):
+        logger.debug("Created CardiacModel with components:")
+        logger.debug(f"  Material: {type(self.material).__name__}")
+        logger.debug(f"  Active Model: {type(self.active).__name__}")
+        logger.debug(f"  Compressibility: {type(self.compressibility).__name__}")
+        logger.debug(f"  Viscoelasticity: {type(self.viscoelasticity).__name__}")
+
     def strain_energy(
         self,
         C: ufl.core.expr.Expr,
@@ -93,3 +103,25 @@ class CardiacModel:
         if F_dot is not None:
             P += self.viscoelasticity.P(F_dot)
         return P
+
+    def sigma(
+        self,
+        F: ufl.core.expr.Expr,
+        F_dot: ufl.core.expr.Expr | None = None,
+    ) -> ufl.core.expr.Expr:
+        r"""Cauchy stress tensor
+
+        Parameters
+        ----------
+        F : ufl.core.expr.Expr
+           The deformation gradient
+        F_dot : ufl.core.expr.Expr | None
+
+        Returns
+        -------
+        ufl.core.expr.Expr
+            The Cauchy stress tensor
+        """
+        from .kinematics import InversePiolaTransform
+
+        return InversePiolaTransform(self.P(F, F_dot), F)

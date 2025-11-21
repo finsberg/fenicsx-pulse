@@ -86,6 +86,17 @@ class Guccione(HyperElasticMaterial):
                     name=attr,
                     expected_range=(0.0, np.inf),
                 )
+        logger.debug(f"Created material model: {type(self).__name__}")
+        logger.debug(f"Material parameters: {self.parameters}")
+
+    @property
+    def parameters(self) -> dict[str, Variable]:
+        return {
+            "C": self.C,
+            "bf": self.bf,
+            "bt": self.bt,
+            "bfs": self.bfs,
+        }
 
     @staticmethod
     def default_parameters() -> dict[str, Variable]:

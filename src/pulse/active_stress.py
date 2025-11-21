@@ -81,6 +81,7 @@ class ActiveStress(ActiveModel):
 
         self.T_ref = dolfinx.fem.Constant(ufl.domain.extract_unique_domain(self.f0), self.T_ref)
         self.eta = dolfinx.fem.Constant(ufl.domain.extract_unique_domain(self.f0), self.eta)
+        logger.debug(f"Created ActiveStress model with Isotropy: {self.isotropy}")
 
     @property
     def Ta(self) -> ufl.core.expr.Expr:

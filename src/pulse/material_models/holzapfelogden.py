@@ -22,6 +22,17 @@ def heaviside(x: ufl.core.expr.Expr, use_heaviside: bool) -> ufl.core.expr.Expr:
     return ufl.as_ufl(1.0)
 
 
+class HolzapfelOgdenParameters(typing.TypedDict):
+    a: Variable
+    b: Variable
+    a_f: Variable
+    b_f: Variable
+    a_s: Variable
+    b_s: Variable
+    a_fs: Variable
+    b_fs: Variable
+
+
 @dataclass(slots=True)
 class HolzapfelOgden(HyperElasticMaterial):
     r"""
@@ -183,6 +194,21 @@ class HolzapfelOgden(HyperElasticMaterial):
         self._W4f_func = self._resolve_W4(a=a_f, b=b_f, required_attr="f0")
         self._W4s_func = self._resolve_W4(a=a_s, b=b_s, required_attr="s0")
         self._W8fs_func = self._resolve_W8fs()
+        logger.debug(f"Created material model: {type(self).__name__}")
+        logger.debug(f"Material parameters: {self.parameters}")
+
+    @property
+    def parameters(self) -> HolzapfelOgdenParameters:
+        return {
+            "a": self.a,
+            "b": self.b,
+            "a_f": self.a_f,
+            "b_f": self.b_f,
+            "a_s": self.a_s,
+            "b_s": self.b_s,
+            "a_fs": self.a_fs,
+            "b_fs": self.b_fs,
+        }
 
     def _resolve_W1(self) -> Invariant:
         a = self.a.to_base_units()
@@ -239,7 +265,7 @@ class HolzapfelOgden(HyperElasticMaterial):
             return lambda I8: 0.0
 
     @staticmethod
-    def transversely_isotropic_parameters() -> dict[str, Variable]:
+    def transversely_isotropic_parameters() -> HolzapfelOgdenParameters:
         """
         Material parameters for the Holzapfel Ogden model
         Taken from Table 1 row 3 in the main paper
@@ -257,7 +283,7 @@ class HolzapfelOgden(HyperElasticMaterial):
         }
 
     @staticmethod
-    def partly_orthotropic_parameters() -> dict[str, Variable]:
+    def partly_orthotropic_parameters() -> HolzapfelOgdenParameters:
         """
         Material parameters for the Holzapfel Ogden model
         Taken from Table 1 row 1 in the main paper
@@ -275,7 +301,7 @@ class HolzapfelOgden(HyperElasticMaterial):
         }
 
     @staticmethod
-    def orthotropic_parameters() -> dict[str, Variable]:
+    def orthotropic_parameters() -> HolzapfelOgdenParameters:
         """
         Material parameters for the Holzapfel Ogden model
         Taken from Table 1 row 2 in the main paper

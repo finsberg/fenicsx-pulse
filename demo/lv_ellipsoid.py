@@ -1,8 +1,35 @@
-# # LV Ellipsoid
+# # Left Ventricular Ellipsoid Simulation
 #
-# In this demo we will show how to simulate an idealized left ventricular geometry. For this we will use [`cardiac-geometries`](https://github.com/ComputationalPhysiology/cardiac-geometriesx) to generate an idealized LV ellipsoid.
+# This demo demonstrates how to simulate the mechanics of an idealized Left Ventricle (LV) represented
+# as a truncated ellipsoid. We will cover geometry generation, fiber definition, passive and active
+# material modeling, and boundary conditions.
 #
-# First we will make the necessary imports.
+# ## Problem Setup
+#
+# **Geometry**:
+# An idealized LV geometry is generated using the [`cardiac-geometries`](https://computationalphysiology.github.io/cardiac-geometriesx/) library.
+# The shape is defined by a truncated prolate spheroid.
+#
+# **Microstructure (Fibers)**:
+# Cardiac tissue is anisotropic. We define a local coordinate system with:
+# * **Fibers ($\mathbf{f}_0$)**: The primary direction of muscle cells.
+# * **Sheets ($\mathbf{s}_0$)**: The direction of myocardial sheets.
+# * **Sheet-normals ($\mathbf{n}_0$)**: Orthogonal to fibers and sheets.
+#
+# The fiber angle typically varies transmurally (from endocardium to epicardium), e.g., from $+60^\circ$ to $-60^\circ$.
+#
+# **Physics**:
+# We solve the static balance of linear momentum for a hyperelastic material:
+#
+# $$
+# \nabla \cdot \mathbf{P} = \mathbf{0} \quad \text{in } \Omega_0
+# $$
+#
+# where $\mathbf{P}$ is the First Piola-Kirchhoff stress tensor.
+#
+# ---
+
+# ## Imports
 
 from pathlib import Path
 from mpi4py import MPI
@@ -12,41 +39,85 @@ import cardiac_geometries
 import cardiac_geometries.geometry
 import pulse
 
-# Next we will create the geometry and save it in the folder called `lv_ellipsoid`. We also make sure to generate fibers which can be done analytically and use a second order Lagrange space for the fibers
+# ## Geometry Generation
+#
+# We define the output directory and generate the mesh.
+# `cardiac_geometries.mesh.lv_ellipsoid` creates the mesh and tags the boundaries:
+# * **ENDO**: Endocardium (inner surface)
+# * **EPI**: Epicardium (outer surface)
+# * **BASE**: Top basal plane
+#
+# It also generates the fiber fields based on the specified angles.
 
 outdir = Path("lv_ellipsoid")
 outdir.mkdir(parents=True, exist_ok=True)
 geodir = outdir / "geometry"
-if not geodir.exists():
-    cardiac_geometries.mesh.lv_ellipsoid(outdir=geodir, create_fibers=True, fiber_space="P_2")
 
-# If the folder already exist, then we just load the geometry
+if not geodir.exists():
+    cardiac_geometries.mesh.lv_ellipsoid(
+        outdir=geodir,
+        create_fibers=True,
+        fiber_space="P_2",  # Second-order polynomial space for fibers
+    )
+
+# We load the geometry into a `pulse.Geometry` object.
+# This object wraps the mesh, markers, and integration measures.
 
 geo = cardiac_geometries.geometry.Geometry.from_folder(
     comm=MPI.COMM_WORLD,
     folder=geodir,
 )
 
-# In order to use the geometry with `pulse` we need to convert it to a `pulse.Geometry` object. We can do this by using the `from_cardiac_geometries` method. We also specify that we want to use a quadrature degree of 4
-#
+# We convert the geometry to a `pulse.Geometry` object and specify the quadrature degree
+# for numerical integration.
 
 geometry = pulse.Geometry.from_cardiac_geometries(geo, metadata={"quadrature_degree": 4})
 
-# Next we create the material object, and we will use the transversely isotropic version of the {py:class}`Holzapfel Ogden model <pulse.holzapfelogden.HolzapfelOgden>`
+# ## Constitutive Model
+#
+# ### 1. Passive Material Properties
+# We use the **Holzapfel-Ogden** constitutive model [Holzapfel & Ogden 2009].
+# This model captures the exponential stiffening and orthotropic nature of myocardium.
+#
+# The strain energy density $\Psi_{pass}$ depends on the invariants $I_1, I_{4f}, I_{4s}, I_{8fs}$:
+#
+# $$
+# \Psi_{pass} = \frac{a}{2b} (e^{b(I_1-3)} - 1)
+# + \sum_{i=f,s} \frac{a_i}{2b_i} \mathcal{H}(I_{4i}-1) (e^{b_i(I_{4i}-1)^2} - 1)
+# + \frac{a_{fs}}{2b_{fs}} (e^{b_{fs}I_{8fs}^2} - 1)
+# $$
+#
+# In this example, we use the **Transversely Isotropic** parameter set (where sheet properties are zeroed out),
+# focusing on the isotropic matrix and fiber direction.
 
 material_params = pulse.HolzapfelOgden.transversely_isotropic_parameters()
-material = pulse.HolzapfelOgden(f0=geo.f0, s0=geo.s0, **material_params)  # type: ignore
+material = pulse.HolzapfelOgden(f0=geo.f0, s0=geo.s0, **material_params)
 
-# We use an active stress approach with 30% transverse active stress (see {py:meth}`pulse.active_stress.transversely_active_stress`)
+# ### 2. Active Contraction
+# We model contraction using the **Active Stress** approach.
+# An active stress component is added to the total Second Piola-Kirchhoff stress $\mathbf{S}$.
+#
+# $$
+# \mathbf{S}_{active} = T_a \left( \mathbf{f}_0 \otimes \mathbf{f}_0 + \eta (\mathbf{I} - \mathbf{f}_0 \otimes \mathbf{f}_0) \right)
+# $$
+#
+# * $T_a$: Magnitude of active tension (scalar).
+# * $\mathbf{f}_0$: Fiber direction.
+# * $\eta$: Parameter governing transverse active stress (coupling factor).
+#
+# Here we set $\eta=0.3$, meaning 30% of the active tension is applied transversely to the fibers.
 
 Ta = pulse.Variable(dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0)), "kPa")
 active_model = pulse.ActiveStress(geo.f0, activation=Ta, eta=0.3)
 
-# We use an incompressible model
+# ### 3. Incompressibility
+# The heart muscle is treated as fully incompressible ($J=1$).
+# This is enforced via a Lagrange multiplier $p$ (hydrostatic pressure).
 
 comp_model = pulse.Incompressible()
 
-# and assembles the `CardiacModel`
+# ### Assembly
+# We combine these components into the final `CardiacModel`.
 
 model = pulse.CardiacModel(
     material=material,
@@ -54,90 +125,119 @@ model = pulse.CardiacModel(
     compressibility=comp_model,
 )
 
-# We apply a traction in endocardium
+# ## Boundary Conditions
+#
+# ### Neumann BC: Cavity Pressure
+# We apply a pressure load on the endocardium. In the variational formulation, this appears as a traction term:
+#
+# $$
+# \int_{\Gamma_{endo}} -p_{cavity} \mathbf{n} \cdot \mathbf{v} \, ds
+# $$
+#
+# Note: `traction` here represents the magnitude of the pressure.
 
 traction = pulse.Variable(dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0)), "kPa")
 neumann = pulse.NeumannBC(traction=traction, marker=geometry.markers["ENDO"][0])
 
-# and finally combine all the boundary conditions
+# ### Dirichlet BC: Fixed Base
+# We hold the base of the ellipsoid fixed ($\mathbf{u} = \mathbf{0}$ on $\Gamma_{base}$).
+# This is handled via the `parameters` argument in the problem definition.
 
 bcs = pulse.BoundaryConditions(neumann=(neumann,))
 
-# and create a Mixed problem
+# ## Solving the Problem
+#
+# We define a `StaticProblem`.
+# * `base_bc=pulse.BaseBC.fixed`: Automatically applies Dirichlet BCs to the boundary marked as 'BASE'.
 
-problem = pulse.StaticProblem(model=model, geometry=geometry, bcs=bcs, parameters={"base_bc": pulse.BaseBC.fixed})
+problem = pulse.StaticProblem(
+    model=model,
+    geometry=geometry,
+    bcs=bcs,
+    parameters={"base_bc": pulse.BaseBC.fixed},
+)
 
-# Now we can solve the problem
+# We initialize the solver log level to INFO to track convergence.
 
 log.set_log_level(log.LogLevel.INFO)
-problem.solve()
 
-
-# And save the displacement to a file that we can view in Paraview
+# ### Phase 1: Passive Inflation
+# We first solve the passive mechanics by increasing the endocardial pressure.
+# We initialize a VTX writer to save the displacement field for visualization.
 
 vtx = dolfinx.io.VTXWriter(geometry.mesh.comm, outdir / "lv_displacement.bp", [problem.u], engine="BP4")
 vtx.write(0.0)
 
-i = 1
-for plv in [0.1]: #, 0.5, 1.0]:
-    print(f"plv: {plv}")
+pressures = [0.1] # kPa. Add more steps for a smoother ramp, e.g. [0.1, 0.5, 1.0]
+for i, plv in enumerate(pressures, start=1):
+    print(f"Solving for pressure: {plv} kPa")
     traction.value = plv
     problem.solve()
-
     vtx.write(float(i))
-    i += 1
 
-
-# Now plot with pyvista
+# #### Visualization (Passive)
+# We can visualize the inflated state using PyVista if available.
 
 try:
     import pyvista
 except ImportError:
     print("Pyvista is not installed")
 else:
+    # Interpolate solution to a standard CG-1 space for plotting
     V = dolfinx.fem.functionspace(geometry.mesh, ("Lagrange", 1, (geometry.mesh.geometry.dim,)))
     uh = dolfinx.fem.Function(V)
     uh.interpolate(problem.u)
-    # Create plotter and pyvista grid
-    p = pyvista.Plotter()
-    topology, cell_types, geometry = dolfinx.plot.vtk_mesh(V)
-    grid = pyvista.UnstructuredGrid(topology, cell_types, geometry)
 
-    # Attach vector values to grid and warp grid by vector
-    grid["u"] = uh.x.array.reshape((geometry.shape[0], 3))
-    actor_0 = p.add_mesh(grid, style="wireframe", color="k")
-    warped = grid.warp_by_vector("u", factor=1.5)
-    actor_1 = p.add_mesh(warped, show_edges=True)
+    # Create plotter
+    p = pyvista.Plotter()
+    topology, cell_types, geometry_data = dolfinx.plot.vtk_mesh(V)
+    grid = pyvista.UnstructuredGrid(topology, cell_types, geometry_data)
+
+    # Warp grid by displacement
+    grid["u"] = uh.x.array.reshape((geometry_data.shape[0], 3))
+    p.add_mesh(grid, style="wireframe", color="k", opacity=0.3, label="Reference")
+    warped = grid.warp_by_vector("u", factor=1.0)
+    p.add_mesh(warped, show_edges=True, color="firebrick", label="Inflated")
+
+    p.add_legend()
     p.show_axes()
     if not pyvista.OFF_SCREEN:
         p.show()
     else:
-        figure_as_array = p.screenshot(outdir / "lv_ellipsoid_pressure.png")
+        p.screenshot(outdir / "lv_ellipsoid_pressure.png")
 
+# ### Phase 2: Active Contraction
+# Now we keep the pressure constant and increase the active tension $T_a$.
+# This simulates the systole phase (isovolumetric contraction/ejection).
 
-for ta in [0.1]: #, 0.5, 1.0]:
-    print(f"ta: {ta}")
+active_tensions = [0.1] # kPa. Add steps like [0.5, 1.0, 2.0] for full contraction
+for i, ta in enumerate(active_tensions, start=len(pressures) + 1):
+    print(f"Solving for active tension: {ta} kPa")
     Ta.value = ta
     problem.solve()
     vtx.write(float(i))
-    i += 1
 
-log.set_log_level(log.LogLevel.WARNING)
 vtx.close()
 
+# #### Visualization (Active)
 
 try:
     import pyvista
 except ImportError:
     pass
 else:
-    # Attach vector values to grid and warp grid by vector
-    grid["u"] = uh.x.array.reshape((geometry.shape[0], 3))
-    actor_0 = p.add_mesh(grid, style="wireframe", color="k")
-    warped = grid.warp_by_vector("u", factor=1.5)
-    actor_1 = p.add_mesh(warped, show_edges=True)
+    uh.interpolate(problem.u)
+    grid["u"] = uh.x.array.reshape((geometry_data.shape[0], 3))
+
+    p = pyvista.Plotter()
+    p.add_mesh(grid, style="wireframe", color="k", opacity=0.3, label="Reference")
+
+    warped = grid.warp_by_vector("u", factor=1.0)
+    p.add_mesh(warped, show_edges=True, color="red", label="Contracted")
+
+    p.add_legend()
     p.show_axes()
     if not pyvista.OFF_SCREEN:
         p.show()
     else:
-        figure_as_array = p.screenshot(outdir / "lv_ellipsoid_active.png")
+        p.screenshot(outdir / "lv_ellipsoid_active.png")

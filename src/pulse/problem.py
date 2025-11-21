@@ -1,3 +1,4 @@
+import logging
 import typing
 from dataclasses import dataclass, field
 from enum import Enum
@@ -16,6 +17,8 @@ from .geometry import HeartGeometry
 from .units import Variable, mesh_factor
 
 T = typing.TypeVar("T", dolfinx.fem.Function, np.ndarray)
+
+logger = logging.getLogger(__name__)
 
 
 def interpolate(x0: T, x1: T, alpha: float):
@@ -80,9 +83,15 @@ class StaticProblem:
         self.parameters = parameters
         self._init_spaces()
         self._init_forms()
+        logger.debug("Initialized StaticProblem with parameters:")
+        for key, value in self.parameters.items():
+            logger.debug(f"  {key}: {value}")
+        logger.debug(f"Number of cavities: {len(self.cavities)}")
+        logger.debug(f"Boundary conditions: {self.bcs}")
 
     def _init_spaces(self):
         """Initialize function spaces"""
+        logger.debug("Initializing function spaces...")
         self._init_u_space()
         self._init_p_space()
 
@@ -90,7 +99,11 @@ class StaticProblem:
         self._init_rigid_body()
 
     def _init_p_space(self):
+        logger.debug("Initializing pressure function space...")
         if self.is_incompressible:
+            logger.debug(
+                "Model is incompressible, initializing pressure space with Lagrange multiplier",
+            )
             # Need lagrange multiplier for incompressible model
             p_family, p_degree = self.parameters["p_space"].split("_")
             p_element = basix.ufl.element(
@@ -104,6 +117,7 @@ class StaticProblem:
             self.p_test = ufl.TestFunction(self.p_space)
             self.dp = ufl.TrialFunction(self.p_space)
         else:
+            logger.debug("Model is compressible, no pressure space needed")
             self.p_space = None
             self.p_old = None
             self.p = None
@@ -112,7 +126,9 @@ class StaticProblem:
         self.model.compressibility.register(self.p)
 
     def _init_u_space(self):
+        logger.debug("Initializing displacement function space...")
         u_family, u_degree = self.parameters["u_space"].split("_")
+        logger.debug(f"Displacement space: family={u_family}, degree={u_degree}")
 
         u_element = basix.ufl.element(
             family=u_family,
@@ -151,13 +167,15 @@ class StaticProblem:
         return len(self.cavities)
 
     def _init_cavity_pressure_spaces(self):
+        logger.debug("Initializing cavity pressure function spaces...")
         self.cavity_pressures = []
         self.cavity_pressures_test = []
         self.cavity_pressures_trial = []
         self.cavity_pressures_old = []
-        self.real_space = scifem.create_real_functionspace(self.geometry.mesh)
 
         if self.num_cavity_pressure_states > 0:
+            logger.debug(f"Number of cavity pressure states: {self.num_cavity_pressure_states}")
+            self.real_space = scifem.create_real_functionspace(self.geometry.mesh)
             for _ in range(self.num_cavity_pressure_states):
                 cavity_pressure = dolfinx.fem.Function(self.real_space)
                 cavity_pressure_old = dolfinx.fem.Function(self.real_space)
@@ -168,9 +186,13 @@ class StaticProblem:
                 self.cavity_pressures_old.append(cavity_pressure_old)
                 self.cavity_pressures_test.append(cavity_pressure_test)
                 self.cavity_pressures_trial.append(cavity_pressure_trial)
+        else:
+            logger.debug("No cavity pressure states needed")
 
     def _init_rigid_body(self):
+        logger.debug("Initializing rigid body function space...")
         if self.parameters["rigid_body_constraint"]:
+            logger.debug("Rigid body constraint enabled")
             self.rigid_space = scifem.create_real_functionspace(
                 self.geometry.mesh,
                 value_shape=(6,),
@@ -179,6 +201,13 @@ class StaticProblem:
             self.r_old = dolfinx.fem.Function(self.rigid_space)
             self.dr = ufl.TrialFunction(self.rigid_space)
             self.q = ufl.TestFunction(self.rigid_space)
+        else:
+            logger.debug("No rigid body constraint needed")
+            self.rigid_space = None
+            self.r = None
+            self.r_old = None
+            self.dr = None
+            self.q = None
 
     def _create_residual_form(self, form: dolfinx.fem.Form) -> list[dolfinx.fem.Form]:
         return [
@@ -191,6 +220,7 @@ class StaticProblem:
     def _rigid_body_form(self, u: dolfinx.fem.Function) -> list[dolfinx.fem.Form]:
         if not self.parameters["rigid_body_constraint"]:
             return self._empty_form()
+        logger.debug("Creating rigid body constraint form...")
         X = ufl.SpatialCoordinate(self.geometry.mesh)
 
         RM = [
@@ -206,6 +236,7 @@ class StaticProblem:
         return forms
 
     def _material_form(self, u: dolfinx.fem.Function, p: dolfinx.fem.Function):
+        logger.debug("Creating material form...")
         F = ufl.grad(u) + ufl.Identity(3)
 
         J = ufl.det(F)
@@ -225,6 +256,10 @@ class StaticProblem:
         u: dolfinx.fem.Function,
         v: dolfinx.fem.Function | None = None,
     ) -> list[dolfinx.fem.Form]:
+        forms = self._empty_form()
+        if not self.bcs.robin:
+            return forms
+        logger.debug("Creating Robin boundary condition form...")
         form = ufl.as_ufl(0.0)
         N = self.geometry.facet_normal
         F = ufl.grad(u) + ufl.Identity(3)
@@ -249,11 +284,14 @@ class StaticProblem:
 
             form += -ufl.dot(value, self.u_test) * cofnorm * self.geometry.ds(robin.marker)
 
-        forms = self._empty_form()
         forms[0] += form
         return forms
 
     def _neumann_form(self, u: dolfinx.fem.Function) -> list[dolfinx.fem.Form]:
+        forms = self._empty_form()
+        if not self.bcs.neumann:
+            return forms
+        logger.debug("Creating Neumann boundary condition form...")
         F = ufl.grad(u) + ufl.Identity(3)
 
         N = self.geometry.facet_normal
@@ -265,16 +303,18 @@ class StaticProblem:
             n = t * ufl.det(F) * ufl.inv(F).T * N
             form += ufl.inner(self.u_test, n) * ds(neumann.marker)
 
-        forms = self._empty_form()
         forms[0] += form
         return forms
 
     def _body_force_form(self, u: dolfinx.fem.Function) -> list[dolfinx.fem.Form]:
+        forms = self._empty_form()
+        if not self.bcs.body_force:
+            return forms
+        logger.debug("Creating body force form...")
         form = ufl.as_ufl(0.0)
         for body_force in self.bcs.body_force:
             form += -ufl.derivative(ufl.inner(body_force, u) * self.geometry.dx, u, self.u_test)
 
-        forms = self._empty_form()
         forms[0] += form
         return forms
 
@@ -283,6 +323,7 @@ class StaticProblem:
         u: dolfinx.fem.Function,
         cavity_pressures: list[dolfinx.fem.Function] | None = None,
     ):
+        logger.debug("Creating cavity pressure form...")
         if self.num_cavity_pressure_states == 0:
             return self._empty_form()
 
@@ -378,22 +419,32 @@ class StaticProblem:
 
     def update_old_states(self):
         """Update old states to current values"""
+        logger.debug("Updating old states to current values...")
+        logger.debug("Updating old displacement state to current value...")
         self.u_old.x.array[:] = self.u.x.array.copy()
         for i in range(self.num_cavity_pressure_states):
+            logger.debug(f"Updating old cavity pressure state {i} to current value...")
             self.cavity_pressures_old[i].x.array[:] = self.cavity_pressures[i].x.array.copy()
         if self.parameters["rigid_body_constraint"]:
+            logger.debug("Updating old rigid body constraint state to current value...")
             self.r_old.x.array[:] = self.r.x.array.copy()
         if self.is_incompressible:
+            logger.debug("Updating old pressure state to current value...")
             self.p_old.x.array[:] = self.p.x.array.copy()
 
     def reset_states(self):
         """Reset states to old values"""
+        logger.debug("Resetting states to old values...")
+        logger.debug("Resetting displacement state to old value...")
         self.u.x.array[:] = self.u_old.x.array.copy()
         for i in range(self.num_cavity_pressure_states):
+            logger.debug(f"Resetting cavity pressure state {i} to old value...")
             self.cavity_pressures[i].x.array[:] = self.cavity_pressures_old[i].x.array.copy()
         if self.parameters["rigid_body_constraint"]:
+            logger.debug("Resetting rigid body constraint state to old value...")
             self.r.x.array[:] = self.r_old.x.array.copy()
         if self.is_incompressible:
+            logger.debug("Resetting pressure state to old value...")
             self.p.x.array[:] = self.p_old.x.array.copy()
 
     @property
@@ -429,6 +480,7 @@ class StaticProblem:
 
     def _init_forms(self) -> None:
         """Initialize ufl forms"""
+        logger.debug("Initializing ufl forms...")
 
         # Markers
         if self.geometry.markers is None:
@@ -443,7 +495,7 @@ class StaticProblem:
         assert all(len(Ki) == self.num_states for Ki in K)
 
         bcs = self.base_dirichlet
-
+        logger.debug("Creating Newton solver...")
         self._solver = scifem.NewtonSolver(
             R,
             K,
@@ -457,11 +509,12 @@ class StaticProblem:
         pass
 
     def reset(self):
+        logger.debug("Resetting problem...")
         self.reset_states()
         self._init_forms()
 
     def solve(self) -> bool:
-        """Solve the system"""
+        logger.debug("Solving the system...")
         self.update_old_states()
         ret = self._solver.solve(rtol=1e-10, atol=1e-6)
         self.update_fields()

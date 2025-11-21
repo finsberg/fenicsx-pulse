@@ -203,7 +203,7 @@ def run_TorOrdLand(
                 Tas[i] = monitor[Ta_index]
 
 
-        nbeats = 200
+        nbeats = 10 if os.environ.get("CI") else 200
         times = np.arange(0, T, dt_cell)
         all_times = np.arange(0, T * nbeats, dt_cell)
         Vs = np.zeros(len(times) * nbeats)

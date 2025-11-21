@@ -1,112 +1,168 @@
-# # Unit Cube
+# # Unit Cube Simulation
 #
-# In this demo we will use `fenicsx_pulse` to solve a simple contracting cube with one fixed
-# side and with the opposite side having a traction force.
+# This demo illustrates how to setup and solve a simple cardiac mechanics problem using `fenicsx-pulse`.
+# We will simulate a contracting unit cube of cardiac tissue. One face of the cube is fixed, while the
+# opposite face is subject to a traction force.
 #
-# First let us do the necessary imports
+# ## Problem Definition
+#
+# **Geometry**: A unit cube $\Omega = [0,1]^3$.
+#
+# **Physics**:
+# We solve the balance of linear momentum for a hyperelastic material:
+#
+# $$
+# \nabla \cdot \mathbf{P} + \mathbf{B} = \mathbf{0} \quad \text{in } \Omega
+# $$
+#
+# where $\mathbf{P}$ is the First Piola-Kirchhoff stress tensor and $\mathbf{B}$ is the body force.
+#
+# **Material Model**:
+# The material is modeled as:
+# 1. **Passive**: Anisotropic Holzapfel-Ogden material (orthotropic myocardium).
+# 2. **Active**: Active stress generated along the fiber direction.
+# 3. **Incompressible**: Volume is conserved ($J = \det \mathbf{F} = 1$).
+#
+# **Boundary Conditions**:
+# * **Dirichlet**: Fixed displacement ($\mathbf{u} = \mathbf{0}$) on the face $X=0$.
+# * **Neumann**: A constant traction force $\mathbf{t}$ on the face $X=1$.
+#
+# ---
 
+# ## Imports
 from pathlib import Path
 from mpi4py import MPI
 from petsc4py import PETSc
-
 import dolfinx
 from dolfinx import log
-import fenicsx_pulse
+import pulse
 import numpy as np
 
-# Then we can create unit cube mesh
+# ## Geometry and Mesh
+# We start by creating a unit cube mesh with hexahedral elements.
+# The mesh defines the reference configuration $\Omega_0$.
 
 mesh = dolfinx.mesh.create_unit_cube(MPI.COMM_WORLD, 3, 3, 3)
 
-# Next let up specify a list of boundary markers where we will set the different boundary conditions
+# ### Boundary Markers
+# We define markers to identify specific boundaries of the domain.
+# * Marker `1` ("X0"): The face where $x=0$.
+# * Marker `2` ("X1"): The face where $x=1$.
 
 boundaries = [
-    fenicsx_pulse.Marker(name="X0", marker=1, dim=2, locator=lambda x: np.isclose(x[0], 0)),
-    fenicsx_pulse.Marker(name="X1", marker=2, dim=2, locator=lambda x: np.isclose(x[0], 1)),
+    pulse.Marker(name="X0", marker=1, dim=2, locator=lambda x: np.isclose(x[0], 0)),
+    pulse.Marker(name="X1", marker=2, dim=2, locator=lambda x: np.isclose(x[0], 1)),
 ]
 
-# Now collect the boundaries and mesh in to a geometry object
-#
+# We collect the mesh and boundaries into a `Geometry` object.
+# This object handles the integration measures (`dx`, `ds`) and facet tags.
 
-geo = fenicsx_pulse.Geometry(
+geo = pulse.Geometry(
     mesh=mesh,
     boundaries=boundaries,
     metadata={"quadrature_degree": 4},
 )
 
-# We would also need to to create a passive material model.
-# Here we will used the Holzapfel and Ogden material model
+# ## Material Constitutive Models
+#
+# ### 1. Passive Material
+# We use the **Holzapfel-Ogden** law, a standard constitutive model for ventricular myocardium.
+# It captures the orthotropic behavior using fiber ($\mathbf{f}_0$) and sheet ($\mathbf{s}_0$) directions.
+#
+# The strain energy density function $\Psi_{pass}$ is composed of isotropic and anisotropic terms:
+#
+# $$
+# \Psi_{pass} = \frac{a}{2b} (e^{b(I_1-3)} - 1) + \frac{a_f}{2b_f} (e^{b_f(I_{4f}-1)^2} - 1) + \dots
+# $$
+#
+# For this simple cube, we define constant fiber directions aligned with the X-axis.
 
-material_params = fenicsx_pulse.HolzapfelOgden.transversely_isotropic_parameters()
+material_params = pulse.HolzapfelOgden.transversely_isotropic_parameters()
 f0 = dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type((1.0, 0.0, 0.0)))
 s0 = dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type((0.0, 1.0, 0.0)))
-material = fenicsx_pulse.HolzapfelOgden(f0=f0, s0=s0, **material_params)  # type: ignore
+material = pulse.HolzapfelOgden(f0=f0, s0=s0, **material_params)
 
-# We also need to create a model for the active contraction. Here we use an active stress model
+# ### 2. Active Contraction
+# We model the active contraction using an **Active Stress** approach.
+# An active stress $T_a$ is added to the stress tensor, usually along the fiber direction.
+#
+# In `fenicsx-pulse`, this is implemented by adding an active term to the strain energy potential:
+#
+# $$
+# \Psi_{act} = \frac{1}{2} T_a (I_{4f} - 1)
+# $$
+#
+# Differentiating this yields an active stress $\mathbf{S}_{act} = T_a \mathbf{f}_0 \otimes \mathbf{f}_0$.
 
 Ta = dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(0.0))
-active_model = fenicsx_pulse.ActiveStress(f0, activation=Ta)
+active_model = pulse.ActiveStress(f0, activation=Ta)
 
-# We also need to specify whether the model what type of compressibility we want for our model.
-# Here we use a full incompressible model
+# ### 3. Compressibility
+# Myocardium is nearly incompressible. We enforce full **Incompressibility** ($J=1$)
+# using a Lagrange multiplier $p$ (hydrostatic pressure).
+#
+# $$
+# \Psi_{comp} = p (J - 1)
+# $$
 
-comp_model = fenicsx_pulse.Incompressible()
+comp_model = pulse.Incompressible()
 
-# Finally we collect all the models into a cardiac model
-model = fenicsx_pulse.CardiacModel(
+# ### Cardiac Model Assembly
+# We combine the passive, active, and compressibility components into a single `CardiacModel`.
+# The total strain energy is $\Psi = \Psi_{pass} + \Psi_{act} + \Psi_{comp}$.
+
+model = pulse.CardiacModel(
     material=material,
     active=active_model,
     compressibility=comp_model,
 )
 
-
-# Now we need to specify the different boundary conditions.
+# ## Boundary Conditions
 #
-# We can specify the dirichlet boundary conditions using a function that takes the state
-# space as input and return a list of dirichlet boundary conditions. Since we are using
-# the an incompressible formulation the state space have two subspaces where the first
-# subspace represents the displacement. Here we set the displacement to zero on the
-# boundary with marker 1
-
+# ### Dirichlet BC
+# We fix the displacement on the left face (Marker 1).
+# This function identifies the degrees of freedom (DOFs) on the boundary and sets them to zero.
 
 def dirichlet_bc(
     V: dolfinx.fem.FunctionSpace,
 ) -> list[dolfinx.fem.bcs.DirichletBC]:
-    facets = geo.facet_tags.find(1)  # Specify the marker used on the boundary
+    facets = geo.facet_tags.find(1)
     mesh.topology.create_connectivity(mesh.topology.dim - 1, mesh.topology.dim)
     dofs = dolfinx.fem.locate_dofs_topological(V, 2, facets)
     u_fixed = dolfinx.fem.Function(V)
     u_fixed.x.array[:] = 0.0
     return [dolfinx.fem.dirichletbc(u_fixed, dofs)]
 
-
-# We als set a traction on the opposite boundary
+# ### Neumann BC
+# We apply a traction $\mathbf{t}$ on the opposite face (Marker 2).
+# A negative value indicates compression/pushing, while positive would be tension/pulling.
 
 traction = dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(-1.0))
-neumann = fenicsx_pulse.NeumannBC(traction=traction, marker=2)
+neumann = pulse.NeumannBC(traction=traction, marker=2)
 
-# Finally we collect all the boundary conditions
+# We collect all boundary conditions into a `BoundaryConditions` object.
 
-bcs = fenicsx_pulse.BoundaryConditions(dirichlet=(dirichlet_bc,), neumann=(neumann,))
+bcs = pulse.BoundaryConditions(dirichlet=(dirichlet_bc,), neumann=(neumann,))
 
-# and create a mechanics problem
+# ## Solving the Problem
+# We initialize the `StaticProblem`. This sets up the function spaces (Mixed elements for displacement and pressure if incompressible), the variational form, and the nonlinear solver.
 
-problem = fenicsx_pulse.StaticProblem(model=model, geometry=geo, bcs=bcs)
+problem = pulse.StaticProblem(model=model, geometry=geo, bcs=bcs)
 
-# We also set a value for the active stress
+# ### Apply Activation
+# We set the active stress parameter $T_a$ to 2.0 kPa. This will cause the "fibers" (aligned with X) to shorten, pulling the cube's free end.
 
 Ta.value = 2.0
 
-# And solve the problem
+# Solve the nonlinear system of equations.
 
 log.set_log_level(log.LogLevel.INFO)
-
 problem.solve()
-
 log.set_log_level(log.LogLevel.WARNING)
 
-
-# We can get the solution (displacement)
+# ## Post-processing
+# The solution displacement field `u` is extracted from the problem.
+# We save the results to `BP4` format (ADIOS2) for visualization in Paraview or similar tools.
 
 u = problem.u
 outdir = Path("unit_cube")
@@ -115,7 +171,8 @@ outdir.mkdir(exist_ok=True)
 with dolfinx.io.VTXWriter(mesh.comm, outdir / "unit_cube_displacement.bp", [u], engine="BP4") as vtx:
     vtx.write(0.0)
 
-# and visualize it using pyvista
+# ### Visualization (Optional)
+# If `pyvista` is installed, we can render the deformed mesh directly in the notebook.
 
 try:
     import pyvista
@@ -128,11 +185,14 @@ else:
     topology, cell_types, geometry = dolfinx.plot.vtk_mesh(problem.u_space)
     grid = pyvista.UnstructuredGrid(topology, cell_types, geometry)
 
-    # Attach vector values to grid and warp grid by vectora
+    # Attach vector values to grid and warp grid by vector
     grid["u"] = u.x.array.reshape((geometry.shape[0], 3))
     actor_0 = p.add_mesh(grid, style="wireframe", color="k")
-    warped = grid.warp_by_vector("u", factor=1.5)
-    actor_1 = p.add_mesh(warped, show_edges=True)
+
+    # Warp the mesh by the displacement vector to visualize deformation
+    warped = grid.warp_by_vector("u", factor=1.0)
+    actor_1 = p.add_mesh(warped, show_edges=True, color="red", opacity=0.5)
+
     p.show_axes()
     if not pyvista.OFF_SCREEN:
         p.show()

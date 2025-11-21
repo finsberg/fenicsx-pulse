@@ -42,9 +42,12 @@ This model could for example be used if you want to use a pure passive model.
 from __future__ import annotations
 
 import abc
+import logging
 
 import dolfinx
 import ufl
+
+logger = logging.getLogger(__name__)
 
 
 class ActiveModel(abc.ABC):
@@ -142,6 +145,9 @@ class Passive(ActiveModel):
     This model could for example be used if you
     want to use a pure passive model.
     """
+
+    def __init__(self) -> None:
+        logger.debug("Created Passive active model")
 
     def Fe(self, F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
         return F
