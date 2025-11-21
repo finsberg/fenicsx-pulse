@@ -66,6 +66,9 @@ class Incompressible(Compressibility):
 
     p: dolfinx.fem.Function = field(default=None, init=False)
 
+    def __post_init__(self):
+        logger.debug("Created Incompressible compressibility model")
+
     def __str__(self) -> str:
         return "p (J - 1)"
 
@@ -111,6 +114,8 @@ class Compressible(Compressibility):
                 name="kappa",
                 expected_range=(0.0, np.inf),
             )
+        logger.debug(f"Created Compressible compressibility model: {str(self)}")
+        logger.debug(f"Material parameters: kappa = {self.kappa}")
 
     def __str__(self) -> str:
         return "\u03ba (J ln(J) - J + 1)"

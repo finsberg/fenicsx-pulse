@@ -89,6 +89,20 @@ class Usyk(HyperElasticMaterial):
                     name=attr,
                     expected_range=(0.0, np.inf),
                 )
+        logger.debug(f"Created material model: {type(self).__name__}")
+        logger.debug(f"Material parameters: {self.parameters}")
+
+    @property
+    def parameters(self) -> dict[str, Variable]:
+        return {
+            "C": self.C,
+            "bf": self.bf,
+            "bs": self.bs,
+            "bn": self.bn,
+            "bfs": self.bfs,
+            "bfn": self.bfn,
+            "bsn": self.bsn,
+        }
 
     @staticmethod
     def default_parameters() -> dict[str, Variable]:

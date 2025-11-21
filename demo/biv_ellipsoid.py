@@ -1,8 +1,35 @@
-# # BiV Ellipsoid
+# # Bi-Ventricular Ellipsoid Simulation
 #
-# In this example we will simulate an idealized bi-ventricular geometry. For this we will use [`cardiac-geometries`](https://github.com/ComputationalPhysiology/cardiac-geometriesx) to generate an idealized LV ellipsoid.
+# This demo illustrates how to simulate the mechanics of an idealized Bi-Ventricular (BiV) geometry.
+# Unlike the Left Ventricle (LV) only model, this includes both the LV and Right Ventricle (RV),
+# allowing us to study interventricular interactions.
 #
-# First lets do some imports
+# ## Problem Setup
+#
+# **Geometry**:
+# An idealized BiV geometry is generated using [`cardiac-geometries`](https://computationalphysiology.github.io/cardiac-geometriesx/).
+# It consists of two truncated ellipsoids joined together.
+#
+# **Microstructure (Fibers)**:
+# For BiV geometries, analytical fiber definitions are complex. We use the **Laplace-Dirichlet Rule-Based (LDRB)** algorithm
+# [Bayer et al. 2012] implemented in [`fenicsx-ldrb`](https://github.com/finsberg/fenicsx-ldrb) to generate
+# realistic fiber ($\mathbf{f}_0$), sheet ($\mathbf{s}_0$), and sheet-normal ($\mathbf{n}_0$) fields.
+#
+# **Physics**:
+# We solve the static balance of linear momentum:
+#
+# $$
+# \nabla \cdot \mathbf{P} = \mathbf{0} \quad \text{in } \Omega_0
+# $$
+#
+# **Material Model**:
+# * **Passive**: Neo-Hookean (or Holzapfel-Ogden).
+# * **Active**: Active stress along fibers.
+# * **Compressibility**: Either Incompressible or Compressible formulation.
+#
+# ---
+
+# ## Imports
 
 from pathlib import Path
 from mpi4py import MPI
@@ -14,164 +41,264 @@ import cardiac_geometries
 import cardiac_geometries.geometry
 import pulse
 
-# and lets turn on logging so that we can see more info from `dolfinx`
+# We enable info logging to track solver progress.
 
 log.set_log_level(log.LogLevel.INFO)
 
-# Now we create the geometry using  [`cardiac-geometries`](https://github.com/ComputationalPhysiology/cardiac-geometriesx) and save it to a folder called `biv_ellipsoid`. We will also create fiber orientations using the Laplace-Dirichlet Rule based (LDRB) algorithm, using the library [`fenicsx-ldrb`](https://github.com/finsberg/fenicsx-ldrb) package
+# ## Geometry and Microstructure
+#
+# We generate the mesh and fibers if they don't already exist.
+#
+# ### 1. Mesh Generation
+# `cardiac_geometries.mesh.biv_ellipsoid` creates the mesh with markers for:
+# * **LV_ENDO_FW**: LV Endocardium Free Wall
+# * **LV_SEPTUM**: LV Septum
+# * **RV_ENDO_FW**: RV Endocardium Free Wall
+# * **RV_SEPTUM**: RV Septum
+# * **LV_EPI_FW**: LV Epicardium Free Wall
+# * **RV_EPI_FW**: RV Epicardium Free Wall
+# * **BASE**: Base
+#
+# ### 2. Fiber Generation (LDRB)
+# The LDRB algorithm solves Laplace equations to define transmural and apicobasal coordinates.
+# Based on these coordinates, it assigns fiber angles (e.g., +60 to -60 degrees transmurally).
 
 outdir = Path("biv_ellipsoid")
 outdir.mkdir(parents=True, exist_ok=True)
 geodir = outdir / "geometry"
+
 if not geodir.exists():
+    # Generate mesh
     geo = cardiac_geometries.mesh.biv_ellipsoid(outdir=geodir)
+
+    # Map mesh markers to the format expected by LDRB
     markers = cardiac_geometries.mesh.transform_biv_markers(geo.markers)
 
-    system = ldrb.dolfinx_ldrb(mesh=geo.mesh, ffun=geo.ffun, markers=markers, alpha_endo_lv=60, alpha_epi_lv=-60, beta_endo_lv=0, beta_epi_lv=0, fiber_space="P_2")
-    cardiac_geometries.fibers.utils.save_microstructure(mesh=geo.mesh, functions=[system.f0, system.s0, system.n0], outdir=geodir)
+    # Run LDRB algorithm
+    system = ldrb.dolfinx_ldrb(
+        mesh=geo.mesh,
+        ffun=geo.ffun,
+        markers=markers,
+        alpha_endo_lv=60,  # Fiber angle at LV endocardium
+        alpha_epi_lv=-60,  # Fiber angle at LV epicardium
+        beta_endo_lv=0,    # Sheet angle (0 for now)
+        beta_epi_lv=0,
+        fiber_space="P_2",
+    )
 
-# If the folder exist we just load it
+    # Save microstructure to XDMF/H5
+    cardiac_geometries.fibers.utils.save_microstructure(
+        mesh=geo.mesh,
+        functions=[system.f0, system.s0, system.n0],
+        outdir=geodir,
+    )
 
+# Load the geometry with fibers
 geo = cardiac_geometries.geometry.Geometry.from_folder(
     comm=MPI.COMM_WORLD,
     folder=geodir,
 )
 
-
-# Now we need to redefine the markers to have so that facets on the endo- and epicardium combine both
-# free wall and the septum.
+# ### Marker Consolidation
+# We group the detailed surface markers into broader categories for applying boundary conditions.
+#
+# * **ENDO_LV**: All LV endocardial surfaces (Free Wall + Septum).
+# * **ENDO_RV**: All RV endocardial surfaces (Free Wall + Septum).
+# * **EPI**: All epicardial surfaces.
+# * **BASE**: The base.
 
 markers = {"ENDO_LV": [1, 2], "ENDO_RV": [2, 2], "BASE": [3, 2], "EPI": [4, 2]}
+
+# Create a new marker array based on the old one
 marker_values = geo.ffun.values.copy()
-marker_values[np.isin(geo.ffun.indices, geo.ffun.find(geo.markers["LV_ENDO_FW"][0]))] = markers["ENDO_LV"][0]
-marker_values[np.isin(geo.ffun.indices, geo.ffun.find(geo.markers["LV_SEPTUM"][0]))] = markers["ENDO_LV"][0]
-marker_values[np.isin(geo.ffun.indices, geo.ffun.find(geo.markers["RV_ENDO_FW"][0]))] = markers["ENDO_RV"][0]
-marker_values[np.isin(geo.ffun.indices, geo.ffun.find(geo.markers["RV_SEPTUM"][0]))] = markers["ENDO_RV"][0]
-marker_values[np.isin(geo.ffun.indices, geo.ffun.find(geo.markers["BASE"][0]))] = markers["BASE"][0]
-marker_values[np.isin(geo.ffun.indices, geo.ffun.find(geo.markers["LV_EPI_FW"][0]))] = markers["EPI"][0]
-marker_values[np.isin(geo.ffun.indices, geo.ffun.find(geo.markers["RV_EPI_FW"][0]))] = markers["EPI"][0]
+marker_indices = geo.ffun.indices
+
+# Helper to update markers
+def update_marker(old_name, new_id):
+    old_id = geo.markers[old_name][0]
+    marker_values[np.isin(marker_indices, geo.ffun.find(old_id))] = new_id
+
+# Update LV Endo
+update_marker("LV_ENDO_FW", markers["ENDO_LV"][0])
+update_marker("LV_SEPTUM", markers["ENDO_LV"][0])
+
+# Update RV Endo
+update_marker("RV_ENDO_FW", markers["ENDO_RV"][0])
+update_marker("RV_SEPTUM", markers["ENDO_RV"][0])
+
+# Update Base
+update_marker("BASE", markers["BASE"][0])
+
+# Update Epi
+update_marker("LV_EPI_FW", markers["EPI"][0])
+update_marker("RV_EPI_FW", markers["EPI"][0])
+
+# Assign back to geometry object
 geo.markers = markers
-ffun = dolfinx.mesh.meshtags(
+geo.ffun = dolfinx.mesh.meshtags(
     geo.mesh,
     geo.ffun.dim,
     geo.ffun.indices,
     marker_values,
 )
-geo.ffun = ffun
 
-# Scale the geometry to be in meters
-
+# Scale the geometry from mm to meters (approximate scale factor)
 geo.mesh.geometry.x[:] *= 1.4e-2
 
-
-# In order to use the geometry with `pulse` we need to convert it to a `pulse.Geometry` object. We can do this by using the `from_cardiac_geometries` method. We also specify that we want to use a quadrature degree of 4
-#
-
+# Convert to `pulse.Geometry`
 geometry = pulse.Geometry.from_cardiac_geometries(geo, metadata={"quadrature_degree": 4})
 
-# Next we create the material object, and we will use the transversely isotropic version of the {py:class}`Neo Hookean model <pulse.neo_hookean.NeoHookean>`
+# ## Constitutive Model
+#
+# ### 1. Passive Material
+# We use a **Neo-Hookean** model for simplicity in this demo, though Holzapfel-Ogden is also available.
+#
+# $$
+# \Psi_{NH} = \frac{\mu}{2} (I_1 - 3)
+# $$
+#
+# `deviatoric=True` (default) means we use the isochoric invariant $\bar{I}_1 = J^{-2/3} I_1$.
 
 material = pulse.NeoHookean(mu=dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(15.0)))
-# and use an active stress approach
+
+# ### 2. Active Contraction
+# We use the **Active Stress** model.
+#
+# $$
+# \mathbf{S}_{active} = T_a (\mathbf{f}_0 \otimes \mathbf{f}_0)
+# $$
+#
+# Here $T_a$ acts only along the fiber direction ($\eta=0$).
 
 Ta = dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0))
 active_model = pulse.ActiveStress(geo.f0, activation=Ta)
 
-# Now we will also implement two different versions, one where we use a compressible model and one where we use an incompressible model. To do this we will introduce a flag
+# ### 3. Compressibility
+# We can choose between an **Incompressible** formulation (using a Lagrange multiplier $p$)
+# or a **Compressible** formulation (using a penalty function).
 
 incompressible = False
-
-# And in both cases we will use different compressible models, mechanics problems and different ways to get the displacement.
 
 if incompressible:
     comp_model: pulse.Compressibility = pulse.Incompressible()
 else:
+    # Compressible model with bulk modulus kappa (default in class)
     comp_model = pulse.Compressible()
 
-
-# Now we can assemble the `CardiacModel`
-
+# ### Assembly
 model = pulse.CardiacModel(
     material=material,
     active=active_model,
     compressibility=comp_model,
 )
 
-
-# We will add a pressure on the LV endocarium
+# ## Boundary Conditions
+#
+# ### Neumann BCs: Ventricular Pressures
+# We apply separate pressures to the LV and RV endocardiums.
+#
+# * $P_{LV}$ on $\Gamma_{endo, LV}$
+# * $P_{RV}$ on $\Gamma_{endo, RV}$
 
 lvp = dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0))
 neumann_lv = pulse.NeumannBC(traction=lvp, marker=geometry.markers["ENDO_LV"][0])
 
-# and on the RV endocardium
-
 rvp = dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0))
-neumann_rv = pulse.NeumannBC(traction=lvp, marker=geometry.markers["ENDO_RV"][0])
+neumann_rv = pulse.NeumannBC(traction=rvp, marker=geometry.markers["ENDO_RV"][0])
 
-# We will also add a Robin type spring on the epicardial surface to mimic the pericardium.
+# ### Robin BC: Pericardial Constraint
+# We model the pericardium as a spring-like boundary condition on the epicardium.
+#
+# $$
+# \mathbf{P}\mathbf{N} + k_{per} \mathbf{u} \cdot \mathbf{N} = 0 \quad \text{on } \Gamma_{epi}
+# $$
+#
+# This prevents rigid body motion and mimics the surrounding tissue support.
 
-pericardium = dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(1.0))
-robin_per = pulse.RobinBC(value=pericardium, marker=geometry.markers["EPI"][0])
+pericardium_stiffness = dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(1.0))
+robin_per = pulse.RobinBC(value=pericardium_stiffness, marker=geometry.markers["EPI"][0])
 
-# We collect all the boundary conditions
+# We collect all BCs.
 
 bcs = pulse.BoundaryConditions(neumann=(neumann_lv, neumann_rv), robin=(robin_per,))
 
-# create the problem
+# ## Solving the Problem
+#
+# We initialize the `StaticProblem`.
+# Note: `base_bc=pulse.BaseBC.fixed` will fix the base, preventing movement in all directions.
+# Combined with the pericardial spring, this fully constrains the model.
 
-problem = pulse.StaticProblem(model=model, geometry=geometry, bcs=bcs, parameters={"base_bc": pulse.BaseBC.fixed})
+problem = pulse.StaticProblem(
+    model=model,
+    geometry=geometry,
+    bcs=bcs,
+    parameters={"base_bc": pulse.BaseBC.fixed},
+)
 
-# and solve
-
+# Initial solve (zero load) to initialize system.
 problem.solve()
 
-# Now let us inflate the two ventricles and save the displacement
-
+# ### Phase 1: Passive Inflation
+# We inflate both ventricles. Typically $P_{LV} > P_{RV}$.
 
 vtx = dolfinx.io.VTXWriter(geometry.mesh.comm, outdir / "biv_displacement.bp", [problem.u], engine="BP4")
 vtx.write(0.0)
 
-i = 1
-for plv in [0.1]: #, 0.5, 1.0, 2.0]:
-    print(f"plv: {plv}")
+# Pressures in kPa
+lv_pressures = [0.1, 0.5, 1.0]
+for i, plv in enumerate(lv_pressures, start=1):
+    prv = plv * 0.2  # RV pressure is typically lower
+    print(f"Solving: P_LV = {plv:.2f} kPa, P_RV = {prv:.2f} kPa")
+
     lvp.value = plv
-    rvp.value = plv * 0.2
+    rvp.value = prv
     problem.solve()
     vtx.write(float(i))
-    i += 1
 
-# and then apply an active tension
+# ### Phase 2: Active Contraction
+# We keep the pressure constant and increase active tension $T_a$.
 
-for ta in [0.1] : #, 1.0, 5.0, 10.0]:
-    print(f"ta: {ta}")
+active_tensions = [1.0, 5.0, 10.0] # kPa
+start_step = len(lv_pressures) + 1
+
+for i, ta in enumerate(active_tensions, start=start_step):
+    print(f"Solving: Ta = {ta:.2f} kPa")
     Ta.value = ta
     problem.solve()
     vtx.write(float(i))
-    i += 1
 
 vtx.close()
 
+# ## Visualization
+#
+# We visualize the final state using PyVista.
 
 try:
     import pyvista
 except ImportError:
     print("Pyvista is not installed")
 else:
+    # Interpolate to CG-1 for plotting
     V = dolfinx.fem.functionspace(geometry.mesh, ("Lagrange", 1, (geometry.mesh.geometry.dim,)))
     uh = dolfinx.fem.Function(V)
     uh.interpolate(problem.u)
-    # Create plotter and pyvista grid
-    p = pyvista.Plotter()
-    topology, cell_types, geometry = dolfinx.plot.vtk_mesh(V)
-    grid = pyvista.UnstructuredGrid(topology, cell_types, geometry)
 
-    # Attach vector values to grid and warp grid by vector
-    grid["u"] = uh.x.array.reshape((geometry.shape[0], 3))
-    actor_0 = p.add_mesh(grid, style="wireframe", color="k")
-    warped = grid.warp_by_vector("u", factor=1.5)
-    actor_1 = p.add_mesh(warped, show_edges=True)
+    # Setup plotter
+    p = pyvista.Plotter()
+    topology, cell_types, geometry_data = dolfinx.plot.vtk_mesh(V)
+    grid = pyvista.UnstructuredGrid(topology, cell_types, geometry_data)
+
+    # Add reference mesh
+    grid["u"] = uh.x.array.reshape((geometry_data.shape[0], 3))
+    p.add_mesh(grid, style="wireframe", color="k", opacity=0.3, label="Reference")
+
+    # Add deformed mesh
+    warped = grid.warp_by_vector("u", factor=1.0)
+    p.add_mesh(warped, show_edges=False, color="blue", opacity=1.0, label="Deformed")
+
+    p.add_legend()
     p.show_axes()
     if not pyvista.OFF_SCREEN:
         p.show()
     else:
-        figure_as_array = p.screenshot("biv_ellipsoid_pressure.png")
+        p.screenshot(outdir / "biv_ellipsoid_pressure.png")

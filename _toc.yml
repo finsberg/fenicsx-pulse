@@ -4,6 +4,7 @@ root: README
 parts:
   - caption: Demos
     chapters:
+    - file: "demo/maths.py"
     - file: "demo/unit_cube"
     - file: "demo/lv_ellipsoid"
     - file: "demo/biv_ellipsoid"

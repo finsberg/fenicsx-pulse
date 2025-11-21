@@ -4,7 +4,7 @@ API Reference
 kinematics
 ----------
 
-.. automodule:: fenicsx_pulse.kinematics
+.. automodule:: pulse.kinematics
     :members:
     :inherited-members:
 
@@ -12,7 +12,7 @@ kinematics
 invariants
 ----------
 
-.. automodule:: fenicsx_pulse.invariants
+.. automodule:: pulse.invariants
     :members:
     :inherited-members:
 
@@ -20,20 +20,20 @@ invariants
 material_model
 --------------
 
-.. automodule:: fenicsx_pulse.material_model
+.. automodule:: pulse.material_model
     :members:
     :inherited-members:
 
-.. automodule:: fenicsx_pulse.material_models.holzapfelogden
+.. automodule:: pulse.material_models.holzapfelogden
     :members:
     :inherited-members:
 
 
-.. automodule:: fenicsx_pulse.material_models.guccione
+.. automodule:: pulse.material_models.guccione
     :members:
     :inherited-members:
 
-.. automodule:: fenicsx_pulse.material_models.saint_venant_kirchhoff
+.. automodule:: pulse.material_models.saint_venant_kirchhoff
     :members:
     :inherited-members:
 
@@ -41,43 +41,43 @@ material_model
 active_model
 ------------
 
-.. automodule:: fenicsx_pulse.active_model
+.. automodule:: pulse.active_model
     :members:
     :inherited-members:
 
-.. automodule:: fenicsx_pulse.active_stress
+.. automodule:: pulse.active_stress
     :members:
     :inherited-members:
 
 compressibility
 ---------------
-.. automodule:: fenicsx_pulse.compressibility
+.. automodule:: pulse.compressibility
     :members:
     :inherited-members:
 
 viscoelasticity
 ---------------
 
-.. automodule:: fenicsx_pulse.viscoelasticity
+.. automodule:: pulse.viscoelasticity
     :members:
     :inherited-members:
 
 cardiac_model
 -------------
-.. automodule:: fenicsx_pulse.cardiac_model
+.. automodule:: pulse.cardiac_model
     :members:
     :inherited-members:
 
 geometry
 --------
-.. automodule:: fenicsx_pulse.geometry
+.. automodule:: pulse.geometry
     :members:
     :inherited-members:
 
 
 problem
 ----------------
-.. automodule:: fenicsx_pulse.problem
+.. automodule:: pulse.problem
     :members:
     :inherited-members:
 
@@ -85,20 +85,20 @@ problem
 boundary conditions
 -------------------
 
-.. automodule:: fenicsx_pulse.boundary_conditions
+.. automodule:: pulse.boundary_conditions
     :members:
     :inherited-members:
 
 units
 -----
 
-.. automodule:: fenicsx_pulse.units
+.. automodule:: pulse.units
     :members:
     :inherited-members:
 
 utils
 -----
 
-.. automodule:: fenicsx_pulse.utils
+.. automodule:: pulse.utils
     :members:
     :inherited-members:
