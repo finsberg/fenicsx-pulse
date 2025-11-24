@@ -65,7 +65,7 @@ geo = pulse.Geometry(
 # \Psi = \frac{C}{2} (e^Q - 1), \quad Q = b_f E_{ff}^2 + b_t (E_{ss}^2 + E_{nn}^2 + E_{sn}^2 + E_{ns}^2) + b_{fs} (E_{fs}^2 + E_{sf}^2 + E_{fn}^2 + E_{nf}^2)
 # $$
 #
-# Since the problem defines a fixed fiber direction along X, we set $\mathbf{f}_0, \mathbf{s}_0, \mathbf{n}_0$ to align with the coordinate axes.
+# Since the problem defines a fixed fiber direction along $x$, we set $\mathbf{f}_0, \mathbf{s}_0, \mathbf{n}_0$ to align with the coordinate axes.
 
 material_params = {
     "C": pulse.Variable(dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(2.0)), "kPa"),
@@ -126,7 +126,7 @@ steps = [0.0005, 0.001, 0.002, 0.003, 0.004]
 
 for p in steps:
     print(f"Solving for pressure = {p} kPa")
-    pressure.value = p
+    pressure.assign(p)
     problem.solve()
 
 log.set_log_level(log.LogLevel.WARNING)
@@ -183,7 +183,7 @@ else:
 
     p.add_mesh(grid, style="wireframe", color="k", opacity=0.5, label="Reference")
     warped = grid.warp_by_vector("u", factor=1.0)
-    p.add_mesh(warped, show_edges=True, color="blue", label="Deformed")
+    p.add_mesh(warped, show_edges=True, label="Deformed")
 
     p.add_legend()
     p.show_axes()

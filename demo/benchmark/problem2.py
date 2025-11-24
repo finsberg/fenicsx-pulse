@@ -74,10 +74,10 @@ geometry = pulse.Geometry.from_cardiac_geometries(geo, metadata={"quadrature_deg
 # By setting $b_f = b_t = b_{fs} = 1.0$, the exponent $Q$ becomes $Q = (E_{11}^2 + E_{22}^2 + E_{33}^2 + 2E_{12}^2 + \dots) = \text{tr}(\mathbf{E}^2)$, making the model isotropic.
 
 material_params = {
-    "C": dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(10.0)),
-    "bf": dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(1.0)),
-    "bt": dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(1.0)),
-    "bfs": dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(1.0)),
+    "C": pulse.Variable(dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(10.0)), "kPa"),
+    "bf": pulse.Variable(dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(1.0)), "dimensionless"),
+    "bt": pulse.Variable(dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(1.0)), "dimensionless"),
+    "bfs": pulse.Variable(dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(1.0)), "dimensionless"),
 }
 
 # For an isotropic material, the fiber direction vectors don't affect the energy (as b parameters are equal),
@@ -126,21 +126,43 @@ current_pressure = 0.0
 # Initial solve
 problem.solve()
 
-while current_pressure < target_pressure:
-    current_pressure += d_pressure
-    if current_pressure > target_pressure:
-        current_pressure = target_pressure
+# Ramping
+use_continuation = True
+old_u = [problem.u.copy()]
+old_p = [problem.p.copy()]
+old_pressures = [pressure.value.copy()]
+while pressure.value < target_pressure:
+    value = min(pressure.value + d_pressure, target_pressure)
+    print(f"Solving problem for pressure={value}")
 
-    print(f"Solving for Pressure: {current_pressure:.2f} kPa")
-    pressure.value = current_pressure
+    if use_continuation and len(old_pressures) > 1:
+        # Better initial guess
+        d = (value - old_pressures[-2]) / (old_pressures[-1] - old_pressures[-2])
+        problem.u.x.array[:] = (1 - d) * old_u[-2].x.array + d * old_u[-1].x.array
+        problem.p.x.array[:] = (1 - d) * old_p[-2].x.array + d * old_p[-1].x.array
+
+    pressure.value = value
 
     try:
-        num_iters = problem.solve()
-        print(f"  Converged in {num_iters} iterations.")
+        nit = problem.solve()
     except RuntimeError:
-        print("  Solver failed. Retrying with smaller step could be implemented here.")
-        break
+        print("Convergence failed, reducing increment")
 
+        # Reset state and half the increment
+        pressure.value = old_pressures[-1]
+        problem.u.x.array[:] = old_u[-1].x.array
+        problem.p.x.array[:] = old_p[-1].x.array
+        d_pressure *= 0.5
+        problem._init_forms()
+    else:
+        print(f"Converged in {nit} iterations")
+        if nit < 3:
+            print("Increasing increment")
+            # Increase increment
+            d_pressure *= 1.5
+        old_u.append(problem.u.copy())
+        old_p.append(problem.p.copy())
+        old_pressures.append(pressure.value.copy())
 # ## 5. Post-processing
 
 with dolfinx.io.VTXWriter(geometry.mesh.comm, "problem2.bp", [problem.u], engine="BP4") as vtx:
@@ -163,7 +185,7 @@ else:
 
     p.add_mesh(grid, style="wireframe", color="k", opacity=0.3, label="Reference")
     warped = grid.warp_by_vector("u", factor=1.0)
-    p.add_mesh(warped, show_edges=True, color="firebrick", label="Inflated")
+    p.add_mesh(warped, show_edges=True, label="Inflated")
 
     p.show_axes()
     if not pyvista.OFF_SCREEN:
@@ -177,8 +199,12 @@ U.interpolate(lambda x: (x[0], x[1], x[2]))
 
 # Locate apex (assumed to be the point with min z? or max z depending on orientation)
 # In this mesh generation, the apex is typically at the bottom.
-endo_apex_coord = pulse.utils.evaluate_at_vertex_tag(U, geo.ffun, geo.markers["ENDOPT"][0])
-u_endo_apex = pulse.utils.evaluate_at_vertex_tag(problem.u, geo.ffun, geo.markers["ENDOPT"][0])
+endo_apex_coord = pulse.utils.evaluate_at_vertex_tag(U, geo.vfun, geo.markers["ENDOPT"][0])
+u_endo_apex = pulse.utils.evaluate_at_vertex_tag(problem.u, geo.vfun, geo.markers["ENDOPT"][0])
 endo_apex_pos = pulse.utils.gather_broadcast_array(geo.mesh.comm, endo_apex_coord + u_endo_apex)
+print(f"\nGet longitudinal position of endocardial apex: {endo_apex_pos[0, 0]:4f} mm")
 
-print(f"\nEndocardial Apex Position: {endo_apex_pos}")
+epi_apex_coord = pulse.utils.evaluate_at_vertex_tag(U, geo.vfun, geo.markers["EPIPT"][0])
+u_epi_apex = pulse.utils.evaluate_at_vertex_tag(problem.u, geo.vfun, geo.markers["EPIPT"][0])
+epi_apex_pos = pulse.utils.gather_broadcast_array(geo.mesh.comm, epi_apex_coord + u_epi_apex)
+print(f"\nGet longitudinal position of epicardial apex: {epi_apex_pos[0, 0]:4f} mm")
