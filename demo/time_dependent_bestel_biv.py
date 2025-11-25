@@ -1,7 +1,13 @@
-# # BiV ellipsoid with time dependent pressure and activation
-
+# # BiV ellipsoid with time dependent pressure and activation - Benchmark
+#
 # This example is very similar to the [LV example](time_dependent_bestel_lv.py), only that we now will use a biventricular geometry, meaning that there are two different pressure boundary conditions, one for the left ventricle and one for the right ventricle. We will also use different parameters for the Bestel pressure model for the left and right ventricle.
-# The reader are referred to the [LV example](time_dependent_bestel_lv.py) for more details on the models used.
+#
+# ## Background
+# This example implements the Bi-Ventricular (BiV) version of the benchmark described in the paper {cite}`arostica2025software`.
+#
+# The formulation and numerical methods (generalized $\alpha$-method, viscoelasticity, active stress, boundary conditions) are identical to the LV case. The primary difference lies in the geometry and the application of distinct pressure loads on the LV and RV endocardial surfaces.
+#
+# The reader is referred to the [LV example](time_dependent_bestel_lv.py) for a detailed description of the mathematical models and equations used.
 
 from pathlib import Path
 import logging
@@ -235,8 +241,12 @@ for i, (tai, plv, prv, ti) in enumerate(zip(activation, lv_pressure, rv_pressure
         # Early stopping for CI
         break
 
-# <video controls loop autoplay muted>
+# <video width="720" controls loop autoplay muted>
 #   <source src="../_static/time_dependent_bestel_biv.mp4" type="video/mp4">
 #   <p>Video showing the motion of the BiV.</p>
 # </video>
+#
+# # References
+# ```{bibliography}
+# :filter: docname in docnames
 #

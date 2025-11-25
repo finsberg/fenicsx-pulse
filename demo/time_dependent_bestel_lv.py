@@ -1,6 +1,13 @@
-# # LV ellipsoid with time dependent pressure and activation
-
+# # LV ellipsoid with time dependent pressure and activation - Benchmark
+#
 # In this example we will solve a time dependent mechanics problem for the left ventricle ellipsoid geometry.
+#
+# ## Background
+# This example implements the Left Ventricle (LV) benchmark described in the paper {cite}`arostica2025software`.
+#
+# The benchmark provides a verification test for cardiac elastodynamics solvers, incorporating orthotropic passive material properties, time-dependent active stress, viscoelasticity, and dynamic boundary conditions.
+#
+# ## Mathematical Formulation
 #
 # The equations of motion can be expressed using the following notation in the reference configuration
 #
@@ -26,7 +33,7 @@
 #
 # In order to integrate {eq}`weak1` in time, we need to express $a$ and $v$ in terms of the displacement $u$. For this we use the Generalized $\alpha$-method
 #
-# ## The generalized $\alpha$ method
+# ### The generalized $\alpha$ method
 #
 # The generalized $\alpha$ or G-$\alpha$ methods introduce additional parameters
 # $\alpha_f$ and $\alpha_m$ to approximate $v$ and $a$ by evaluating the terms of the
@@ -85,7 +92,7 @@
 #
 # For this choice the solver converges through the time interval of interest, and the convergence is second order.
 #
-# ## Pressure and activation model
+# ### Pressure and activation model
 #
 # We will use a pressure and activation model from {cite}`bestel2001biomechanical` to drive the simulation. We consider a time-dependent pressure derived from the Bestel model. The solution $p = p(t)$  is characterized as solution to the evolution equation
 #
@@ -127,7 +134,7 @@
 #         S^{\pm}(\Delta t) =& \frac{1}{2}(1 \pm \mathrm{tanh}(\frac{\Delta t}{\gamma}))
 # $$
 #
-# ## Constitutive model
+# ### Constitutive model
 #
 # We will use a nearly incompressible, orthotropic and viscoelastic version of the Holzapfel Ogden model. The material parameters are taken from {cite}`holzapfel2009constitutive`. The anistropic material strain energy function is given by
 #
@@ -390,4 +397,4 @@ for i, (tai, pi, ti) in enumerate(zip(activation, pressure, times)):
 # # References
 # ```{bibliography}
 # :filter: docname in docnames
-# ```
+#

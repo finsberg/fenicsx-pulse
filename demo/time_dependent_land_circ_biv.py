@@ -1,7 +1,21 @@
 # # BiV ellipsoid coupled to a 0D circulatory model and a 0D cell model
-
-# This example is similar to the [LV only example](time_dependent_land_circ_lv.py).
-
+#
+# This example extends the [LV-only coupling example](time_dependent_land_circ_lv.py) to a **Bi-Ventricular (BiV)** geometry.
+# It couples a 3D BiV finite element model with a 0D closed-loop circulation model and a 0D cellular electrophysiology model.
+#
+# ## Key Differences from LV Example
+#
+# 1.  **Geometry**: We use an idealized BiV geometry containing two cavities: Left Ventricle (LV) and Right Ventricle (RV).
+# 2.  **Volume Constraints**: We now have *two* volume constraints, one for each cavity ($V_{LV}$ and $V_{RV}$).
+# 3.  **Coupling Interface**: The coupling function must accept target volumes for both ventricles and return pressures for both.
+#
+# ## Models
+#
+# * **Mechanics**: 3D BiV model with Holzapfel-Ogden material, active stress, and cavity volume constraints.
+# * **Circulation**: [Regazzoni et al. 2022] lumped-parameter model. We replace both the 0D LV and RV chambers with our 3D model.
+# * **Cell Model**: TorOrd-Land model for active tension generation.
+#
+# ---
 
 from pathlib import Path
 
@@ -231,13 +245,6 @@ vtx.write(0.0)
 ts = np.arange(0.0, num_beats * BCL, dt)
 Tas = [get_activation(ti) for ti in ts]
 
-# fig, ax = plt.subplots(figsize=(10, 5))
-# ax.plot(ts, Tas)
-# ax.set_title("Activation over time")
-# fig.savefig(outdir / "activation_time.png")
-
-
-
 filename = Path("function_checkpoint.bp")
 adios4dolfinx.write_mesh(filename, geometry.mesh)
 
@@ -288,6 +295,18 @@ def callback(model, i: int, t: float, save=True):
         plt.close(fig)
 
 
+# ## 5. Coupling Function: 0D $\rightarrow$ 3D (BiV)
+#
+# This function handles the interface for both ventricles.
+#
+# 1.  **Input**: Circulation model provides target volumes $V_{LV}$ and $V_{RV}$, and time $t$.
+# 2.  **Active State**: We get $T_a(t)$ from the cell model.
+# 3.  **Solve 3D**:
+#     * Update `Ta` active tension.
+#     * Update both `lv_volume` and `rv_volume` constraint values.
+#     * Solve the static equilibrium problem.
+# 4.  **Output**: We retrieve the Lagrange multipliers for both LV and RV cavities (indices 0 and 1 in `problem.cavity_pressures`), convert them to mmHg, and return them.
+
 def p_BiV_func(V_LV, V_RV, t):
     print("Calculating pressure at time", t)
     value = get_activation(t)
@@ -335,7 +354,7 @@ circulation_model_3D.print_info()
 # Pressure volume loop for the BiV.
 # ```
 #
-# <video controls loop autoplay muted>
+# <video width="720" controls loop autoplay muted>
 #   <source src="../_static/time_dependent_land_circ_biv.mp4" type="video/mp4">
 #   <p>Video showing the motion of the LV.</p>
 # </video>
@@ -343,4 +362,4 @@ circulation_model_3D.print_info()
 # # References
 # ```{bibliography}
 # :filter: docname in docnames
-# ```
+#

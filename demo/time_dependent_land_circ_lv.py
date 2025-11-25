@@ -1,18 +1,45 @@
 # # LV ellipsoid coupled to a 0D circulatory model and a 0D cell model
-
-# In this example we will couple a 3D LV ellipsoid model to a 0D circulatory model and a 0D cell model.
 #
-# ## The 0D cell model
-# The 0D cell model we will use is the one TorORd model {cite}`tomek2019development` which is an electrophysiology model developed for human ventricular myocytes. The model is available at https://github.com/jtmff/torord in CellML format (we use the `endo` cell version of the model). To convert the model to Python code we use the [`gotranx`](https://finsberg.github.io/gotranx/README.html) package. See https://finsberg.github.io/gotranx/docs/cli.html for an example of how to convert a CellML model to Python code. We have also coupled this model to the Land model {cite}`land2017model` which is an excitation-contraction model for cardiac cells. In order to use this model in the 3D simulations we will first run the model to steady state, and then we will use the active tension (`Ta`), which is an intermediate variable in the model, as the active stress in the 3D model. We will also scale the single cell active stress by a factor of 5.0 to get a more pronounced effect in the 3D model.
+# This example demonstrates a multiscale cardiac simulation coupling three distinct models:
+# 1.  **3D Mechanics**: An idealized Left Ventricle (LV) ellipsoid model solving the balance of linear momentum with active contraction.
+# 2.  **0D Circulation**: A lumped-parameter model of the closed-loop circulatory system {cite}`regazzoni2022cardiac`.
+# 3.  **0D Electrophysiology**: A cellular model for human ventricular myocytes {cite}`tomek2019development` coupled with an excitation-contraction model {cite}`land2017model`.
 #
-# ## The 0D circulatory model
-# The 0D circulatory model we will use is the one from {cite}`regazzoni2022cardiac` which is a lumped parameter model of the circulatory system. We use an existing implementation in the [circulation package](https://computationalphysiology.github.io/circulation/examples/regazzoni.html).
-
-# ## Coupling the 0D cell model to the 3D model
-# TBW
-
-# Now we will start by importing the necessary modules
+# ## Coupling Strategy
 #
+# The coupling is achieved through a segregated approach:
+#
+# 1.  **Electrophysiology $\rightarrow$ Mechanics**:
+#     The 0D cell model (TorOrd-Land) is pre-solved to generate a time-dependent active tension transient $T_a(t)$.
+#     This $T_a(t)$ drives the active stress in the 3D mechanics model: $\mathbf{S}_{active} = T_a(t) \mathbf{f}_0 \otimes \mathbf{f}_0$.
+#
+# 2.  **Circulation $\leftrightarrow$ Mechanics**:
+#     The 0D circulation model dictates the boundary conditions for the 3D mechanics model, and vice-versa.
+#     We use a volume-based coupling strategy:
+#     * The circulation model computes the new ventricular volume $V_{n+1}$ at the next time step.
+#     * The 3D mechanics model solves a boundary value problem to find the cavity pressure $P_{n+1}$ required to achieve this volume $V_{n+1}$ (given the current activation $T_a(t_{n+1})$).
+#     * This pressure $P_{n+1}$ is fed back to the circulation model.
+#
+# ## Mathematical Models
+#
+# ### 3D Mechanics
+# * **Geometry**: Idealized LV ellipsoid with fiber architecture.
+# * **Material**: Transversely isotropic Holzapfel-Ogden model.
+# * **Active Stress**: $\mathbf{S}_{active} = T_a \mathbf{f}_0 \otimes \mathbf{f}_0$.
+# * **Boundary Conditions**:
+#     * **Epicardium & Base**: Robin BCs (springs) to mimic pericardial constraint and prevent rigid body motion.
+#     * **Endocardium**: The pressure $P$ is a Lagrange multiplier enforcing the volume constraint $V(\mathbf{u}) = V_{target}$.
+#
+# ### 0D Circulation [Regazzoni et al. 2022]
+# A closed-loop lumped-parameter network representing the systemic and pulmonary circulation.
+# It includes 4 chambers (LA, LV, RA, RV) and systemic/pulmonary arteries and veins.
+# In this example, we replace the 0D description of the LV with our 3D finite element model.
+#
+# ### 0D Cell Model [Tomek et al. 2019 + Land et al. 2017]
+# * **TorOrd**: Detailed human ventricular action potential model.
+# * **Land**: Mechanical model describing cross-bridge dynamics and calcium binding to Troponin-C.
+#
+# ---
 
 from pathlib import Path
 from mpi4py import MPI
@@ -37,7 +64,8 @@ import cardiac_geometries.geometry
 circulation.log.setup_logging(logging.INFO)
 comm = MPI.COMM_WORLD
 
-# Next we create the geometry of the LV ellipsoid
+# ## 1. Geometry Generation
+# We create the idealized LV geometry with appropriate fibers using `cardiac_geometries`.
 
 geodir = Path("lv_ellipsoid-time-dependent")
 if not geodir.exists():
@@ -71,7 +99,9 @@ geo = cardiac_geometries.geometry.Geometry.from_folder(
 
 geometry = pulse.HeartGeometry.from_cardiac_geometries(geo, metadata={"quadrature_degree": 6})
 
-# Next we create the material object, and we will use the transversely isotropic version of the {py:class}`Holzapfel Ogden model <pulse.holzapfelogden.HolzapfelOgden>`
+# ## 2. Constitutive Model
+#
+# We use the standard Holzapfel-Ogden model for passive material properties and an Active Stress model driven by a scalar parameter $T_a$.
 
 material_params = pulse.HolzapfelOgden.transversely_isotropic_parameters()
 material = pulse.HolzapfelOgden(f0=geo.f0, s0=geo.s0, **material_params)  # type: ignore
@@ -93,7 +123,12 @@ model = pulse.CardiacModel(
     compressibility=comp_model,
 )
 
-# Next we set up the boundary conditions. We use a Robin boundary condition on the epicardium and the base of the LV
+# ## 3. Boundary Conditions
+#
+# We apply Robin boundary conditions (springs) to the epicardium and base to represent the pericardium and tissue support.
+#
+# **Crucially**, for the endocardium, we use a **Cavity Volume Constraint**.
+# Instead of applying a known pressure (Neumann BC), we enforce the cavity volume to match a target value provided by the circulation model. The Lagrange multiplier associated with this constraint is the cavity pressure.
 
 alpha_epi = pulse.Variable(
     dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(1e8)), "Pa / m",
@@ -132,7 +167,9 @@ problem.solve()
 dt = 0.001
 times = np.arange(0.0, 1.0, dt)
 
-# Next we will load the 0D cell model and run it to steady state. Here we use `gotranx` to load the ode, remove potential singularities and convert it to Python code. We then run the model for 200 beats and save the state of the model at the end of the simulation. We also plot the results. Note also that we extract the index of the active tension (`Ta`) which will be used to drive the 3D model.
+# ## 4. Electrophysiology (0D Cell Model)
+#
+# We pre-compute the active tension transient. We load the TorOrd-Land model using `gotranx`, solve it for 200 beats to reach a limit cycle (steady state), and save the final beat's active tension trace.
 
 if comm.rank == 0:
     ode = gotranx.load_ode("TorOrdLand.ode")
@@ -302,8 +339,14 @@ def callback(model, i: int, t: float, save=True):
 
 
 
-# Now we will set ut the function to calculate the pressure in the LV. In this function we will receive a volume and a time from the 0D circulation model, we will set the active tension from the 0D cell model, and solve the 3D model to get the pressure in the LV.
+# ## 5. Coupling Function: 0D $\rightarrow$ 3D
 #
+# This function defines the interface between the circulation loop and the 3D model.
+#
+# 1.  **Input**: The circulation model provides the target LV Volume ($V_{LV}$) and current time $t$.
+# 2.  **Active State**: We query the pre-computed active tension $T_a(t)$ from the cell model.
+# 3.  **Solve 3D**: We update the `Volume` constant in the `StaticProblem` and the activation `Ta`. The solver then finds the displacement field $\mathbf{u}$ that satisfies the volume constraint.
+# 4.  **Output**: The Lagrange multiplier associated with the volume constraint is the cavity pressure. We return this pressure (converted to mmHg) to the circulation model.
 
 def p_LV_func(V_LV, t):
     print("Calculating pressure at time", t)
@@ -319,8 +362,10 @@ def p_LV_func(V_LV, t):
     return circulation.units.kPa_to_mmHg(pendo_kPa)
 
 
-# Finally we create the circulation model and and pass in al the arguements. We also set the initial volume of the LV to be the same as the one computed from the 3D model.
+# ## 6. Run Coupled Simulation
 #
+# We initialize the Regazzoni circulation model with our custom pressure function `p_LV=p_LV_func`.
+# The model is then integrated in time. At each time step, the circulation model computes a target volume, our 3D model computes the corresponding pressure, and the loop advances.
 
 mL = circulation.units.ureg("mL")
 add_units = False
@@ -360,4 +405,4 @@ circulation_model_3D.print_info()
 # # References
 # ```{bibliography}
 # :filter: docname in docnames
-# ```
+#

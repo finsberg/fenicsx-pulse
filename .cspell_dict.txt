@@ -3,6 +3,7 @@ allclose
 allreduce
 Arens
 argsort
+arostica
 astype
 atol
 Barnafi
@@ -14,6 +15,7 @@ bestel
 Bestel
 booktitle
 Britton
+Bucelli
 Bursi
 caplog
 cardiomyocytes
@@ -31,6 +33,7 @@ dofmap
 dofs
 dolfinx
 dvlp
+elastodynamics
 Elife
 Elsevier
 endo
@@ -43,6 +46,7 @@ ffun
 finsberg
 Francesco
 functionspace
+Gebauer
 geodir
 gmsh
 gradu
@@ -61,6 +65,10 @@ isclose
 isochoric
 isscalar
 Jakub
+Javiera
+Jilberto
+Karabelas
+Kasra
 Kluwer
 Laszlo
 levelname
@@ -83,20 +91,24 @@ ndarray
 neohookean
 Neumann
 Niederer
+Nolte
 numpy
 Oreste
 Orovio
+Osouli
 outdir
 Paraview
 Passini
 pendo
 petsc
+Piersanti
 Piola
 preonly
 PYVISTA
 Quarteroni
 regazzoni
 Regazzoni
+Reidmen
 Remedios
 Riccobelli
 rique
@@ -108,6 +120,7 @@ Shrier
 Silvano
 Sorine
 Stefano
+stica
 subplus
 Taras
 tomek
