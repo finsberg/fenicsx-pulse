@@ -1,4 +1,5 @@
 import logging
+import typing
 from dataclasses import dataclass, field
 
 import dolfinx
@@ -10,6 +11,13 @@ from ..material_model import HyperElasticMaterial
 from ..units import Variable
 
 logger = logging.getLogger(__name__)
+
+
+class GuccioneParameters(typing.TypedDict):
+    C: Variable
+    bf: Variable
+    bt: Variable
+    bfs: Variable
 
 
 @dataclass(slots=True)
@@ -90,7 +98,7 @@ class Guccione(HyperElasticMaterial):
         logger.debug(f"Material parameters: {self.parameters}")
 
     @property
-    def parameters(self) -> dict[str, Variable]:
+    def parameters(self) -> GuccioneParameters:
         return {
             "C": self.C,
             "bf": self.bf,
@@ -99,7 +107,7 @@ class Guccione(HyperElasticMaterial):
         }
 
     @staticmethod
-    def default_parameters() -> dict[str, Variable]:
+    def default_parameters() -> GuccioneParameters:
         return {
             "C": Variable(2.0, "kPa"),
             "bf": Variable(8.0, "dimensionless"),

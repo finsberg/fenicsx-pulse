@@ -171,7 +171,7 @@ vtx.write(0.0)
 pressures = [0.1] # kPa. Add more steps for a smoother ramp, e.g. [0.1, 0.5, 1.0]
 for i, plv in enumerate(pressures, start=1):
     print(f"Solving for pressure: {plv} kPa")
-    traction.value = plv
+    traction.assign(plv)
     problem.solve()
     vtx.write(float(i))
 
@@ -213,7 +213,7 @@ else:
 active_tensions = [0.1] # kPa. Add steps like [0.5, 1.0, 2.0] for full contraction
 for i, ta in enumerate(active_tensions, start=len(pressures) + 1):
     print(f"Solving for active tension: {ta} kPa")
-    Ta.value = ta
+    Ta.assign(ta)
     problem.solve()
     vtx.write(float(i))
 

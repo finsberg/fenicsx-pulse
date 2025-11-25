@@ -14,6 +14,42 @@ from .units import mesh_factor
 
 @dataclass
 class PrestressProblem:
+    r"""
+    Class for solving the Inverse Elasticity Problem (IEP).
+
+    The goal is to find the reference configuration :math:`\Omega_0` given the
+    target (loaded) configuration :math:`\Omega_t` and the applied loads.
+
+    We solve for the inverse displacement field :math:`\mathbf{u}` defined on
+    :math:`\Omega_t` such that the reference coordinates are given by:
+
+    .. math::
+        \mathbf{X} = \mathbf{x} + \mathbf{u}(\mathbf{x})
+
+    where :math:`\mathbf{x} \in \Omega_t`.
+
+    The deformation gradient :math:`\mathbf{F}` (mapping reference to target) is
+    computed as the inverse of the gradient of the mapping from target to reference:
+
+    .. math::
+        \mathbf{f} = \mathbf{I} + \\nabla_{\mathbf{x}} \mathbf{u} \\\\
+        \mathbf{F} = \mathbf{f}^{-1}
+
+    The weak form is derived by pulling back the equilibrium equations from the
+    reference configuration to the target configuration.
+
+    Parameters
+    ----------
+    geometry : HeartGeometry
+        The geometry in the target (loaded) configuration.
+    model : CardiacModel
+        The material model.
+    bcs : BoundaryConditions
+        The boundary conditions applied to the target configuration.
+    parameters : dict
+        Solver parameters.
+    """
+
     geometry: HeartGeometry
     model: CardiacModel
     bcs: BoundaryConditions
