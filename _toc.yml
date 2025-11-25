@@ -17,6 +17,7 @@ parts:
     - file: "demo/time_dependent_bestel_biv"
     - file: "demo/time_dependent_land_circ_lv"
     - file: "demo/time_dependent_land_circ_biv"
+    - file: "demo/cylinder.py"
     - file: "demo/prestress.py"
   - caption: Community
     chapters:
