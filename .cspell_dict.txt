@@ -21,6 +21,7 @@ caplog
 cardiomyocytes
 cellname
 Chiara
+cntl
 cofac
 cofnorm
 cpus
@@ -59,6 +60,7 @@ holzapfelogden
 Hookean
 hstack
 hyperelastic
+icntl
 inproceedings
 Intracomm
 isclose
@@ -70,11 +72,13 @@ Jilberto
 Karabelas
 Kasra
 Kluwer
+kwonlyargs
 Laszlo
 levelname
 libgl
 libxrender
 linalg
+linesearch
 lmbda
 Luca
 Matteo
@@ -90,8 +94,11 @@ nabla
 ndarray
 neohookean
 Neumann
+newtonls
+newtontr
 Niederer
 Nolte
+nullspace
 numpy
 Oreste
 Orovio
@@ -118,6 +125,7 @@ scifem
 Severi
 Shrier
 Silvano
+snes
 Sorine
 Stefano
 stica
@@ -131,6 +139,7 @@ Usyk
 varepsilon
 Venant
 Verlag
+vinewtonrsls
 Virag
 viscoelastic
 viscoelasticity
