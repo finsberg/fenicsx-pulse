@@ -513,10 +513,35 @@ class StaticProblem:
         self.reset_states()
         self._init_forms()
 
-    def solve(self) -> bool:
+    def solve(
+        self,
+        rtol: float = 1e-10,
+        atol: float = 1e-6,
+        beta: float = 1.0,
+        update_old_states: bool = True,
+    ) -> bool:
+        """Solve nonlinear problem with Newton solver
+
+        Parameters
+        ----------
+        rtol : float, optional
+            Relative tolerance, by default 1e-10
+        atol : float, optional
+            Absolute tolerance, by default 1e-6
+        beta : float, optional
+            Damping parameter, by default 1.0
+        update_old_states : bool, optional
+            Whether to update old states before solving, by default True
+
+        Returns
+        -------
+        bool
+            True if converged, False otherwise
+        """
         logger.debug("Solving the system...")
-        self.update_old_states()
-        ret = self._solver.solve(rtol=1e-10, atol=1e-6)
+        if update_old_states:
+            self.update_old_states()
+        ret = self._solver.solve(rtol=rtol, atol=atol, beta=beta)
         self.update_fields()
 
         return ret
