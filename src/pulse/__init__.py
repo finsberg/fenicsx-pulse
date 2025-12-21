@@ -28,6 +28,7 @@ from . import (
     utils,
     viscoelasticity,
 )
+from .active_model import ActiveModel, Passive
 from .active_stress import ActiveStress
 from .boundary_conditions import BoundaryConditions, NeumannBC, RobinBC
 from .cardiac_model import CardiacModel
@@ -70,6 +71,8 @@ __all__ = [
     "active_model",
     "active_stress",
     "ActiveStress",
+    "ActiveModel",
+    "Passive",
     "geometry",
     "Geometry",
     "NeumannBC",
