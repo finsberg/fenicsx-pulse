@@ -8,6 +8,7 @@ parts:
     - file: "demo/unit_cube"
     - file: "demo/lv_ellipsoid"
     - file: "demo/biv_ellipsoid"
+    - file: "demo/lv_ellipsoid_fixed_x"
     - file: "demo/benchmark/README"
       sections:
       - file: "demo/benchmark/problem1"
