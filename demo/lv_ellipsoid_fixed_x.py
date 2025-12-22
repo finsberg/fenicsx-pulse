@@ -1,6 +1,6 @@
 # # Left Ventricular Ellipsoid with Custom Boundary Conditions
 #
-# This demo builds upon the [Left Ventricular Ellipsoid Simulation](lv_ellipsoid.ipynb).
+# This demo builds upon the [Left Ventricular Ellipsoid Simulation](lv_ellipsoid.py).
 #
 # While the previous example utilized the convenience parameter `base_bc=pulse.BaseBC.fixed`
 # to fully clamp the base, this example demonstrates how to:
