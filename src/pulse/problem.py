@@ -597,7 +597,7 @@ class StaticProblem:
             iters = self.problem.solver.getIterationNumber()
             logger.debug(f"Solved in {iters} iterations, converged: {converged}")
         else:
-            converged = self._solver.solve()
+            converged = self._solver.solve(rtol=1e-10, atol=1e-6)
 
         self.update_fields()
 
