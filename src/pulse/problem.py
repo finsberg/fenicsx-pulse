@@ -1,3 +1,4 @@
+import inspect
 import logging
 import typing
 from dataclasses import dataclass, field
@@ -10,6 +11,7 @@ import dolfinx.nls.petsc
 import numpy as np
 import scifem
 import ufl
+from packaging.version import Version
 
 from .boundary_conditions import BoundaryConditions
 from .cardiac_model import CardiacModel
@@ -17,6 +19,7 @@ from .geometry import HeartGeometry
 from .units import Variable, mesh_factor
 
 T = typing.TypeVar("T", dolfinx.fem.Function, np.ndarray)
+_dolfinx_version = Version(dolfinx.__version__)
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +79,10 @@ class StaticProblem:
     parameters: dict[str, typing.Any] = field(default_factory=dict)
     bcs: BoundaryConditions = field(default_factory=BoundaryConditions)
     cavities: list[Cavity] = field(default_factory=list)
+    NonlinearProblem: typing.Type[dolfinx.fem.petsc.NonlinearProblem] = (
+        dolfinx.fem.petsc.NonlinearProblem
+    )
+    Function: typing.Type[dolfinx.fem.Function] = dolfinx.fem.Function
 
     def __post_init__(self):
         parameters = type(self).default_parameters()
@@ -112,8 +119,8 @@ class StaticProblem:
                 degree=int(p_degree),
             )
             self.p_space = dolfinx.fem.functionspace(self.geometry.mesh, p_element)
-            self.p = dolfinx.fem.Function(self.p_space)
-            self.p_old = dolfinx.fem.Function(self.p_space)
+            self.p = self.Function(self.p_space)
+            self.p_old = self.Function(self.p_space)
             self.p_test = ufl.TestFunction(self.p_space)
             self.dp = ufl.TrialFunction(self.p_space)
         else:
@@ -137,8 +144,8 @@ class StaticProblem:
             shape=(self.geometry.mesh.topology.dim,),
         )
         self.u_space = dolfinx.fem.functionspace(self.geometry.mesh, u_element)
-        self.u = dolfinx.fem.Function(self.u_space)
-        self.u_old = dolfinx.fem.Function(self.u_space)
+        self.u = self.Function(self.u_space)
+        self.u_old = self.Function(self.u_space)
         self.u_test = ufl.TestFunction(self.u_space)
         self.du = ufl.TrialFunction(self.u_space)
 
@@ -159,6 +166,20 @@ class StaticProblem:
                 "ksp_type": "preonly",
                 "pc_type": "lu",
                 "pc_factor_mat_solver_type": "mumps",
+                "snes_error_if_not_converged": True,
+                "ksp_error_if_not_converged": True,
+                # "snes_monitor": None,
+                # "ksp_monitor": None,
+                "snes_linesearch_monitor": None,
+                "snes_type": "newtonls",
+                # "snes_type": "newtontr",
+                # "snes_type": "vinewtonrsls",
+                "snes_linesearch_type": "none",
+                # "mat_mumps_icntl_24": 1,  # Zero pivot detection
+                # "mat_mumps_icntl_25": 0,  # Which nullspace to extract
+                # "mat_mumps_icntl_4": 1,  # Verbosity
+                # "mat_mumps_icntl_2": 1,  # std out
+                # "mat_mumps_cntl_3": 1e-6,  # Threshold factor
             },
         }
 
@@ -177,8 +198,8 @@ class StaticProblem:
             logger.debug(f"Number of cavity pressure states: {self.num_cavity_pressure_states}")
             self.real_space = scifem.create_real_functionspace(self.geometry.mesh)
             for _ in range(self.num_cavity_pressure_states):
-                cavity_pressure = dolfinx.fem.Function(self.real_space)
-                cavity_pressure_old = dolfinx.fem.Function(self.real_space)
+                cavity_pressure = self.Function(self.real_space)
+                cavity_pressure_old = self.Function(self.real_space)
                 cavity_pressure_test = ufl.TestFunction(self.real_space)
                 cavity_pressure_trial = ufl.TrialFunction(self.real_space)
 
@@ -197,8 +218,8 @@ class StaticProblem:
                 self.geometry.mesh,
                 value_shape=(6,),
             )
-            self.r = dolfinx.fem.Function(self.rigid_space)
-            self.r_old = dolfinx.fem.Function(self.rigid_space)
+            self.r = self.Function(self.rigid_space)
+            self.r_old = self.Function(self.rigid_space)
             self.dr = ufl.TrialFunction(self.rigid_space)
             self.q = ufl.TestFunction(self.rigid_space)
         else:
@@ -352,7 +373,7 @@ class StaticProblem:
             marker = self.geometry.markers[self.parameters["base_marker"]][0]
             base_facets = self.geometry.facet_tags.find(marker)
             dofs_base = dolfinx.fem.locate_dofs_topological(self.u_space, 2, base_facets)
-            u_bc_base = dolfinx.fem.Function(self.u_space)
+            u_bc_base = self.Function(self.u_space)
             u_bc_base.x.array[:] = 0
             bcs.append(dolfinx.fem.dirichletbc(u_bc_base, dofs_base))
 
@@ -427,8 +448,12 @@ class StaticProblem:
             self.cavity_pressures_old[i].x.array[:] = self.cavity_pressures[i].x.array.copy()
         if self.parameters["rigid_body_constraint"]:
             logger.debug("Updating old rigid body constraint state to current value...")
+            assert self.r is not None
+            assert self.r_old is not None
             self.r_old.x.array[:] = self.r.x.array.copy()
         if self.is_incompressible:
+            assert self.p is not None
+            assert self.p_old is not None
             logger.debug("Updating old pressure state to current value...")
             self.p_old.x.array[:] = self.p.x.array.copy()
 
@@ -442,8 +467,12 @@ class StaticProblem:
             self.cavity_pressures[i].x.array[:] = self.cavity_pressures_old[i].x.array.copy()
         if self.parameters["rigid_body_constraint"]:
             logger.debug("Resetting rigid body constraint state to old value...")
+            assert self.r is not None
+            assert self.r_old is not None
             self.r.x.array[:] = self.r_old.x.array.copy()
         if self.is_incompressible:
+            assert self.p is not None
+            assert self.p_old is not None
             logger.debug("Resetting pressure state to old value...")
             self.p.x.array[:] = self.p_old.x.array.copy()
 
@@ -496,14 +525,47 @@ class StaticProblem:
 
         bcs = self.base_dirichlet
         logger.debug("Creating Newton solver...")
-        self._solver = scifem.NewtonSolver(
-            R,
-            K,
-            u,
-            bcs=bcs,
-            max_iterations=25,
-            petsc_options=self.parameters["petsc_options"],
-        )
+
+        # Hack to pass petsc options to dolfinx_adjoint NonlinearProblem
+        kwargs = {}
+        if "adjoint_petsc_options" in inspect.getfullargspec(self.NonlinearProblem).kwonlyargs:
+            kwargs["adjoint_petsc_options"] = self.parameters["petsc_options"]
+
+        if _dolfinx_version >= Version("0.10"):
+            # Until we have implemented NonlinearProblem for blocked systems
+            # in dolfinx_adjoint, we only support single state problems here.
+            # Therefore we extract the first block.
+            if self.num_states == 1:
+                R = R[0]
+                u = u[0]
+                K = K[0][0]
+
+            kwargs["petsc_options_prefix"] = "pulse_problem_"
+            kwargs["petsc_options"] = self.parameters["petsc_options"]
+
+            self.problem = self.NonlinearProblem(
+                F=R,
+                J=K,
+                u=u,
+                bcs=bcs,
+                **kwargs,
+            )
+        else:
+            petsc_options = self.parameters["petsc_options"]
+            # Pop options that are not supported in older dolfinx versions
+            petsc_options.pop("snes_error_if_not_converged", None)
+            petsc_options.pop("snes_type", None)
+            petsc_options.pop("snes_linesearch_type", None)
+
+            # Keep old behavior for older dolfinx versions
+            self._solver = scifem.NewtonSolver(
+                R,
+                K,
+                u,
+                bcs=bcs,
+                max_iterations=25,
+                petsc_options=petsc_options,
+            )
 
     def update_fields(self):
         pass
@@ -513,23 +575,11 @@ class StaticProblem:
         self.reset_states()
         self._init_forms()
 
-    def solve(
-        self,
-        rtol: float = 1e-10,
-        atol: float = 1e-6,
-        beta: float = 1.0,
-        update_old_states: bool = True,
-    ) -> bool:
+    def solve(self, update_old_states: bool = True) -> bool:
         """Solve nonlinear problem with Newton solver
 
         Parameters
         ----------
-        rtol : float, optional
-            Relative tolerance, by default 1e-10
-        atol : float, optional
-            Absolute tolerance, by default 1e-6
-        beta : float, optional
-            Damping parameter, by default 1.0
         update_old_states : bool, optional
             Whether to update old states before solving, by default True
 
@@ -541,10 +591,17 @@ class StaticProblem:
         logger.debug("Solving the system...")
         if update_old_states:
             self.update_old_states()
-        ret = self._solver.solve(rtol=rtol, atol=atol, beta=beta)
+        if _dolfinx_version >= Version("0.10"):
+            self.problem.solve()
+            converged = self.problem.solver.getConvergedReason() > 0
+            iters = self.problem.solver.getIterationNumber()
+            logger.debug(f"Solved in {iters} iterations, converged: {converged}")
+        else:
+            converged = self._solver.solve(rtol=1e-10, atol=1e-6)
+
         self.update_fields()
 
-        return ret
+        return converged
 
 
 class DynamicProblem(StaticProblem):
@@ -557,14 +614,14 @@ class DynamicProblem(StaticProblem):
 
     def _init_u_space(self):
         super()._init_u_space()
-        self.u_old = dolfinx.fem.Function(self.u_space)
-        self.v_old = dolfinx.fem.Function(self.u_space)
-        self.a_old = dolfinx.fem.Function(self.u_space)
+        self.u_old = self.Function(self.u_space)
+        self.v_old = self.Function(self.u_space)
+        self.a_old = self.Function(self.u_space)
 
     def _init_p_space(self):
         super()._init_p_space()
         if self.is_incompressible:
-            self.p_old = dolfinx.fem.Function(self.p_space)
+            self.p_old = self.Function(self.p_space)
         else:
             self.p_old = None
 
@@ -572,7 +629,7 @@ class DynamicProblem(StaticProblem):
         super()._init_cavity_pressure_spaces()
         self.cavity_pressures_old = []
         for _ in range(self.num_cavity_pressure_states):
-            cavity_pressure_old = dolfinx.fem.Function(self.real_space)
+            cavity_pressure_old = self.Function(self.real_space)
             self.cavity_pressures_old.append(cavity_pressure_old)
 
     def _material_form(self, u, v, p):
