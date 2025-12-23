@@ -158,65 +158,6 @@ class Geometry:
         return self.mesh.comm
 
 
-class BaseData(NamedTuple):
-    centroid: npt.NDArray[np.float64]
-    vector: npt.NDArray[np.float64]
-    normal: npt.NDArray[np.float64]
-
-
-def compute_base_data(
-    mesh: dolfinx.mesh.Mesh,
-    facet_tags: dolfinx.mesh.MeshTags,
-    marker,
-) -> BaseData:
-    """Compute the centroid, vector and normal of the base
-
-    Parameters
-    ----------
-    mesh : dolfinx.mesh.Mesh
-        The mesh
-    facet_tags : dolfinx.mesh.MeshTags
-        The facet tags
-    marker : _type_
-        Marker for the base
-
-    Returns
-    -------
-    BaseData
-        NamedTuple containing the centroid, vector and normal of the base
-    """
-    base_facets = facet_tags.find(marker)
-    base_midpoints = mesh.comm.gather(
-        dolfinx.mesh.compute_midpoints(mesh, 2, base_facets),
-        root=0,
-    )
-    base_vector = np.zeros(3)
-    base_centroid = np.zeros(3)
-    base_normal = np.zeros(3)
-    if mesh.comm.rank == 0:
-        bm = np.concatenate(base_midpoints)
-        base_centroid = bm.mean(axis=0)
-        # print("Base centroid", len(base_midpoints))
-        base_points_centered = bm - base_centroid
-        u, s, vh = np.linalg.svd(base_points_centered)
-        base_normal = vh[-1, :]
-        # Initialize vector to be used for cross product
-        vector_init = np.array([0, 1, 0])
-
-        # If the normal is parallel to the initial vector, change the initial vector
-        if np.allclose(np.abs(base_normal), np.abs(vector_init)):
-            vector_init = np.array([0, 0, 1])
-
-        # Find two vectors in the plane, orthogonal to the normal
-        vector = np.cross(base_normal, vector_init)
-        base_vector = np.cross(base_normal, vector)
-
-    base_centroid = mesh.comm.bcast(base_centroid, root=0)
-    base_vector = mesh.comm.bcast(base_vector, root=0)
-    base_normal = mesh.comm.bcast(base_normal, root=0)
-    return BaseData(centroid=base_centroid, vector=base_vector, normal=base_normal)
-
-
 # Note slots doesn't work due to https://github.com/python/cpython/issues/90562
 @dataclass(kw_only=True)
 class HeartGeometry(Geometry):
