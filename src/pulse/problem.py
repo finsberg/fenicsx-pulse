@@ -163,7 +163,7 @@ class StaticProblem:
                 "pc_type": "lu",
                 "pc_factor_mat_solver_type": "mumps",
                 "mat_mumps_icntl_24": 1,  # Zero pivot detection
-                "mat_mumps_icntl_25": 0,  # Which nullspace to extract
+                "mat_mumps_icntl_25": 0,  # Which null space to extract
                 "mat_mumps_icntl_4": 1,  # Verbosity
                 "mat_mumps_icntl_2": 1,  # std out
                 "mat_mumps_cntl_3": 1e-6,  # Threshold factor
@@ -369,6 +369,7 @@ class StaticProblem:
 
         u_tot = u if self.u_pre is None else u + self.u_pre
         V_u = self.geometry.volume_form(u_tot)
+
         form = ufl.as_ufl(0.0)
 
         assert cavity_pressures is not None
