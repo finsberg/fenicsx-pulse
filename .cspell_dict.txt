@@ -21,6 +21,7 @@ caplog
 cardiomyocytes
 cellname
 Chiara
+cntl
 cofac
 cofnorm
 cpus
@@ -59,6 +60,7 @@ holzapfelogden
 Hookean
 hstack
 hyperelastic
+icntl
 inproceedings
 Intracomm
 isclose

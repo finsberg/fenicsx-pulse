@@ -63,16 +63,29 @@ class PrestressProblem:
         self._init_forms()
 
     @property
+    def is_incompressible(self) -> bool:
+        return not self.model.compressibility.is_compressible()
+
+    @property
     def states(self):
-        return [self.u]
+        u = [self.u]
+        if self.is_incompressible:
+            u.append(self.p)
+        return u
 
     @property
     def trial_functions(self):
-        return [self.du]
+        u = [self.du]
+        if self.is_incompressible:
+            u.append(self.dp)
+        return u
 
     @property
     def test_functions(self):
-        return [self.u_test]
+        u = [self.u_test]
+        if self.is_incompressible:
+            u.append(self.p_test)
+        return u
 
     def K(self, R):
         K = []
@@ -88,21 +101,44 @@ class PrestressProblem:
 
     @property
     def num_states(self) -> int:
-        return 1
+        return 1 + int(self.is_incompressible)
 
     def _init_spaces(self):
+        self._init_u_space()
+        self._init_p_space()
+
+    def _init_u_space(self):
         u_family, u_degree = self.parameters["u_space"].split("_")
 
         u_element = basix.ufl.element(
             family=u_family,
-            cell=self.geometry.mesh.ufl_cell().cellname(),
+            cell=self.geometry.mesh.basix_cell(),
             degree=int(u_degree),
-            shape=(self.geometry.mesh.ufl_cell().topological_dimension(),),
+            shape=(self.geometry.mesh.topology.dim,),
         )
         self.u_space = dolfinx.fem.functionspace(self.geometry.mesh, u_element)
         self.u = dolfinx.fem.Function(self.u_space, name="u")
         self.u_test = ufl.TestFunction(self.u_space)
         self.du = ufl.TrialFunction(self.u_space)
+
+    def _init_p_space(self):
+        if self.is_incompressible:
+            p_family, p_degree = self.parameters["p_space"].split("_")
+            p_element = basix.ufl.element(
+                family=p_family,
+                cell=self.geometry.mesh.basix_cell(),
+                degree=int(p_degree),
+            )
+            self.p_space = dolfinx.fem.functionspace(self.geometry.mesh, p_element)
+            self.p = dolfinx.fem.Function(self.p_space)
+            self.p_test = ufl.TestFunction(self.p_space)
+            self.dp = ufl.TrialFunction(self.p_space)
+        else:
+            self.p_space = None
+            self.p = None
+            self.p_test = None
+            self.dp = None
+        self.model.compressibility.register(self.p)
 
     def _material_form(self, u: dolfinx.fem.Function):
         dim = self.u.ufl_shape[0]
@@ -116,9 +152,10 @@ class PrestressProblem:
         forms = self._empty_form()
         forms[0] += ufl.inner(j * P, ufl.grad(self.u_test) * ufl.inv(f)) * self.geometry.dx
 
-        # TODO: Add incompressible version
-        # if self.is_incompressible:
-        #     forms[-1] += (J - 1.0) * self.p_test * self.geometry.dx
+        if self.is_incompressible:
+            J = 1.0 / j
+            # The constraint is (J - 1) * p_test * dX = (J - 1) * p_test * j * dx
+            forms[-1] += (J - 1.0) * self.p_test * j * self.geometry.dx
 
         return forms
 

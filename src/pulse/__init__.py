@@ -17,6 +17,7 @@ from . import (
     cli,
     compressibility,
     exceptions,
+    fixed_point_unloader,
     geometry,
     invariants,
     kinematics,
@@ -39,6 +40,7 @@ from .compressibility import (
     Compressible3,
     Incompressible,
 )
+from .fixed_point_unloader import FixedPointUnloader
 from .geometry import Geometry, HeartGeometry, Marker
 from .material_model import HyperElasticMaterial, Material
 from .material_models import (
@@ -104,4 +106,6 @@ __all__ = [
     "Usyk",
     "Compressible2",
     "Compressible3",
+    "fixed_point_unloader",
+    "FixedPointUnloader",
 ]
