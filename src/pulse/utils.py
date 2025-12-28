@@ -1,8 +1,60 @@
+import logging
+
 import dolfinx
 import numpy as np
 import numpy.typing as npt
 import scifem
 import ufl
+
+from .kinematics import DeformationGradient
+
+logger = logging.getLogger(__name__)
+
+
+def map_vector_field(
+    f: dolfinx.fem.Function,
+    u: dolfinx.fem.Function | None = None,
+    normalize: bool = True,
+    name: str = "mapped_f0",
+) -> dolfinx.fem.Function:
+    """
+    Map a vector field defined on a mesh to a new mesh.
+
+    Parameters
+    ----------
+    f: dolfinx.fem.Function
+        The vector field to map.
+    new_mesh: dolfinx.mesh.Mesh
+        The new mesh to map the vector field to.
+    u: dolfinx.fem.Function | None, optional
+        The displacement field used to map the points, by default None.
+    normalize: bool, optional
+        Whether to normalize the vector field after mapping, by default True.
+
+    Returns
+    -------
+    dolfinx.fem.Function
+        The mapped vector field on the new mesh.
+    """
+    f_new = dolfinx.fem.Function(f.function_space, name=name)
+
+    if u is None:
+        f_new.interpolate(f)
+    else:
+        F = DeformationGradient(u)
+        f_map = F * f
+        if normalize:
+            f_norm = ufl.sqrt(ufl.dot(f_map, f_map))
+            f_normalized = f_map / f_norm
+            f_expr = dolfinx.fem.Expression(
+                f_normalized,
+                f.function_space.element.interpolation_points,
+            )
+
+        else:
+            f_expr = dolfinx.fem.Expression(f_map, f.function_space.element.interpolation_points)
+        f_new.interpolate(f_expr)
+    return f_new
 
 
 def evaluate_at_vertex_tag(

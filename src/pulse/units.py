@@ -14,6 +14,8 @@ def mesh_factor(mesh_unit: str) -> float:
 
 
 def assign(variable: "Variable", value) -> None:
+    if not isinstance(variable, Variable):
+        return assign(Variable(variable, None), value)
     if isinstance(variable.value, (float, int)) or np.isscalar(variable.value):
         variable.value = value
     elif isinstance(variable.value, dolfinx.fem.Function):

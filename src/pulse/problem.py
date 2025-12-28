@@ -76,7 +76,6 @@ class StaticProblem:
     parameters: dict[str, typing.Any] = field(default_factory=dict)
     bcs: BoundaryConditions = field(default_factory=BoundaryConditions)
     cavities: list[Cavity] = field(default_factory=list)
-    u_pre: dolfinx.fem.Function | None = None
 
     def __post_init__(self):
         parameters = type(self).default_parameters()
@@ -139,11 +138,11 @@ class StaticProblem:
             shape=(self.geometry.mesh.topology.dim,),
         )
         self.u_space = dolfinx.fem.functionspace(self.geometry.mesh, u_element)
-        self.u = dolfinx.fem.Function(self.u_space)
-        self.u_old = dolfinx.fem.Function(self.u_space)
+        self.u = dolfinx.fem.Function(self.u_space, name="u")
+        self.u_old = dolfinx.fem.Function(self.u_space, name="u_old")
         self.u_test = ufl.TestFunction(self.u_space)
         self.du = ufl.TrialFunction(self.u_space)
-        self.u_full = dolfinx.fem.Function(self.u_space)
+        self.u_full = dolfinx.fem.Function(self.u_space, name="u_full")
 
     @property
     def is_incompressible(self):
@@ -162,11 +161,11 @@ class StaticProblem:
                 "ksp_type": "preonly",
                 "pc_type": "lu",
                 "pc_factor_mat_solver_type": "mumps",
-                "mat_mumps_icntl_24": 1,  # Zero pivot detection
-                "mat_mumps_icntl_25": 0,  # Which null space to extract
-                "mat_mumps_icntl_4": 1,  # Verbosity
-                "mat_mumps_icntl_2": 1,  # std out
-                "mat_mumps_cntl_3": 1e-6,  # Threshold factor
+                # "mat_mumps_icntl_24": 1,  # Zero pivot detection
+                # "mat_mumps_icntl_25": 0,  # Which null space to extract
+                # "mat_mumps_icntl_4": 1,  # Verbosity
+                # "mat_mumps_icntl_2": 1,  # std out
+                # "mat_mumps_cntl_3": 1e-6,  # Threshold factor
             },
         }
 
@@ -262,11 +261,7 @@ class StaticProblem:
         logger.debug("Creating material form...")
 
         I = ufl.Identity(3)
-        if self.u_pre is not None:
-            # F = I + grad(u + u_pre)
-            F = I + ufl.grad(u + self.u_pre)
-        else:
-            F = I + ufl.grad(u)
+        F = I + ufl.grad(u)
 
         C = ufl.variable(F.T * F)
         J = ufl.det(F)
@@ -294,8 +289,7 @@ class StaticProblem:
         logger.debug("Creating Robin boundary condition form...")
         form = ufl.as_ufl(0.0)
         N = self.geometry.facet_normal
-        u_tot = u if self.u_pre is None else u + self.u_pre
-        F = ufl.grad(u_tot) + ufl.Identity(3)
+        F = ufl.grad(u) + ufl.Identity(3)
         J = ufl.det(F)
         # Pull back normal vector to the reference configuration
         cof = J * ufl.inv(F).T
@@ -326,10 +320,7 @@ class StaticProblem:
             return forms
         logger.debug("Creating Neumann boundary condition form...")
         I = ufl.Identity(3)
-        if self.u_pre is not None:
-            F = I + ufl.grad(u + self.u_pre)
-        else:
-            F = I + ufl.grad(u)
+        F = I + ufl.grad(u)
 
         N = self.geometry.facet_normal
         ds = self.geometry.ds
@@ -367,8 +358,7 @@ class StaticProblem:
         if not isinstance(self.geometry, HeartGeometry):
             raise RuntimeError("Cavity pressures are only supported for HeartGeometry")
 
-        u_tot = u if self.u_pre is None else u + self.u_pre
-        V_u = self.geometry.volume_form(u_tot)
+        V_u = self.geometry.volume_form(u)
 
         form = ufl.as_ufl(0.0)
 
@@ -545,9 +535,7 @@ class StaticProblem:
         )
 
     def update_fields(self):
-        self.u_full.x.array[:] = self.u.x.array
-        if self.u_pre is not None:
-            self.u_full.x.array[:] += self.u_pre.x.array
+        pass
 
     def reset(self):
         logger.debug("Resetting problem...")

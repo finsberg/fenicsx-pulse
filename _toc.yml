@@ -19,7 +19,8 @@ parts:
     - file: "demo/time_dependent_land_circ_lv"
     - file: "demo/time_dependent_land_circ_biv"
     - file: "demo/cylinder.py"
-    - file: "demo/prestress.py"
+    - file: "demo/prestress_biv.py"
+    - file: "demo/prestress_fixedpoint_unloader.py"
   - caption: Community
     chapters:
       - file: "CONTRIBUTING"
