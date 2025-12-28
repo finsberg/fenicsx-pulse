@@ -25,6 +25,7 @@ import pulse
 
 
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("pulse")
 comm = MPI.COMM_WORLD
 
 outdir = Path("time-dependent-bestel-biv")
@@ -124,7 +125,7 @@ bcs = pulse.BoundaryConditions(neumann=(neumann_lv, neumann_rv), robin=(robin_ep
 problem = pulse.problem.DynamicProblem(model=model, geometry=geometry, bcs=bcs)
 
 
-log.set_log_level(log.LogLevel.INFO)
+# log.set_log_level(log.LogLevel.INFO)
 problem.solve()
 
 dt = problem.parameters["dt"].to_base_units()

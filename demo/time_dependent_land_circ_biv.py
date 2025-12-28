@@ -131,7 +131,6 @@ rv_volume = dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(rvv_
 rv_cavity = pulse.problem.Cavity(marker="ENDO_RV", volume=rv_volume)
 
 
-
 cavities = [lv_cavity, rv_cavity]
 
 
@@ -147,7 +146,7 @@ outdir.mkdir(exist_ok=True)
 
 # Now we can solve the problem
 
-log.set_log_level(log.LogLevel.INFO)
+# log.set_log_level(log.LogLevel.INFO)
 problem.solve()
 
 dt = 0.001
@@ -196,8 +195,9 @@ if not state_file.is_file():
     Vs = np.zeros(len(times) * nbeats)
     Cais = np.zeros(len(times) * nbeats)
     Tas = np.zeros(len(times) * nbeats)
+    logger.debug(f"Starting to solve {nbeats} beats of the cell model")
     for beat in range(nbeats):
-        print(f"Solving beat {beat}")
+        logger.debug(f"Solving beat {beat}")
         V_tmp = Vs[beat * len(times) : (beat + 1) * len(times)]
         Cai_tmp = Cais[beat * len(times) : (beat + 1) * len(times)]
         Ta_tmp = Tas[beat * len(times) : (beat + 1) * len(times)]
@@ -308,9 +308,9 @@ def callback(model, i: int, t: float, save=True):
 # 4.  **Output**: We retrieve the Lagrange multipliers for both LV and RV cavities (indices 0 and 1 in `problem.cavity_pressures`), convert them to mmHg, and return them.
 
 def p_BiV_func(V_LV, V_RV, t):
-    print("Calculating pressure at time", t)
+    logger.debug("Calculating pressure at time %f", t)
     value = get_activation(t)
-    print("Time", t, "Activation", value)
+    logger.debug("Time %f Activation %f", t, value)
 
     logger.debug(f"Time{t} with activation: {value}")
     Ta.assign(value)

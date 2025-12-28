@@ -8,7 +8,8 @@
 # acquired geometry and the known end-diastolic pressure. This process is often called "pre-stressing" or
 # "inverse mechanics".
 #
-# In this demo, we solve the inverse problem using a **Fixed-Point Iteration** (also known as the Backward Displacement Method).
+# In this demo, we solve the inverse problem using a **Fixed-Point Iteration** (also known as the Backward Displacement Method o
+# Sellier's method) {cite}`SELLIER20111461`.
 # Unlike the Inverse Elasticity Problem (IEP) which formulates equilibrium on the target configuration, this method
 # iteratively updates the reference coordinates $\mathbf{X}$ by subtracting the displacement $\mathbf{u}$ computed from a
 # forward solve.
@@ -23,7 +24,7 @@
 # 2. For iteration $k=0, 1, \dots$:
 #    a. Solve the **Forward** mechanics problem on the geometry defined by $\mathbf{X}_k$ to get displacement $\mathbf{u}_k$.
 #    b. Update the reference geometry:
-#       $$ \mathbf{X}_{k+1} = \mathbf{x}_{target} - \mathbf{u}_k $$
+#       $ \mathbf{X}_{k+1} = \mathbf{x}_{target} - \mathbf{u}_k $
 #    c. Check convergence: $||\mathbf{X}_{k+1} - \mathbf{X}_k|| < \text{tol}$.
 #
 # In `fenicsx-pulse`, the `FixedPointUnloader` class automates this iterative process.

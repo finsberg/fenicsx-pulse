@@ -71,13 +71,14 @@ import cardiac_geometries.geometry
 
 comm = MPI.COMM_WORLD
 logging.basicConfig(level=logging.INFO)
-dolfinx.log.set_log_level(dolfinx.log.LogLevel.INFO)
+logging.getLogger("scifem").setLevel(logging.WARNING)
 
 # ## 1. Geometry Generation (Target Configuration)
 #
-# We generate an idealized Bi-Ventricular (BiV) geometry using `cardiac-geometries` which represents our **target**
-# geometry (e.g., the end-diastolic state). This includes both the Left Ventricle (LV) and Right Ventricle (RV).
-# We also generate the fiber architecture.
+# We generate an Bi-Ventricular (BiV) geometry using `cardiac-geometries` which represents our **target**
+# geometry (e.g., the end-diastolic state). This geometry is generated from the mean shape of an
+# [atlas from the UK Biobank](https://github.com/ComputationalPhysiology/ukb-atlas).
+# We also generate the fiber architecture using a [rule-based method](https://github.com/finsberg/fenicsx-ldrb).
 
 mode = -1
 std = 0

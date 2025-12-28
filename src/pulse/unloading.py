@@ -108,7 +108,7 @@ class FixedPointUnloader:
                     )
                     logger.warning(msg)
                     continue
-                logger.info(f"Deforming field '{fieldname}' of model '{model_name}'.")
+                logger.debug(f"Deforming field '{fieldname}' of model '{model_name}'.")
                 deformed_field = map_vector_field(
                     f=f,
                     u=u,
@@ -159,7 +159,7 @@ class FixedPointUnloader:
                         msg = f"Ramping {name} traction to {value:.4f}"
                     else:
                         msg = f"Ramping traction to {value:.4f}"
-                    logger.info(msg)
+                    logger.debug(msg)
                 problem.solve()
             u = problem.u
 

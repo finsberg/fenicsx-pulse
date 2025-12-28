@@ -199,6 +199,7 @@ import pulse
 # Next we set up the logging and the MPI communicator
 
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("pulse")
 comm = MPI.COMM_WORLD
 
 # and create an output directory
@@ -277,11 +278,11 @@ neumann = pulse.NeumannBC(traction=traction, marker=geometry.markers["ENDO"][0])
 #
 
 alpha_epi = pulse.Variable(
-        dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(1e8)), "Pa / m",
+    dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(1e8)), "Pa / m",
 )
 robin_epi_u = pulse.RobinBC(value=alpha_epi, marker=geometry.markers["EPI"][0])
 beta_epi = pulse.Variable(
-        dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(5e3)), "Pa s/ m",
+    dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(5e3)), "Pa s/ m",
 )
 robin_epi_v = pulse.RobinBC(value=beta_epi, marker=geometry.markers["EPI"][0], damping=True)
 
@@ -290,7 +291,7 @@ alpha_base = pulse.Variable(
 )
 robin_base_u = pulse.RobinBC(value=alpha_base, marker=geometry.markers["BASE"][0])
 beta_base = pulse.Variable(
-        dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(5e3)), "Pa s/ m",
+    dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(5e3)), "Pa s/ m",
 )
 robin_base_v = pulse.RobinBC(value=beta_base, marker=geometry.markers["BASE"][0], damping=True)
 
@@ -305,7 +306,7 @@ problem = pulse.problem.DynamicProblem(model=model, geometry=geometry, bcs=bcs, 
 
 # Note that we also specify that the base is free to move, meaning that there will be no Dirichlet boundary conditions on the base. Now we can do an initial solve the problem
 
-log.set_log_level(log.LogLevel.INFO)
+# log.set_log_level(log.LogLevel.INFO)
 problem.solve()
 
 # The next step is to get the activation and pressure as a function of time. For this we use the time step from the problem parameters
@@ -357,13 +358,13 @@ vtx.write(0.0)
 
 volume_form = dolfinx.fem.form(geometry.volume_form(u=problem.u) * geometry.ds(geometry.markers["ENDO"][0]))
 initial_volume = geo.mesh.comm.allreduce(dolfinx.fem.assemble_scalar(volume_form))
-print(f"Initial volume: {initial_volume}")
+logger.info(f"Initial volume: {initial_volume}")
 
 # and then loop over the time steps and solve the problem for each time step
 
 volumes = []
 for i, (tai, pi, ti) in enumerate(zip(activation, pressure, times)):
-    print(f"Solving for time {ti}, activation {tai}, pressure {pi}")
+    logger.info(f"Solving for time {ti}, activation {tai}, pressure {pi}")
     traction.assign(pi)
     Ta.assign(tai)
     problem.solve()
