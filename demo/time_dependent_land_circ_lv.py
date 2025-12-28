@@ -62,6 +62,8 @@ import cardiac_geometries.geometry
 # Next we set up the logging and the MPI communicator
 
 circulation.log.setup_logging(logging.INFO)
+logging.getLogger("scifem").setLevel(logging.WARNING)
+logger = logging.getLogger("pulse")
 comm = MPI.COMM_WORLD
 
 # ## 1. Geometry Generation
@@ -159,7 +161,7 @@ outdir.mkdir(exist_ok=True)
 
 # Now we can solve the problem
 
-log.set_log_level(log.LogLevel.INFO)
+# log.set_log_level(log.LogLevel.INFO)
 problem.solve()
 
 # We also use the time step from the problem to set the time step for the 0D cell model
@@ -222,8 +224,9 @@ if not state_file.is_file():
     Vs = np.zeros(len(times) * nbeats)
     Cais = np.zeros(len(times) * nbeats)
     Tas = np.zeros(len(times) * nbeats)
+    logger.info(f"Starting to solve {nbeats} beats of the cell model")
     for beat in range(nbeats):
-        print(f"Solving beat {beat}")
+        logger.debug(f"Solving beat {beat}")
         V_tmp = Vs[beat * len(times) : (beat + 1) * len(times)]
         Cai_tmp = Cais[beat * len(times) : (beat + 1) * len(times)]
         Ta_tmp = Tas[beat * len(times) : (beat + 1) * len(times)]
@@ -321,7 +324,7 @@ def callback(model, i: int, t: float, save=True):
             for axi in [ax2, ax3, ax4]:
                 axi.set_xlabel("Time [s]")
 
-            print(f"Saving figure to {outdir / 'pv_loop_incremental.png'}")
+            logger.debug(f"Saving figure to {outdir / 'pv_loop_incremental.png'}")
             fig.savefig(outdir / "pv_loop_incremental.png")
             plt.close(fig)
             # fig, ax = plt.subplots(4, 1)
@@ -349,9 +352,9 @@ def callback(model, i: int, t: float, save=True):
 # 4.  **Output**: The Lagrange multiplier associated with the volume constraint is the cavity pressure. We return this pressure (converted to mmHg) to the circulation model.
 
 def p_LV_func(V_LV, t):
-    print("Calculating pressure at time", t)
+    logger.debug("Calculating pressure at time %f", t)
     value = get_activation(t)
-    print("Time", t, "Activation", value)
+    logger.debug("Time %f Activation %f", t, value)
     Ta.assign(value)
     Volume.value = V_LV * 1e-6
     problem.solve()
@@ -371,7 +374,7 @@ mL = circulation.units.ureg("mL")
 add_units = False
 surface_area = geometry.surface_area("ENDO")
 initial_volume = geo.mesh.comm.allreduce(geometry.volume("ENDO", u=problem.u), op=MPI.SUM) * 1e6
-print(f"Initial volume: {initial_volume}")
+logger.info(f"Initial volume: {initial_volume}")
 init_state = {"V_LV": initial_volume * mL}
 
 

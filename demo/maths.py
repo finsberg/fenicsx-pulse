@@ -20,8 +20,10 @@ import numpy as np
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("pulse")
+for lib in ["trame_server", "wslink"]:
+    logging.getLogger(lib).setLevel(logging.WARNING)
 logger.setLevel(logging.DEBUG)
-dolfinx.log.set_log_level(dolfinx.log.LogLevel.INFO)
+# dolfinx.log.set_log_level(dolfinx.log.LogLevel.INFO)
 
 # %% [markdown]
 # ## 1. Geometry and Mesh

@@ -29,6 +29,7 @@ import pulse
 # (Holzapfel-Ogden with Active Stress) as in the [base example](lv_ellipsoid.ipynb).
 
 # 1. Generate Mesh
+
 outdir = Path("lv_ellipsoid_custom_bcs")
 outdir.mkdir(parents=True, exist_ok=True)
 geodir = outdir / "geometry"
@@ -41,6 +42,7 @@ if not geodir.exists():
     )
 
 # 2. Load Geometry
+
 geo = cardiac_geometries.geometry.Geometry.from_folder(
     comm=MPI.COMM_WORLD,
     folder=geodir,
@@ -48,6 +50,7 @@ geo = cardiac_geometries.geometry.Geometry.from_folder(
 geometry = pulse.Geometry.from_cardiac_geometries(geo, metadata={"quadrature_degree": 4})
 
 # 3. Define Constitutive Model
+
 material_params = pulse.HolzapfelOgden.transversely_isotropic_parameters()
 material = pulse.HolzapfelOgden(f0=geo.f0, s0=geo.s0, **material_params)
 

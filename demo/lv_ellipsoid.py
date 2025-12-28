@@ -157,10 +157,6 @@ problem = pulse.StaticProblem(
     parameters={"base_bc": pulse.BaseBC.fixed},
 )
 
-# We initialize the solver log level to INFO to track convergence.
-
-log.set_log_level(log.LogLevel.INFO)
-
 # ### Phase 1: Passive Inflation
 # We first solve the passive mechanics by increasing the endocardial pressure.
 # We initialize a VTX writer to save the displacement field for visualization.

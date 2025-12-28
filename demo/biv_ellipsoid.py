@@ -43,7 +43,7 @@ import pulse
 
 # We enable info logging to track solver progress.
 
-log.set_log_level(log.LogLevel.INFO)
+# log.set_log_level(log.LogLevel.INFO)
 
 # ## Geometry and Microstructure
 #
