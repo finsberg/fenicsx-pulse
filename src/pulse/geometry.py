@@ -88,7 +88,7 @@ class Geometry:
             metadata=self.metadata,
         )
 
-    def deform(self, u: dolfinx.fem.Function) -> None:
+    def deform(self, u: dolfinx.fem.Function | None) -> None:
         """Deform the geometry by a displacement field.
         Note that this will modify the mesh geometry in place.
 
@@ -97,6 +97,8 @@ class Geometry:
         u : dolfinx.fem.Function
             Displacement field to deform the geometry with.
         """
+        if u is None:
+            return
         if not isinstance(u, dolfinx.fem.Function):
             raise TypeError("Displacement field must be a dolfinx.fem.Function")
 

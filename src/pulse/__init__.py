@@ -22,9 +22,9 @@ from . import (
     kinematics,
     material_model,
     material_models,
-    prestress,
     problem,
     units,
+    unloading,
     utils,
     viscoelasticity,
 )
@@ -48,9 +48,9 @@ from .material_models import (
     SaintVenantKirchhoff,
     Usyk,
 )
-from .prestress import PrestressProblem
 from .problem import BaseBC, DynamicProblem, StaticProblem
 from .units import Variable, ureg
+from .unloading import FixedPointUnloader, PrestressProblem, TargetPressure
 from .viscoelasticity import NoneViscoElasticity, ViscoElasticity, Viscous
 
 __all__ = [
@@ -99,9 +99,11 @@ __all__ = [
     "ViscoElasticity",
     "Viscous",
     "__version__",
-    "prestress",
-    "PrestressProblem",
     "Usyk",
     "Compressible2",
     "Compressible3",
+    "unloading",
+    "FixedPointUnloader",
+    "PrestressProblem",
+    "TargetPressure",
 ]
