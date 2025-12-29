@@ -577,13 +577,13 @@ if comm.rank == 0 and not os.getenv("CI"):
     fig.savefig(outdir / "stress_strain_analysis.png")
 
 # %% [markdown]
-# ```{figure} ../_static/cylinder.png
+# ```{figure} ../../_static/cylinder.png
 # ---
 # name: cylinder
 # ---
 # Stress and strain in the cylinder over time.
 # ```
 # <video width="720" controls loop autoplay muted>
-#   <source src="../_static/cylinder_d.mp4" type="video/mp4">
+#   <source src="../../_static/cylinder_d.mp4" type="video/mp4">
 #   <p>Video showing the motion of the Cylinder.</p>
 # </video>

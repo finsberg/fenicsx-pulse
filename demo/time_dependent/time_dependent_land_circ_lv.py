@@ -393,7 +393,7 @@ circulation_model_3D.solve(num_beats=5, initial_state=init_state, dt=dt, T=end_t
 circulation_model_3D.print_info()
 
 
-# ```{figure} ../_static/pv_loop_time_dependent_land_circ_lv.png
+# ```{figure} ../../_static/pv_loop_time_dependent_land_circ_lv.png
 # ---
 # name: pv_loop_time_dependent_land_circ_lv
 # ---
@@ -401,7 +401,7 @@ circulation_model_3D.print_info()
 # ```
 #
 # <video controls loop autoplay muted>
-#   <source src="../_static/time_dependent_land_circ_lv.mp4" type="video/mp4">
+#   <source src="../../_static/time_dependent_land_circ_lv.mp4" type="video/mp4">
 #   <p>Video showing the motion of the LV.</p>
 # </video>
 #

@@ -347,7 +347,7 @@ circulation_model_3D.print_info()
 
 
 
-# ```{figure} ../_static/pv_loop_time_dependent_land_circ_biv.png
+# ```{figure} ../../_static/pv_loop_time_dependent_land_circ_biv.png
 # ---
 # name: pv_loop_time_dependent_land_circ_biv
 # ---
@@ -355,7 +355,7 @@ circulation_model_3D.print_info()
 # ```
 #
 # <video width="720" controls loop autoplay muted>
-#   <source src="../_static/time_dependent_land_circ_biv.mp4" type="video/mp4">
+#   <source src="../../_static/time_dependent_land_circ_biv.mp4" type="video/mp4">
 #   <p>Video showing the motion of the LV.</p>
 # </video>
 #

@@ -1,6 +1,6 @@
 # # Left Ventricular Ellipsoid with Custom Boundary Conditions
 #
-# This demo builds upon the [Left Ventricular Ellipsoid Simulation](lv_ellipsoid.py).
+# This demo builds upon the [Left Ventricular Ellipsoid Simulation](../geometries/lv_ellipsoid.py).
 #
 # While the previous example utilized the convenience parameter `base_bc=pulse.BaseBC.fixed`
 # to fully clamp the base, this example demonstrates how to:
@@ -26,7 +26,7 @@ import pulse
 # ## Geometry and Materials
 #
 # We generate the same truncated ellipsoid geometry and define the material model
-# (Holzapfel-Ogden with Active Stress) as in the [base example](lv_ellipsoid.ipynb).
+# (Holzapfel-Ogden with Active Stress) as in the [base example](../geometries/lv_ellipsoid.py).
 
 # 1. Generate Mesh
 
