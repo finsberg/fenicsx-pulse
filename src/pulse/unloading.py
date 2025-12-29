@@ -125,6 +125,7 @@ class FixedPointUnloader:
             "max_iter": 10,
             "tol": 1e-4,
             "ramp_steps": 20,
+            "update_model_fields": True,
         }
 
     def unload(self) -> dolfinx.fem.Function:
@@ -136,6 +137,7 @@ class FixedPointUnloader:
 
         max_iter = self.unload_parameters["max_iter"]
         tol = self.unload_parameters["tol"]
+        update_model_fields = self.unload_parameters["update_model_fields"]
         comm = self.geometry.mesh.comm
 
         for i in range(max_iter):
@@ -197,9 +199,11 @@ class FixedPointUnloader:
             # This effectively moves the reference configuration 'backwards' by the displacement
             # required to reach the target from the current guess.
             self.geometry.mesh.geometry.x[:] = self._target_coords - u_at_nodes
+
             # Deforming the fields seems to cause issues with convergence, so we skip it for now.
-            u.x.array[:] *= -1.0
-            self._update_model_fields(u)
+            if update_model_fields:
+                u.x.array[:] *= -1.0
+                self._update_model_fields(u)
 
         else:
             logger.warning("FixedPointUnloader reached maximum iterations without converging.")
