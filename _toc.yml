@@ -11,6 +11,7 @@ parts:
       - file: "demo/geometries/cylinder.py"
       - file: "demo/geometries/lv_ellipsoid"
       - file: "demo/geometries/biv_ellipsoid"
+      - file: "demo/geometries/ukb_mesh"
     - file: "demo/benchmark/README"
       sections:
       - file: "demo/benchmark/problem1"
