@@ -34,6 +34,7 @@ dofmap
 dofs
 dolfinx
 dvlp
+elasto
 elastodynamics
 Elife
 Elsevier
@@ -62,10 +63,12 @@ hstack
 hyperelastic
 icntl
 inproceedings
+interventricular
 Intracomm
 isclose
 isochoric
 isscalar
+issn
 Jakub
 Javiera
 Jilberto
@@ -73,6 +76,7 @@ Karabelas
 Kasra
 Kluwer
 Laszlo
+LDRB
 levelname
 libgl
 libxrender
@@ -87,6 +91,7 @@ MICCAI
 Minchole
 Mises
 multiplicatively
+Multiscale
 myocyte
 nabla
 ndarray
@@ -117,6 +122,7 @@ rique
 rspa
 rtol
 scifem
+SELLIER
 Severi
 Shrier
 Silvano
@@ -128,6 +134,7 @@ Taras
 tomek
 Tomek
 TRAME
+transmural
 ureg
 Usyk
 varepsilon

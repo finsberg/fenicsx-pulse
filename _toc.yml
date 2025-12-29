@@ -5,22 +5,34 @@ parts:
   - caption: Demos
     chapters:
     - file: "demo/maths.py"
-    - file: "demo/unit_cube"
-    - file: "demo/lv_ellipsoid"
-    - file: "demo/biv_ellipsoid"
-    - file: "demo/lv_ellipsoid_fixed_x"
+    - file: "demo/geometries/README"
+      sections:
+      - file: "demo/geometries/unit_cube"
+      - file: "demo/geometries/cylinder.py"
+      - file: "demo/geometries/lv_ellipsoid"
+      - file: "demo/geometries/biv_ellipsoid"
+      - file: "demo/geometries/ukb_mesh"
     - file: "demo/benchmark/README"
       sections:
       - file: "demo/benchmark/problem1"
       - file: "demo/benchmark/problem2"
       - file: "demo/benchmark/problem3"
-    - file: "demo/time_dependent_bestel_lv"
-    - file: "demo/time_dependent_bestel_biv"
-    - file: "demo/time_dependent_land_circ_lv"
-    - file: "demo/time_dependent_land_circ_biv"
-    - file: "demo/cylinder.py"
-    - file: "demo/prestress_biv.py"
-    - file: "demo/prestress_fixedpoint_unloader.py"
+    - file: "demo/boundary_conditions/README"
+      sections:
+      - file: "demo/boundary_conditions/lv_ellipsoid_fixed_x"
+      - file: "demo/boundary_conditions/ukb_bcs"
+    - file: "demo/prestress/README"
+      sections:
+      - file: "demo/prestress/prestress_biv"
+      - file: "demo/prestress/prestress_fixedpoint_unloader"
+    - file: "demo/time_dependent/README"
+      sections:
+      - file: "demo/time_dependent/time_dependent_bestel_lv"
+      - file: "demo/time_dependent/time_dependent_bestel_biv"
+      - file: "demo/time_dependent/time_dependent_land_circ_lv"
+      - file: "demo/time_dependent/time_dependent_land_circ_biv"
+
+
   - caption: Community
     chapters:
       - file: "CONTRIBUTING"
