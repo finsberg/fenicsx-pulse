@@ -25,9 +25,18 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Install package
+      - name: Install build dependencies
         run: |
           python3 -m pip install -r https://raw.githubusercontent.com/scientificcomputing/scifem/refs/heads/main/build-requirements.txt
+
+      - name: Install development versions of dependencies
+        if: ${{ matrix.container == 'ghcr.io/fenics/dolfinx/dolfinx:nightly' }}
+        run: |
+          python3 -m pip install git+https://github.com/jorgensd/adios4dolfinx.git
+          python3 -m pip install git+https://github.com/scientificcomputing/scifem.git
+
+      - name: Install package
+        run: |
           python3 -m pip install scifem --no-build-isolation
           python3 -m pip install .[test]
 
@@ -42,7 +51,7 @@ jobs:
           echo "total=$TOTAL" >> $GITHUB_ENV
 
       - name: Upload HTML report.
-        if: ${{ matrix.container == 'ghcr.io/fenics/dolfinx/dolfinx:v0.9.0' }}
+        if: ${{ matrix.container == 'ghcr.io/fenics/dolfinx/dolfinx:stable' }}
         uses: actions/upload-artifact@v6
         with:
           name: html-report
