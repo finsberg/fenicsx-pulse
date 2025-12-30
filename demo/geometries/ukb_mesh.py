@@ -80,7 +80,7 @@ system = ldrb.dolfinx_ldrb(
 cardiac_geometries.fibers.utils.save_microstructure(
     geo.mesh,
     [system.f0, system.s0, system.n0],
-    outdir=geodir,
+    path=geodir / "geometry.bp",
 )
 
 # ## 3. Load Geometry and Visualization
@@ -91,6 +91,7 @@ geo = cardiac_geometries.geometry.Geometry.from_folder(
     comm=MPI.COMM_WORLD,
     folder=geodir,
 )
+
 
 # ### Visualizing the Mesh
 
