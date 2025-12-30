@@ -5,10 +5,12 @@ import numpy as np
 import numpy.typing as npt
 import scifem
 import ufl
+from packaging.version import Version
 
 from .kinematics import DeformationGradient
 
 logger = logging.getLogger(__name__)
+_dolfinx_version = Version(dolfinx.__version__)
 
 
 def map_vector_field(
@@ -38,6 +40,11 @@ def map_vector_field(
     """
     f_new = dolfinx.fem.Function(f.function_space, name=name)
 
+    if _dolfinx_version >= Version("0.10"):
+        points = f.function_space.element.interpolation_points
+    else:
+        points = f.function_space.element.interpolation_points()
+
     if u is None:
         f_new.interpolate(f)
     else:
@@ -48,11 +55,11 @@ def map_vector_field(
             f_normalized = f_map / f_norm
             f_expr = dolfinx.fem.Expression(
                 f_normalized,
-                f.function_space.element.interpolation_points,
+                points,
             )
 
         else:
-            f_expr = dolfinx.fem.Expression(f_map, f.function_space.element.interpolation_points)
+            f_expr = dolfinx.fem.Expression(f_map, points)
         f_new.interpolate(f_expr)
     return f_new
 

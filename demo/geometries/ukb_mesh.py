@@ -252,8 +252,7 @@ problem = pulse.StaticProblem(
 
 vtx = dolfinx.io.VTXWriter(geometry.mesh.comm, outdir / "displacement.bp", [problem.u], engine="BP4")
 vtx.write(0.0)
-
-pressures = [0.5, 1.0, 1.5] # kPa
+pressures = [0.5, 1.0, 1.5]  #  kPa
 for i, plv in enumerate(pressures, start=1):
     print(f"Solving for pressure: {plv} kPa")
     traction_lv.assign(plv)
@@ -262,6 +261,7 @@ for i, plv in enumerate(pressures, start=1):
     vtx.write(float(i))
 
 # Visualize Passive Inflation
+
 try:
     import pyvista
 except ImportError:

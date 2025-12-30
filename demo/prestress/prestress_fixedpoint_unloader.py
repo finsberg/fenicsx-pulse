@@ -65,7 +65,7 @@ if not geodir.exists():
     cardiac_geometries.mesh.lv_ellipsoid(
         outdir=geodir,
         create_fibers=True,
-        fiber_space="P_2",
+        fiber_space="Quadrature_6",
         r_short_endo=0.025,
         r_short_epi=0.035,
         r_long_endo=0.09,
@@ -98,6 +98,7 @@ geometry = pulse.HeartGeometry.from_cardiac_geometries(geo, metadata={"quadratur
 #     * **Neumann**: Endocardial pressure (Target = 2000 Pa).
 #     * **Robin**: Epicardial and Basal springs to mimic tissue support.
 
+
 def setup_problem(geometry, f0, s0, n0, target_pressure=2000.0):
 
     material = pulse.material_models.Usyk(f0=f0, s0=s0, n0=n0)
@@ -129,7 +130,9 @@ def setup_problem(geometry, f0, s0, n0, target_pressure=2000.0):
     bcs = pulse.BoundaryConditions(neumann=(neumann,), robin=(robin_epi, robin_base))
     return model, bcs, pressure, target_pressure
 
+
 # Initialize model with fibers from the target geometry
+
 model, bcs, pressure, target_pressure = setup_problem(geometry, geo.f0, geo.s0, geo.n0)
 
 # Define the loading target for the unloader
