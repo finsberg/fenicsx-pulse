@@ -90,7 +90,7 @@ if not geodir.exists():
     cardiac_geometries.fibers.utils.save_microstructure(
         mesh=geo.mesh,
         functions=[system.f0, system.s0, system.n0],
-        outdir=geodir,
+        path=geodir / "geometry.bp",
     )
 
 # Load the geometry with fibers

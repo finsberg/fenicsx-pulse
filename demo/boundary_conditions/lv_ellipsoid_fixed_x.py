@@ -194,7 +194,7 @@ else:
     p = pyvista.Plotter()
     p.add_mesh(grid, style="wireframe", color="k", opacity=0.3, label="Reference")
     warped = grid.warp_by_vector("u", factor=1.0)
-    p.add_mesh(warped, show_edges=True, color="red", label="Contracted")
+    p.add_mesh(warped, show_edges=False, color="red", label="Contracted")
 
     p.add_legend()
     p.show_axes()
