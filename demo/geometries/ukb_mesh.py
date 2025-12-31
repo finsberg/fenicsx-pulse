@@ -119,7 +119,7 @@ except ImportError:
     print("Pyvista is not installed")
 else:
     plotter = pyvista.Plotter()
-    N = 10 # Only show every 10th point to avoid clutter
+    N = 5  # Only show every 5th point to avoid clutter
     points = geo.f0.function_space.tabulate_dof_coordinates()
     point_cloud = pyvista.PolyData(points[::N, :])
     f0_arr = geo.f0.x.array.reshape((points.shape[0], 3))
