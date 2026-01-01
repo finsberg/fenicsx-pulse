@@ -75,12 +75,23 @@ system = ldrb.dolfinx_ldrb(
 )
 
 # We save the generated microstructure to the geometry folder so it can be automatically
-# loaded by the `cardiac_geometries.geometry.Geometry` class later.
+# loaded by the `cardiac_geometries.geometry.Geometry` class later. We need to also save
+# the existing geometry information (mesh, markers, etc), in order for the dofmap to be
+# consistent. We first delete any existing `geometry.bp` file to avoid conflicts.
 
-cardiac_geometries.fibers.utils.save_microstructure(
-    geo.mesh,
-    [system.f0, system.s0, system.n0],
+import shutil
+shutil.rmtree(geodir / "geometry.bp")
+cardiac_geometries.geometry.save_geometry(
     path=geodir / "geometry.bp",
+    mesh=geo.mesh,
+    markers=geo.markers,
+    info=geo.info,
+    ffun=geo.ffun,
+    efun=geo.efun,
+    vfun=geo.vfun,
+    f0=system.f0,
+    s0=system.s0,
+    n0=system.n0,
 )
 
 # ## 3. Load Geometry and Visualization
