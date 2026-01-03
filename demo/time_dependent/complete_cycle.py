@@ -411,9 +411,9 @@ for i in range(ramp_steps):
 
 # Store old values for time-stepping and handling if solver fails
 
-problem.old_Ta = Ta.value.value.copy()
-problem.old_lv_volume = lv_volume.value.copy()
-problem.old_rv_volume = rv_volume.value.copy()
+problem.old_Ta = Ta.value.value.copy()  # type: ignore
+problem.old_lv_volume = lv_volume.value.copy()  # type: ignore
+problem.old_rv_volume = rv_volume.value.copy()  # type: ignore
 
 # ## 9. Post-Processing Setup (Fiber Stress/Strain Only)
 # We set up functions to compute fiber stress and fiber strain during the simulation for post-processing.
@@ -520,9 +520,9 @@ def p_BiV_func(V_LV, V_RV, t):
                 )
                 raise RuntimeError("Failed to converge on pressure calculation.")
 
-    problem.old_Ta = Ta.value.value.copy()
-    problem.old_lv_volume = lv_volume.value.copy()
-    problem.old_rv_volume = rv_volume.value.copy()
+    problem.old_Ta = Ta.value.value.copy()  # type: ignore
+    problem.old_lv_volume = lv_volume.value.copy()  # type: ignore
+    problem.old_rv_volume = rv_volume.value.copy()  # type: ignore
 
     lv_p_kPa = problem.cavity_pressures[0].x.array[0] * 1e-3
     rv_p_kPa = problem.cavity_pressures[1].x.array[0] * 1e-3
