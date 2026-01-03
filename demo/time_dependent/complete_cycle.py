@@ -619,3 +619,17 @@ dt = 0.001
 end_time = 2 * dt if os.getenv("CI") else None
 circulation_model.solve(num_beats=num_beats, initial_state=init_state_circ, dt=dt, end_time=end_time)
 logger.info("Simulation complete.")
+
+
+# ```{figure} ../../_static/pv_loop_complete_cycle.png
+# ---
+# name: pv_loop_complete_cycle
+# ---
+# Pressure volume loops
+# ```
+#
+# <video controls loop autoplay muted>
+#   <source src="../../_static/complete_cycle.mp4" type="video/mp4">
+#   <p>Video showing the motion.</p>
+# </video>
+#
