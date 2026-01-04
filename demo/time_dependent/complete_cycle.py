@@ -643,7 +643,7 @@ logger.info("Starting coupled simulation...")
 num_beats = 2
 dt = 0.001
 end_time = 2 * dt if os.getenv("CI") else None
-circulation_model.solve(num_beats=num_beats, initial_state=init_state_circ, dt=dt, end_time=end_time)
+circulation_model.solve(num_beats=num_beats, initial_state=init_state_circ, dt=dt, T=end_time)
 logger.info("Simulation complete.")
 
 
