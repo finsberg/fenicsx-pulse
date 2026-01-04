@@ -654,7 +654,7 @@ logger.info("Simulation complete.")
 # Pressure volume loops
 # ```
 #
-# <video controls loop autoplay muted>
+# <video width="720" controls loop autoplay muted>
 #   <source src="../../_static/complete_cycle.mp4" type="video/mp4">
 #   <p>Video showing the motion.</p>
 # </video>
