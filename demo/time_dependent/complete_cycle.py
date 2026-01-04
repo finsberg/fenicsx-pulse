@@ -1,11 +1,11 @@
 # # Complete Multiscale Simulation with Prestressing
 #
 # This comprehensive demo illustrates a complete cardiac mechanics pipeline involving:
-# 1.  **Geometry**: Generating a Bi-Ventricular (BiV) mesh from the UK Biobank Atlas, rotating it, and generating fiber fields using LDRB.
+# 1.  **Geometry**: Generating a Bi-Ventricular (BiV) mesh from the UK Biobank Atlas, rotating it, and generating fiber fields using LDRB, which is similar to what is implemented in [rotated BiV demo](../boundary_conditions/ukb_bcs.py). In addition we show how to generate additional fields such as longitudinal and circumferential fields for computing e.g longitudinal strain, similar to the [additional data demo in `caridac-geometriesx`](https://computationalphysiology.github.io/cardiac-geometriesx/demos/additional_data.html)
 # 2.  **0D Circulation**: Running a 0D closed-loop circulation model (Regazzoni) to establish physiological pressure traces.
-# 3.  **Prestressing**: Solving the Inverse Elasticity Problem (IEP) to find the unloaded reference configuration that matches the atlas geometry at End-Diastole (ED).
+# 3.  **Prestressing**: Solving the Inverse Elasticity Problem (IEP) to find the unloaded reference configuration that matches the atlas geometry at End-Diastole (ED). This is similar to what is impemtented in [the BiV prestress demo](../prestress/prestress_biv.py)
 # 4.  **Inflation**: Ramping the unloaded mesh back to the End-Diastolic state to initialize the dynamic simulation.
-# 5.  **Multiscale Coupling**: Running a forward simulation coupled to the 0D circulation model.
+# 5.  **Multiscale Coupling**: Running a forward simulation coupled to the 0D circulation model, which is similar to what is implemented in the [time dependent BiV problem](time_dependent_land_circ_biv.py)
 # 6.  **Post-processing**: Computing Fiber Stress and Fiber Strain.
 #
 # ---
@@ -62,7 +62,7 @@ class MPIFilter(logging.Filter):
         return 1 if self.comm.rank == 0 else 0
 
 
-outdir = Path("results_biv_complete_cycle")
+outdir = Path("results_biv_complete_cycle2")
 outdir.mkdir(parents=True, exist_ok=True)
 geodir = outdir / "geometry"
 
@@ -83,18 +83,6 @@ def run_0D(outdir):
     logger.info("Running 0D circulation model to steady state...")
     model = Regazzoni2020()
     history = model.solve(num_beats=10)
-
-    if comm.rank == 0:
-        fig, ax = plt.subplots(2, 2, sharex=True, sharey="row", figsize=(10, 5))
-        ax[0, 0].plot(history["V_LV"], history["p_LV"])
-        ax[0, 0].set_xlabel("V (LV) [mL]")
-        ax[0, 0].set_ylabel("p (LV) [mmHg]")
-        ax[0, 0].set_title("All beats")
-        ax[0, 1].plot(history["V_LV"][-1000:], history["p_LV"][-1000:])
-        ax[0, 1].set_title("Last beat")
-        fig.savefig(outdir / "0D_circulation_pv.png")
-        plt.close(fig)
-
     state = dict(zip(model.state_names(), model.state))
     np.save(outdir / "state.npy", state, allow_pickle=True)
     np.save(outdir / "history.npy", history, allow_pickle=True)
@@ -105,6 +93,27 @@ if not (outdir / "history.npy").is_file() and comm.rank == 0:
 
 comm.Barrier()
 history = np.load(outdir / "history.npy", allow_pickle=True).item()
+
+
+# Let us plot the results from the circulation model
+
+if comm.rank == 0:
+    fig, ax = plt.subplots(2, 2, sharex=True, sharey="row", figsize=(10, 5))
+    ax[0, 0].plot(history["V_LV"], history["p_LV"])
+    ax[0, 0].set_xlabel("V (LV) [mL]")
+    ax[0, 0].set_ylabel("p (LV) [mmHg]")
+    ax[0, 0].set_title("All beats")
+    ax[0, 1].plot(history["V_LV"][-1000:], history["p_LV"][-1000:])
+    ax[0, 1].set_title("Last beat")
+    ax[1, 0].plot(history["V_RV"], history["p_RV"])
+    ax[1, 0].set_xlabel("V (RV) [mL]")
+    ax[1, 0].set_ylabel("p (RV) [mmHg]")
+    ax[1, 1].plot(history["V_RV"][-1000:], history["p_RV"][-1000:])
+    fig.savefig(outdir / "0D_circulation_pv.png")
+
+if comm.rank == 0:
+    plt.close(fig)
+
 
 # ## 3. Activation Model (Synthetic)
 #
@@ -123,8 +132,20 @@ def get_activation(t):
     )(t)
 
 
+# Let us plot the resulting activation trace
+
+if comm.rank == 0:
+    fig, ax = plt.subplots()
+    t = np.linspace(0, 1, 100)
+    ax.plot(t, get_activation(t))
+    fig.savefig(outdir / "activation.png")
+
+if comm.rank == 0:
+    plt.close(fig)
+
+
 # ## 4. Geometry Generation & Rotation
-# # We generate the BiV geometry from the UK Biobank Atlas, rotate it to align the base normal with the x-axis,
+# We generate the BiV geometry from the UK Biobank Atlas, rotate it to align the base normal with the x-axis,
 # and generate fiber fields using LDRB. The fibers are based on the fiber orientation angles from
 # https://doi.org/10.1002/cnm.3185. We also generate AHA segments for later analysis.
 # Additional data such as fibers in DG 1 space are also stored for post-processing.
@@ -132,7 +153,7 @@ def get_activation(t):
 # The fibers used for the mechanics simulation are in a quadrature space to avoid interpolation errors.
 
 
-if not (geodir / "mesh.xdmf").exists() and comm.rank == 0:
+if not (geodir / "geometry.bp").exists():
     logger.info("Generating and processing geometry...")
     mode = -1
     std = 0
@@ -140,7 +161,7 @@ if not (geodir / "mesh.xdmf").exists() and comm.rank == 0:
 
     geo = cardiac_geometries.mesh.ukb(
         outdir=geodir,
-        comm=MPI.COMM_SELF,
+        comm=comm,
         mode=mode,
         std=std,
         case="ED",
@@ -152,11 +173,7 @@ if not (geodir / "mesh.xdmf").exists() and comm.rank == 0:
     # Rotate Mesh (Base Normal -> X-axis)
     geo = geo.rotate(target_normal=[1.0, 0.0, 0.0], base_marker="BASE")
 
-    # Generate Fibers (LDRB)
-    system = ldrb.dolfinx_ldrb(
-        mesh=geo.mesh,
-        ffun=geo.ffun,
-        markers=cardiac_geometries.mesh.transform_markers(geo.markers, clipped=True),
+    fiber_angles = dict(
         alpha_endo_lv=60,
         alpha_epi_lv=-60,
         alpha_endo_rv=90,
@@ -165,6 +182,14 @@ if not (geodir / "mesh.xdmf").exists() and comm.rank == 0:
         beta_epi_lv=20,
         beta_endo_rv=0,
         beta_epi_rv=20,
+    )
+
+    # Generate Fibers (LDRB)
+    system = ldrb.dolfinx_ldrb(
+        mesh=geo.mesh,
+        ffun=geo.ffun,
+        markers=cardiac_geometries.mesh.transform_markers(geo.markers, clipped=True),
+        **fiber_angles,
         fiber_space="Quadrature_6",
     )
 
@@ -190,8 +215,7 @@ if not (geodir / "mesh.xdmf").exists() and comm.rank == 0:
         mesh=geo.mesh,
         ffun=geo.ffun,
         markers=cardiac_geometries.mesh.transform_markers(geo.markers, clipped=True),
-        alpha_endo_lv=60,
-        alpha_epi_lv=-60,
+        **fiber_angles,
         fiber_space=fiber_space,
     )
 
@@ -384,38 +408,6 @@ problem = pulse.problem.StaticProblem(
     parameters={"mesh_unit": mesh_unit, "u_space": "P_2"},
 )
 
-# ## 8. Inflation (Reference -> End-Diastole)
-#
-# We now ramp the volumes from the unloaded state back to the target ED volumes.
-# This establishes the correct initial condition (stress/strain) for the time-dependent loop.
-
-logger.info("Inflating to End-Diastolic Target...")
-ramp_steps = 10
-for i in range(ramp_steps):
-    factor = (i + 1) / ramp_steps
-
-    # Interpolate volume
-    current_lvv = lvv_unloaded + factor * (lvv_target - lvv_unloaded)
-    current_rvv = rvv_unloaded + factor * (rvv_target - rvv_unloaded)
-
-    lv_volume.value = current_lvv
-    rv_volume.value = current_rvv
-
-    problem.solve()
-
-    # Log pressures to ensure we are reaching target
-    plv = problem.cavity_pressures[0].x.array[0] * 1e-3
-    prv = problem.cavity_pressures[1].x.array[0] * 1e-3
-    if comm.rank == 0:
-        logger.info(f"Inflation Step {i + 1}/{ramp_steps}: pLV={plv:.2f} kPa, pRV={prv:.2f} kPa")
-
-# Store old values for time-stepping and handling if solver fails
-
-problem.old_Ta = Ta.value.value.copy()  # type: ignore
-problem.old_lv_volume = lv_volume.value.copy()  # type: ignore
-problem.old_rv_volume = rv_volume.value.copy()  # type: ignore
-
-# ## 9. Post-Processing Setup (Fiber Stress/Strain Only)
 # We set up functions to compute fiber stress and fiber strain during the simulation for post-processing.
 
 W = dolfinx.fem.functionspace(geometry.mesh, ("DG", 1))
@@ -445,6 +437,7 @@ fiber_strain_expr = dolfinx.fem.Expression(
     ufl.inner(E * f0_map, f0_map), W.element.interpolation_points,
 )
 
+
 # VTX Writers for visualization in ParaView
 
 vtx = dolfinx.io.VTXWriter(
@@ -456,9 +449,42 @@ vtx_stress = dolfinx.io.VTXWriter(
     [fiber_stress, fiber_strain],
     engine="BP4",
 )
+
+# ## 8. Inflation (Reference -> End-Diastole)
+#
+# We now ramp the volumes from the unloaded state back to the target ED volumes.
+# This establishes the correct initial condition (stress/strain) for the time-dependent loop.
+
+logger.info("Inflating to End-Diastolic Target...")
+ramp_steps = 10
+for i in range(ramp_steps):
+    factor = (i + 1) / ramp_steps
+
+    # Interpolate volume
+    current_lvv = lvv_unloaded + factor * (lvv_target - lvv_unloaded)
+    current_rvv = rvv_unloaded + factor * (rvv_target - rvv_unloaded)
+
+    lv_volume.value = current_lvv
+    rv_volume.value = current_rvv
+
+    problem.solve()
+
+    # Log pressures to ensure we are reaching target
+    plv = problem.cavity_pressures[0].x.array[0] * 1e-3
+    prv = problem.cavity_pressures[1].x.array[0] * 1e-3
+    if comm.rank == 0:
+        logger.info(f"Inflation Step {i + 1}/{ramp_steps}: pLV={plv:.2f} kPa, pRV={prv:.2f} kPa")
+
+
 vtx.write(0.0)
 vtx_stress.write(0.0)
 
+
+# Store old values for time-stepping and handling if solver fails
+
+problem.old_Ta = Ta.value.value.copy()  # type: ignore
+problem.old_lv_volume = lv_volume.value.copy()  # type: ignore
+problem.old_rv_volume = rv_volume.value.copy()  # type: ignore
 
 # ## 10. Multiscale Coupling Loop
 
