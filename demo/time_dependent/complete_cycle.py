@@ -62,7 +62,7 @@ class MPIFilter(logging.Filter):
         return 1 if self.comm.rank == 0 else 0
 
 
-outdir = Path("results_biv_complete_cycle2")
+outdir = Path("results_biv_complete_cycle3")
 outdir.mkdir(parents=True, exist_ok=True)
 geodir = outdir / "geometry"
 
@@ -74,75 +74,6 @@ comm = MPI.COMM_WORLD
 mpi_filter = MPIFilter(comm)
 logger.addFilter(mpi_filter)
 
-# ## 2. 0D Circulation Model (Initialization)
-#
-# We run the 0D circulation model to get the target End-Diastolic pressures for prestressing.
-
-
-def run_0D(outdir):
-    logger.info("Running 0D circulation model to steady state...")
-    model = Regazzoni2020()
-    history = model.solve(num_beats=10)
-    state = dict(zip(model.state_names(), model.state))
-    np.save(outdir / "state.npy", state, allow_pickle=True)
-    np.save(outdir / "history.npy", history, allow_pickle=True)
-
-
-if not (outdir / "history.npy").is_file() and comm.rank == 0:
-    run_0D(outdir)
-
-comm.Barrier()
-history = np.load(outdir / "history.npy", allow_pickle=True).item()
-
-
-# Let us plot the results from the circulation model
-
-if comm.rank == 0:
-    fig, ax = plt.subplots(2, 2, sharex=True, sharey="row", figsize=(10, 5))
-    ax[0, 0].plot(history["V_LV"], history["p_LV"])
-    ax[0, 0].set_xlabel("V (LV) [mL]")
-    ax[0, 0].set_ylabel("p (LV) [mmHg]")
-    ax[0, 0].set_title("All beats")
-    ax[0, 1].plot(history["V_LV"][-1000:], history["p_LV"][-1000:])
-    ax[0, 1].set_title("Last beat")
-    ax[1, 0].plot(history["V_RV"], history["p_RV"])
-    ax[1, 0].set_xlabel("V (RV) [mL]")
-    ax[1, 0].set_ylabel("p (RV) [mmHg]")
-    ax[1, 1].plot(history["V_RV"][-1000:], history["p_RV"][-1000:])
-    fig.savefig(outdir / "0D_circulation_pv.png")
-
-if comm.rank == 0:
-    plt.close(fig)
-
-
-# ## 3. Activation Model (Synthetic)
-#
-# We use the Blanco time-varying elastance function for a synthetic activation trace.
-# We use a peak activation of 120 kPa to match typical ventricular pressures, with the
-# time to peak at 150 ms and relaxation until 350 ms, and a total cycle length of 1 s.
-
-def get_activation(t):
-    return 120 * circulation.time_varying_elastance.blanco_ventricle(
-        EA=1.0,
-        EB=0.0,
-        tC=0.0,
-        TC=0.15,
-        TR=0.35,
-        RR=1.0,
-    )(t)
-
-
-# Let us plot the resulting activation trace
-
-if comm.rank == 0:
-    fig, ax = plt.subplots()
-    t = np.linspace(0, 1, 100)
-    ax.plot(t, get_activation(t))
-    fig.savefig(outdir / "activation.png")
-
-if comm.rank == 0:
-    plt.close(fig)
-
 
 # ## 4. Geometry Generation & Rotation
 # We generate the BiV geometry from the UK Biobank Atlas, rotate it to align the base normal with the x-axis,
@@ -153,7 +84,7 @@ if comm.rank == 0:
 # The fibers used for the mechanics simulation are in a quadrature space to avoid interpolation errors.
 
 
-if not (geodir / "geometry.bp").exists():
+if 1: # not (geodir / "geometry.bp").exists():
     logger.info("Generating and processing geometry...")
     mode = -1
     std = 0
@@ -272,6 +203,82 @@ rvv_target = comm.allreduce(geometry.volume("RV"), op=MPI.SUM)
 logger.info(
     f"ED Volumes: LV={lvv_target * volume2ml:.2f} mL, RV={rvv_target * volume2ml:.2f} mL",
 )
+
+# ## 2. 0D Circulation Model (Initialization)
+#
+# We run the 0D circulation model to get the target End-Diastolic pressures for prestressing.
+
+
+def run_0D(init_state):
+    logger.info("Running 0D circulation model to steady state...")
+
+    model = Regazzoni2020()
+    history = model.solve(num_beats=10, initial_state=init_state)
+    state = dict(zip(model.state_names(), model.state))
+
+    return history, state
+
+
+init_state_circ = {
+    "V_LV": lvv_target * volume2ml * circulation.units.ureg("mL"),
+    "V_RV": rvv_target * volume2ml * circulation.units.ureg("mL"),
+}
+history, circ_state = run_0D(init_state=init_state_circ)
+error_LV = circ_state["V_LV"] - init_state_circ["V_LV"]
+error_RV = circ_state["V_RV"] - init_state_circ["V_RV"]
+comm.Barrier()
+
+# circ_state.update(init_state_circ)
+# history, circ_state = run_0D(init_state=circ_state)
+# np.save(outdir / "state.npy", circ_state, allow_pickle=True)
+# np.save(outdir / "history.npy", history, allow_pickle=True)
+
+# Let us plot the results from the circulation model
+
+if comm.rank == 0:
+    fig, ax = plt.subplots(2, 2, sharex=True, sharey="row", figsize=(10, 5))
+    ax[0, 0].plot(history["V_LV"], history["p_LV"])
+    ax[0, 0].set_xlabel("V (LV) [mL]")
+    ax[0, 0].set_ylabel("p (LV) [mmHg]")
+    ax[0, 0].set_title("All beats")
+    ax[0, 1].plot(history["V_LV"][-1000:], history["p_LV"][-1000:])
+    ax[0, 1].set_title("Last beat")
+    ax[1, 0].plot(history["V_RV"], history["p_RV"])
+    ax[1, 0].set_xlabel("V (RV) [mL]")
+    ax[1, 0].set_ylabel("p (RV) [mmHg]")
+    ax[1, 1].plot(history["V_RV"][-1000:], history["p_RV"][-1000:])
+    fig.savefig(outdir / "0D_circulation_pv.png")
+
+if comm.rank == 0:
+    plt.close(fig)
+
+# ## 3. Activation Model (Synthetic)
+#
+# We use the Blanco time-varying elastance function for a synthetic activation trace.
+# We use a peak activation of 120 kPa to match typical ventricular pressures, with the
+# time to peak at 150 ms and relaxation until 350 ms, and a total cycle length of 1 s.
+
+def get_activation(t):
+    return 120 * circulation.time_varying_elastance.blanco_ventricle(
+        EA=1.0,
+        EB=0.0,
+        tC=0.0,
+        TC=0.15,
+        TR=0.35,
+        RR=1.0,
+    )(t)
+
+
+# Let us plot the resulting activation trace
+
+if comm.rank == 0:
+    fig, ax = plt.subplots()
+    t = np.linspace(0, 1, 100)
+    ax.plot(t, get_activation(t))
+    fig.savefig(outdir / "activation.png")
+
+if comm.rank == 0:
+    plt.close(fig)
 
 
 def setup_problem(geometry, f0, s0, material_params):
@@ -495,8 +502,8 @@ def p_BiV_func(V_LV, V_RV, t):
     old_Ta = problem.old_Ta
     dTa = value - old_Ta
 
-    new_value_LV = V_LV * (1.0 / volume2ml)
-    new_value_RV = V_RV * (1.0 / volume2ml)
+    new_value_LV = (V_LV - error_LV) * (1.0 / volume2ml)
+    new_value_RV = (V_RV - error_RV) * (1.0 / volume2ml)
 
     old_lv_volume = problem.old_lv_volume
     old_rv_volume = problem.old_rv_volume
@@ -624,11 +631,6 @@ def callback(model, i: int, t: float, save=True):
 
 # Initialize Circulation Model with Target (ED) Volumes
 
-init_state_circ = {
-    "V_LV": lvv_target * volume2ml * circulation.units.ureg("mL"),
-    "V_RV": rvv_target * volume2ml * circulation.units.ureg("mL"),
-}
-
 circulation_model = circulation.regazzoni2020.Regazzoni2020(
     add_units=False,
     callback=callback,
@@ -636,14 +638,13 @@ circulation_model = circulation.regazzoni2020.Regazzoni2020(
     verbose=True,
     comm=comm,
     outdir=outdir,
-    initial_state=init_state_circ,
 )
 
 logger.info("Starting coupled simulation...")
 num_beats = 2
 dt = 0.001
 end_time = 2 * dt if os.getenv("CI") else None
-circulation_model.solve(num_beats=num_beats, initial_state=init_state_circ, dt=dt, T=end_time)
+circulation_model.solve(num_beats=num_beats, initial_state=circ_state, dt=dt, T=end_time)
 logger.info("Simulation complete.")
 
 
