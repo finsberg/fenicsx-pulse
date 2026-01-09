@@ -10,7 +10,7 @@
 #
 # ---
 
-# ## 1. Imports and Setup
+# ## Imports and Setup
 
 import json
 import os
@@ -62,7 +62,7 @@ class MPIFilter(logging.Filter):
         return 1 if self.comm.rank == 0 else 0
 
 
-outdir = Path("results_biv_complete_cycle2")
+outdir = Path("results_biv_complete_cycle")
 outdir.mkdir(parents=True, exist_ok=True)
 geodir = outdir / "geometry"
 
@@ -74,81 +74,11 @@ comm = MPI.COMM_WORLD
 mpi_filter = MPIFilter(comm)
 logger.addFilter(mpi_filter)
 
-# ## 2. 0D Circulation Model (Initialization)
-#
-# We run the 0D circulation model to get the target End-Diastolic pressures for prestressing.
 
-
-def run_0D(outdir):
-    logger.info("Running 0D circulation model to steady state...")
-    model = Regazzoni2020()
-    history = model.solve(num_beats=10)
-    state = dict(zip(model.state_names(), model.state))
-    np.save(outdir / "state.npy", state, allow_pickle=True)
-    np.save(outdir / "history.npy", history, allow_pickle=True)
-
-
-if not (outdir / "history.npy").is_file() and comm.rank == 0:
-    run_0D(outdir)
-
-comm.Barrier()
-history = np.load(outdir / "history.npy", allow_pickle=True).item()
-
-
-# Let us plot the results from the circulation model
-
-if comm.rank == 0:
-    fig, ax = plt.subplots(2, 2, sharex=True, sharey="row", figsize=(10, 5))
-    ax[0, 0].plot(history["V_LV"], history["p_LV"])
-    ax[0, 0].set_xlabel("V (LV) [mL]")
-    ax[0, 0].set_ylabel("p (LV) [mmHg]")
-    ax[0, 0].set_title("All beats")
-    ax[0, 1].plot(history["V_LV"][-1000:], history["p_LV"][-1000:])
-    ax[0, 1].set_title("Last beat")
-    ax[1, 0].plot(history["V_RV"], history["p_RV"])
-    ax[1, 0].set_xlabel("V (RV) [mL]")
-    ax[1, 0].set_ylabel("p (RV) [mmHg]")
-    ax[1, 1].plot(history["V_RV"][-1000:], history["p_RV"][-1000:])
-    fig.savefig(outdir / "0D_circulation_pv.png")
-
-if comm.rank == 0:
-    plt.close(fig)
-
-
-# ## 3. Activation Model (Synthetic)
-#
-# We use the Blanco time-varying elastance function for a synthetic activation trace.
-# We use a peak activation of 120 kPa to match typical ventricular pressures, with the
-# time to peak at 150 ms and relaxation until 350 ms, and a total cycle length of 1 s.
-
-def get_activation(t):
-    return 120 * circulation.time_varying_elastance.blanco_ventricle(
-        EA=1.0,
-        EB=0.0,
-        tC=0.0,
-        TC=0.15,
-        TR=0.35,
-        RR=1.0,
-    )(t)
-
-
-# Let us plot the resulting activation trace
-
-if comm.rank == 0:
-    fig, ax = plt.subplots()
-    t = np.linspace(0, 1, 100)
-    ax.plot(t, get_activation(t))
-    fig.savefig(outdir / "activation.png")
-
-if comm.rank == 0:
-    plt.close(fig)
-
-
-# ## 4. Geometry Generation & Rotation
+# ## Geometry Generation & Rotation
 # We generate the BiV geometry from the UK Biobank Atlas, rotate it to align the base normal with the x-axis,
 # and generate fiber fields using LDRB. The fibers are based on the fiber orientation angles from
-# https://doi.org/10.1002/cnm.3185. We also generate AHA segments for later analysis.
-# Additional data such as fibers in DG 1 space are also stored for post-processing.
+# https://doi.org/10.1002/cnm.3185. Additional data such as fibers in DG 1 space are also stored for post-processing.
 # This is useful if we want to compute stress/strain at intermediate points later on.
 # The fibers used for the mechanics simulation are in a quadrature space to avoid interpolation errors.
 
@@ -193,22 +123,6 @@ if not (geodir / "geometry.bp").exists():
         fiber_space="Quadrature_6",
     )
 
-    # Generate AHA Segments
-    aha = ldrb.aha.gernerate_aha_biv(
-        mesh=geo.mesh,
-        ffun=geo.ffun,
-        markers=cardiac_geometries.mesh.transform_markers(geo.markers, clipped=True),
-        function_space="DG_0",
-        base_max=0.75,
-        mid_base=0.70,
-        apex_mid=0.65,
-    )
-
-    entities = np.arange(geo.mesh.topology.index_map(3).size_local, dtype=np.int32)
-    values = aha.x.array.astype(np.int32)
-    aha_mt = dolfinx.mesh.meshtags(geo.mesh, 3, entities, values)
-    aha_mt.name = "Cell tags"
-
     # Additional Vectors for Analysis in DG 1 Space for computing stress/strain later
     fiber_space = "DG_1"
     system_fibers = ldrb.dolfinx_ldrb(
@@ -224,7 +138,6 @@ if not (geodir / "geometry.bp").exists():
         "f0_DG_1": system_fibers.f0,
         "s0_DG_1": system_fibers.s0,
         "n0_DG_1": system_fibers.n0,
-        "aha": aha_mt,
     }
 
     if (geodir / "geometry.bp").exists():
@@ -244,7 +157,7 @@ if not (geodir / "geometry.bp").exists():
 
 comm.barrier()
 
-# ## 5. Loading and Problem Definition
+# We load the generated geometry
 
 geo = cardiac_geometries.geometry.Geometry.from_folder(comm=comm, folder=geodir)
 
@@ -252,9 +165,6 @@ geo = cardiac_geometries.geometry.Geometry.from_folder(comm=comm, folder=geodir)
 
 scale = 1e-3
 geo.mesh.geometry.x[:] *= scale
-
-aha = geo.additional_data["aha"]
-dx_aha = ufl.Measure("dx", domain=geo.mesh, subdomain_data=aha)
 
 geometry = pulse.HeartGeometry.from_cardiac_geometries(geo, metadata={"quadrature_degree": 6})
 
@@ -272,6 +182,91 @@ rvv_target = comm.allreduce(geometry.volume("RV"), op=MPI.SUM)
 logger.info(
     f"ED Volumes: LV={lvv_target * volume2ml:.2f} mL, RV={rvv_target * volume2ml:.2f} mL",
 )
+
+# ## 0D Circulation Model (Initialization)
+#
+# We run the 0D circulation model to get the target End-Diastolic pressures for prestressing.
+
+
+def run_0D(init_state, nbeats=10):
+    logger.info("Running 0D circulation model to steady state...")
+
+    model = Regazzoni2020()
+    history = model.solve(num_beats=nbeats, initial_state=init_state)
+    state = dict(zip(model.state_names(), model.state))
+
+    return history, state
+
+# First use the target ED volumes to initialize the circulation model
+
+
+init_state_circ = {
+    "V_LV": lvv_target * volume2ml * circulation.units.ureg("mL"),
+    "V_RV": rvv_target * volume2ml * circulation.units.ureg("mL"),
+}
+
+# Run to steady state
+
+if comm.rank == 0:
+    history, circ_state = run_0D(init_state=init_state_circ)
+    np.save(outdir / "state.npy", circ_state, allow_pickle=True)
+    np.save(outdir / "history.npy", history, allow_pickle=True)
+comm.Barrier()
+
+history = np.load(outdir / "history.npy", allow_pickle=True).item()
+circ_state = np.load(outdir / "state.npy", allow_pickle=True).item()
+
+# Compute errors in volumes at the end of the 0D run
+
+error_LV = circ_state["V_LV"] - init_state_circ["V_LV"].magnitude
+error_RV = circ_state["V_RV"] - init_state_circ["V_RV"].magnitude
+
+# Let us plot the results from the circulation model
+
+if comm.rank == 0:
+    fig, ax = plt.subplots(2, 2, sharex=True, sharey="row", figsize=(10, 5))
+    ax[0, 0].plot(history["V_LV"], history["p_LV"])
+    ax[0, 0].set_xlabel("V (LV) [mL]")
+    ax[0, 0].set_ylabel("p (LV) [mmHg]")
+    ax[0, 0].set_title("All beats")
+    ax[0, 1].plot(history["V_LV"][-1000:], history["p_LV"][-1000:])
+    ax[0, 1].set_title("Last beat")
+    ax[1, 0].plot(history["V_RV"], history["p_RV"])
+    ax[1, 0].set_xlabel("V (RV) [mL]")
+    ax[1, 0].set_ylabel("p (RV) [mmHg]")
+    ax[1, 1].plot(history["V_RV"][-1000:], history["p_RV"][-1000:])
+    fig.savefig(outdir / "0D_circulation_pv.png")
+
+if comm.rank == 0:
+    plt.close(fig)
+
+# ## Activation Model (Synthetic)
+#
+# We use the Blanco time-varying elastance function for a synthetic activation trace.
+# We use a peak activation of 100 kPa to match typical ventricular pressures, with the
+# time to peak at 150 ms and relaxation until 350 ms, and a total cycle length of 1 s.
+
+def get_activation(t):
+    return 100 * circulation.time_varying_elastance.blanco_ventricle(
+        EA=1.0,
+        EB=0.0,
+        tC=0.0,
+        TC=0.15,
+        TR=0.35,
+        RR=1.0,
+    )(t)
+
+
+# Let us plot the resulting activation trace
+
+if comm.rank == 0:
+    fig, ax = plt.subplots()
+    t = np.linspace(0, 1, 100)
+    ax.plot(t, get_activation(t))
+    fig.savefig(outdir / "activation.png")
+
+if comm.rank == 0:
+    plt.close(fig)
 
 
 def setup_problem(geometry, f0, s0, material_params):
@@ -314,7 +309,7 @@ model, robin, dirichlet_bc, Ta = setup_problem(
     geometry=geometry, f0=geo.f0, s0=geo.s0, material_params=material_params,
 )
 
-# ## 6. Prestressing (Inverse Elasticity)
+# ## Prestressing (Inverse Elasticity)
 
 # We use the target ED pressures from the 0D circulation model to prestress the mesh.
 
@@ -358,7 +353,7 @@ if not prestress_fname.exists():
     ) as vtx:
         vtx.write(0.0)
 
-# ## 7. Forward Problem Setup
+# ## Forward Problem Setup
 
 V = dolfinx.fem.functionspace(geometry.mesh, ("Lagrange", 2, (3,)))
 u_pre = dolfinx.fem.Function(V)
@@ -495,8 +490,9 @@ def p_BiV_func(V_LV, V_RV, t):
     old_Ta = problem.old_Ta
     dTa = value - old_Ta
 
-    new_value_LV = V_LV * (1.0 / volume2ml)
-    new_value_RV = V_RV * (1.0 / volume2ml)
+    # We compute the new target volumes accounting for the errors from the initial 0D run
+    new_value_LV = (V_LV - error_LV) * (1.0 / volume2ml)
+    new_value_RV = (V_RV - error_RV) * (1.0 / volume2ml)
 
     old_lv_volume = problem.old_lv_volume
     old_rv_volume = problem.old_rv_volume
@@ -580,6 +576,10 @@ def callback(model, i: int, t: float, save=True):
         adios4dolfinx.write_function(filename, u=fiber_strain, name="fiber_strain", time=t)
         out = {k: v[: i + 1] for k, v in model.history.items()}
         out["Ta"] = Ta_history
+        V_LV = model.history["V_LV"][: i + 1] - error_LV
+        V_RV = model.history["V_RV"][: i + 1] - error_RV
+        out["V_LV"] = V_LV
+        out["V_RV"] = V_RV
         if comm.rank == 0:
             output_file.write_text(json.dumps(out, indent=4, default=custom_json))
 
@@ -594,22 +594,26 @@ def callback(model, i: int, t: float, save=True):
             ax6 = fig.add_subplot(gs[1, 3])
             ax7 = fig.add_subplot(gs[2, 2:])
 
-            ax1.plot(model.history["V_LV"][: i + 1], model.history["p_LV"][: i + 1])
+
+            p_LV = model.history["p_LV"][: i + 1]
+            p_RV = model.history["p_RV"][: i + 1]
+
+            ax1.plot(V_LV, p_LV)
             ax1.set_xlabel("LVV [mL]")
             ax1.set_ylabel("LVP [mmHg]")
 
-            ax2.plot(model.history["V_RV"][: i + 1], model.history["p_RV"][: i + 1])
+            ax2.plot(V_RV, p_RV)
             ax2.set_xlabel("RVV [mL]")
             ax2.set_ylabel("RVP [mmHg]")
 
-            ax3.plot(model.history["time"][: i + 1], model.history["p_LV"][: i + 1])
+            ax3.plot(model.history["time"][: i + 1], p_LV)
             ax3.set_ylabel("LVP [mmHg]")
-            ax4.plot(model.history["time"][: i + 1], model.history["V_LV"][: i + 1])
+            ax4.plot(model.history["time"][: i + 1], V_LV)
             ax4.set_ylabel("LVV [mL]")
 
-            ax5.plot(model.history["time"][: i + 1], model.history["p_RV"][: i + 1])
+            ax5.plot(model.history["time"][: i + 1], p_RV)
             ax5.set_ylabel("RVP [mmHg]")
-            ax6.plot(model.history["time"][: i + 1], model.history["V_RV"][: i + 1])
+            ax6.plot(model.history["time"][: i + 1], V_RV)
             ax6.set_ylabel("RVV [mL]")
 
             ax7.plot(model.history["time"][: i + 1], Ta_history[: i + 1])
@@ -624,11 +628,6 @@ def callback(model, i: int, t: float, save=True):
 
 # Initialize Circulation Model with Target (ED) Volumes
 
-init_state_circ = {
-    "V_LV": lvv_target * volume2ml * circulation.units.ureg("mL"),
-    "V_RV": rvv_target * volume2ml * circulation.units.ureg("mL"),
-}
-
 circulation_model = circulation.regazzoni2020.Regazzoni2020(
     add_units=False,
     callback=callback,
@@ -636,14 +635,13 @@ circulation_model = circulation.regazzoni2020.Regazzoni2020(
     verbose=True,
     comm=comm,
     outdir=outdir,
-    initial_state=init_state_circ,
 )
 
 logger.info("Starting coupled simulation...")
-num_beats = 2
+num_beats = 8
 dt = 0.001
 end_time = 2 * dt if os.getenv("CI") else None
-circulation_model.solve(num_beats=num_beats, initial_state=init_state_circ, dt=dt, T=end_time)
+circulation_model.solve(num_beats=num_beats, initial_state=circ_state, dt=dt, T=end_time)
 logger.info("Simulation complete.")
 
 
