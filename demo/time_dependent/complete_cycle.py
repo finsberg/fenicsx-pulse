@@ -78,8 +78,7 @@ logger.addFilter(mpi_filter)
 # ## Geometry Generation & Rotation
 # We generate the BiV geometry from the UK Biobank Atlas, rotate it to align the base normal with the x-axis,
 # and generate fiber fields using LDRB. The fibers are based on the fiber orientation angles from
-# https://doi.org/10.1002/cnm.3185. We also generate AHA segments for later analysis.
-# Additional data such as fibers in DG 1 space are also stored for post-processing.
+# https://doi.org/10.1002/cnm.3185. Additional data such as fibers in DG 1 space are also stored for post-processing.
 # This is useful if we want to compute stress/strain at intermediate points later on.
 # The fibers used for the mechanics simulation are in a quadrature space to avoid interpolation errors.
 
@@ -124,22 +123,6 @@ if not (geodir / "geometry.bp").exists():
         fiber_space="Quadrature_6",
     )
 
-    # Generate AHA Segments
-    aha = ldrb.aha.gernerate_aha_biv(
-        mesh=geo.mesh,
-        ffun=geo.ffun,
-        markers=cardiac_geometries.mesh.transform_markers(geo.markers, clipped=True),
-        function_space="DG_0",
-        base_max=0.75,
-        mid_base=0.70,
-        apex_mid=0.65,
-    )
-
-    entities = np.arange(geo.mesh.topology.index_map(3).size_local, dtype=np.int32)
-    values = aha.x.array.astype(np.int32)
-    aha_mt = dolfinx.mesh.meshtags(geo.mesh, 3, entities, values)
-    aha_mt.name = "Cell tags"
-
     # Additional Vectors for Analysis in DG 1 Space for computing stress/strain later
     fiber_space = "DG_1"
     system_fibers = ldrb.dolfinx_ldrb(
@@ -155,7 +138,6 @@ if not (geodir / "geometry.bp").exists():
         "f0_DG_1": system_fibers.f0,
         "s0_DG_1": system_fibers.s0,
         "n0_DG_1": system_fibers.n0,
-        "aha": aha_mt,
     }
 
     if (geodir / "geometry.bp").exists():
@@ -183,9 +165,6 @@ geo = cardiac_geometries.geometry.Geometry.from_folder(comm=comm, folder=geodir)
 
 scale = 1e-3
 geo.mesh.geometry.x[:] *= scale
-
-aha = geo.additional_data["aha"]
-dx_aha = ufl.Measure("dx", domain=geo.mesh, subdomain_data=aha)
 
 geometry = pulse.HeartGeometry.from_cardiac_geometries(geo, metadata={"quadrature_degree": 6})
 
@@ -264,11 +243,11 @@ if comm.rank == 0:
 # ## Activation Model (Synthetic)
 #
 # We use the Blanco time-varying elastance function for a synthetic activation trace.
-# We use a peak activation of 120 kPa to match typical ventricular pressures, with the
+# We use a peak activation of 100 kPa to match typical ventricular pressures, with the
 # time to peak at 150 ms and relaxation until 350 ms, and a total cycle length of 1 s.
 
 def get_activation(t):
-    return 120 * circulation.time_varying_elastance.blanco_ventricle(
+    return 100 * circulation.time_varying_elastance.blanco_ventricle(
         EA=1.0,
         EB=0.0,
         tC=0.0,
@@ -659,7 +638,7 @@ circulation_model = circulation.regazzoni2020.Regazzoni2020(
 )
 
 logger.info("Starting coupled simulation...")
-num_beats = 2
+num_beats = 8
 dt = 0.001
 end_time = 2 * dt if os.getenv("CI") else None
 circulation_model.solve(num_beats=num_beats, initial_state=circ_state, dt=dt, T=end_time)
