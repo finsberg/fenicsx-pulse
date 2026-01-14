@@ -82,6 +82,7 @@ levelname
 libgl
 libxrender
 linalg
+linspace
 lmbda
 Luca
 Matteo
