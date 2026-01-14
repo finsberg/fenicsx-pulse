@@ -130,6 +130,11 @@ vtx.close()
 ```
 
 ![_](https://raw.githubusercontent.com/finsberg/fenicsx-pulse/refs/heads/main/_static/readme.png)
+
+A more realistic example is visualized here:
+
+https://github.com/finsberg/fenicsx-pulse/raw/refs/heads/main/_static/complete_cycle.mp4
+
 Checkout out [the demos](https://finsberg.github.io/fenicsx-pulse/demo/unit_cube.html) in the documentation for more examples.
 
 
