@@ -66,13 +66,68 @@ class CardiacModel:
         logger.debug(f"  Compressibility: {type(self.compressibility).__name__}")
         logger.debug(f"  Viscoelasticity: {type(self.viscoelasticity).__name__}")
 
+    def Cdev(self, C: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
+        """Deviatoric part of the right Cauchy-Green deformation tensor.
+
+        Parameters
+        ----------
+        C : ufl.core.expr.Expr
+            Right Cauchy-Green deformation tensor
+
+        Returns
+        -------
+        ufl.core.expr.Expr
+            Deviatoric part of the right Cauchy-Green deformation tensor
+        """
+        J = ufl.sqrt(ufl.det(C))
+        dim = C.ufl_shape[0]
+        Cdev = J ** (-2.0 / dim) * C
+        return Cdev
+
+    def Fdev(self, F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
+        """Deviatoric part of the deformation gradient.
+
+        Parameters
+        ----------
+        F : ufl.core.expr.Expr
+            Deformation gradient
+
+        Returns
+        -------
+        ufl.core.expr.Expr
+            Deviatoric part of the deformation gradient
+        """
+        J = ufl.det(F)
+        dim = F.ufl_shape[0]
+        Fdev = J ** (-1.0 / dim) * F
+        return Fdev
+
     def strain_energy(
         self,
         C: ufl.core.expr.Expr,
         C_dot: ufl.core.expr.Expr | None = None,
     ) -> ufl.core.expr.Expr:
+        """Total strain energy for the cardiac model.
+
+        Parameters
+        ----------
+        C : ufl.core.expr.Expr
+            Right Cauchy-Green deformation tensor
+        C_dot : ufl.core.expr.Expr | None, optional
+            Time derivative of the right Cauchy-Green deformation tensor, by default None
+
+        Returns
+        -------
+        ufl.core.expr.Expr
+            The total strain energy density
+        """
+        if self.compressibility.is_compressible():
+            Cdev = self.Cdev(C)
+        else:
+            Cdev = C
+
         psi = (
-            self.material.strain_energy(C)
+            self.material.strain_energy(Cdev)
             + self.active.strain_energy(C)
             + self.compressibility.strain_energy(C)
         )
@@ -87,8 +142,12 @@ class CardiacModel:
         C_dot: ufl.core.expr.Expr | None = None,
     ) -> ufl.core.expr.Expr:
         """Cauchy stress for the cardiac model."""
+        if self.compressibility.is_compressible():
+            Cdev = self.Cdev(C)
+        else:
+            Cdev = C
 
-        S = self.material.S(C) + self.active.S(C) + self.compressibility.S(C)
+        S = self.material.S(Cdev) + self.active.S(C) + self.compressibility.S(C)
         if C_dot is not None:
             S += self.viscoelasticity.S(C_dot)
         return S
@@ -99,7 +158,13 @@ class CardiacModel:
         F_dot: ufl.core.expr.Expr | None = None,
     ) -> ufl.core.expr.Expr:
         """First Piola-Kirchhoff stress for the cardiac model."""
-        P = self.material.P(F) + self.active.P(F) + self.compressibility.P(F)
+
+        if self.compressibility.is_compressible():
+            Fdev = self.Fdev(F)
+        else:
+            Fdev = F
+
+        P = self.material.P(Fdev) + self.active.P(F) + self.compressibility.P(F)
         if F_dot is not None:
             P += self.viscoelasticity.P(F_dot)
         return P

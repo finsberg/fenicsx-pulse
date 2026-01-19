@@ -52,7 +52,7 @@ def test_CardiacModel_HolzapfelOgden(comp_model_cls, isotropy, mesh, u):
     # )
 
     # F = I + 0.1 I, C = 1.21 I, I4f = 1.21
-    # J = det(F) = 1.1 ** 3
+    # J = det(F) = 1.1 ** 3, J^{-2/3} = 1.1 ** -2
 
     if isinstance(comp_model, pulse.compressibility.Incompressible):
         # psi = 0.5 * a * (I1 - 3) + 0.5 * a_f * (I4f - 1)**2 + p (J - 1)
@@ -60,10 +60,14 @@ def test_CardiacModel_HolzapfelOgden(comp_model_cls, isotropy, mesh, u):
         # 1000.0 * (1.1 ** 3 - 1) = 668.05
         assert math.isclose(value, 668.05)
     else:
-        # psi = 0.5 * a * (I1 - 3) + 0.5 * a_f * (I4f - 1)**2 + kappa * (J * ln(J) - J + 1)
-        # psi = 0.5 * 1000*1 * (3 * 1.21 - 3) + 0.5 * 1000.0 * 1.0 * (1.21 - 1)**2 +
-        # 1e6 * (1.1 ** 3 * math.log(1.1 ** 3) - 1.1 ** 3 + 1) = 49910.5979586692
-        assert math.isclose(value, 49910.5979586692)
+        # J^{-2/3} = 1.1 ** -2
+        # psi = 0.5 * a * (J^{-2/3} * I1 - 3) + 0.5 * a_f * (^{-2/3} * I4f - 1)**2
+        # + kappa * (J * ln(J) - J + 1)
+
+        # psi = 0.5 * 1000*1 * (1.1 ** -2  * 3 * 1.21 - 3)
+        # + 0.5 * 1000.0 * 1.0 * (1.1 ** -2  * 1.21 - 1)**2
+        # +1e6 * (1.1 ** 3 * math.log(1.1 ** 3) - 1.1 ** 3 + 1) = 49573.547958669194
+        assert math.isclose(value, 49573.547958669194)
 
 
 @pytest.mark.parametrize("isotropy", (pulse.active_stress.ActiveStressModels.transversely,))
