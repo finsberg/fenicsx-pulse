@@ -112,10 +112,7 @@ def test_CompressibleProblem_and_boundary_conditions(mesh):
     )
 
     f0 = dolfinx.fem.Constant(mesh, PETSc.ScalarType((1.0, 0.0, 0.0)))
-    material = pulse.NeoHookean(
-        mu=dolfinx.fem.Constant(mesh, PETSc.ScalarType(15.0)),
-        deviatoric=True,
-    )
+    material = pulse.NeoHookean(mu=dolfinx.fem.Constant(mesh, PETSc.ScalarType(15.0)))
 
     Ta = dolfinx.fem.Constant(mesh, PETSc.ScalarType(0.0))
     active_model = pulse.ActiveStress(f0, activation=Ta)

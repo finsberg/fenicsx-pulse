@@ -157,7 +157,6 @@ geometry = pulse.Geometry.from_cardiac_geometries(geo, metadata={"quadrature_deg
 # \Psi_{NH} = \frac{\mu}{2} (I_1 - 3)
 # $$
 #
-# `deviatoric=True` (default) means we use the isochoric invariant $\bar{I}_1 = J^{-2/3} I_1$.
 
 material = pulse.NeoHookean(mu=dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(15.0)))
 

@@ -27,7 +27,6 @@ def test_CardiacModel_HolzapfelOgden(comp_model_cls, isotropy, mesh, u):
         b_f=0.0,
         a_fs=0.0,
         b_fs=0.0,
-        deviatoric=False,
     )
     comp_model = comp_model_cls()
     active_model = pulse.ActiveStress(f0, isotropy=isotropy)
@@ -66,7 +65,7 @@ def test_CardiacModel_HolzapfelOgden(comp_model_cls, isotropy, mesh, u):
 
         # psi = 0.5 * 1000*1 * (1.1 ** -2  * 3 * 1.21 - 3)
         # + 0.5 * 1000.0 * 1.0 * (1.1 ** -2  * 1.21 - 1)**2
-        # +1e6 * (1.1 ** 3 * math.log(1.1 ** 3) - 1.1 ** 3 + 1) = 49573.547958669194
+        # + 1e6 * (1.1 ** 3 * math.log(1.1 ** 3) - 1.1 ** 3 + 1) = 49573.547958669194
         assert math.isclose(value, 49573.547958669194)
 
 
@@ -78,7 +77,6 @@ def test_CardiacModel_HolzapfelOgden(comp_model_cls, isotropy, mesh, u):
 def test_CardiacModel_NeoHookean(comp_model_cls, isotropy, mesh, u):
     material = pulse.NeoHookean(
         mu=dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(15.0)),
-        deviatoric=False,
     )
     f0 = dolfinx.fem.Constant(mesh, (1.0, 0.0, 0.0))
     comp_model = comp_model_cls()
@@ -99,7 +97,7 @@ def test_CardiacModel_NeoHookean(comp_model_cls, isotropy, mesh, u):
     if isinstance(comp_model, pulse.compressibility.Incompressible):
         assert math.isclose(value, 4725.331000000082)
     else:
-        assert math.isclose(value, 54298.54795867078)
+        assert math.isclose(value, 49573.54795867355)
 
 
 @pytest.mark.parametrize("isotropy", (pulse.active_stress.ActiveStressModels.transversely,))
@@ -112,7 +110,7 @@ def test_CardiacModel_Guccione(comp_model_cls, isotropy, mesh, u):
     s0 = dolfinx.fem.Constant(mesh, (0.0, 1.0, 0.0))
     n0 = dolfinx.fem.Constant(mesh, (0.0, 0.0, 1.0))
     material_params = pulse.Guccione.default_parameters()
-    material = pulse.Guccione(f0=f0, s0=s0, n0=n0, **material_params, deviatoric=False)
+    material = pulse.Guccione(f0=f0, s0=s0, n0=n0, **material_params)
     active_model = pulse.ActiveStress(f0, isotropy=isotropy)
     comp_model = comp_model_cls()
     model = pulse.CardiacModel(
@@ -130,4 +128,4 @@ def test_CardiacModel_Guccione(comp_model_cls, isotropy, mesh, u):
     if isinstance(comp_model, pulse.compressibility.Incompressible):
         assert math.isclose(value, 141.78170311802802)
     else:
-        assert math.isclose(value, 49714.998661786354)
+        assert math.isclose(value, 49573.54795866912)
