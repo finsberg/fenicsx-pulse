@@ -71,7 +71,6 @@ class Guccione(HyperElasticMaterial):
     bf: Variable = field(default_factory=lambda: Variable(8.0, "dimensionless"))
     bt: Variable = field(default_factory=lambda: Variable(2.0, "dimensionless"))
     bfs: Variable = field(default_factory=lambda: Variable(4.0, "dimensionless"))
-    deviatoric: bool = True
 
     def __post_init__(self):
         # Check that all values are positive
@@ -130,9 +129,6 @@ class Guccione(HyperElasticMaterial):
 
     def _Q(self, C: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
         dim = C.ufl_shape[0]
-        if self.deviatoric:
-            Jm23 = pow(ufl.det(C), -1.0 / dim)
-            C *= Jm23  # Make C deviatoric
         E = 0.5 * (C - ufl.Identity(dim))
 
         bt = self.bt.to_base_units()

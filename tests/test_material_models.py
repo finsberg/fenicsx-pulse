@@ -22,7 +22,7 @@ def test_holzapfel_ogden(params_func, expected_value, mesh, u) -> None:
     params = params_func()
     f0 = dolfinx.fem.Constant(mesh, (1.0, 0.0, 0.0))
     s0 = dolfinx.fem.Constant(mesh, (0.0, 1.0, 0.0))
-    model = pulse.HolzapfelOgden(f0=f0, s0=s0, **params, deviatoric=False)
+    model = pulse.HolzapfelOgden(f0=f0, s0=s0, **params)
 
     u.interpolate(lambda x: x / 10)
     F = pulse.kinematics.DeformationGradient(u)
@@ -57,7 +57,7 @@ def test_holzapfel_ogden_raises_MissingModelAttribute(params, attr):
 
 
 def test_holzapfel_ogden_neohookean(u):
-    model = pulse.HolzapfelOgden(a=1.0, deviatoric=False)
+    model = pulse.HolzapfelOgden(a=1.0)
     u.interpolate(lambda x: x / 10)
     F = pulse.kinematics.DeformationGradient(u)
     C = F.T * F
@@ -72,7 +72,7 @@ def test_holzapfel_ogden_neohookean(u):
 
 def test_holzapfel_ogden_pure_fiber(u, mesh):
     f0 = dolfinx.fem.Constant(mesh, (1.0, 0.0, 0.0))
-    model = pulse.HolzapfelOgden(a_f=1.0, f0=f0, deviatoric=False)
+    model = pulse.HolzapfelOgden(a_f=1.0, f0=f0)
     u.interpolate(lambda x: x / 10)
     F = pulse.kinematics.DeformationGradient(u)
     C = F.T * F
@@ -85,7 +85,7 @@ def test_holzapfel_ogden_pure_fiber(u, mesh):
 
 def test_holzapfel_ogden_pure_fiber_sheets(u, mesh):
     f0 = dolfinx.fem.Constant(mesh, (1.0, 0.0, 0.0))
-    model = pulse.HolzapfelOgden(a_fs=1.0, f0=f0, s0=f0, deviatoric=False)
+    model = pulse.HolzapfelOgden(a_fs=1.0, f0=f0, s0=f0)
     u.interpolate(lambda x: x / 10)
     F = pulse.kinematics.DeformationGradient(u)
     C = F.T * F
@@ -97,7 +97,7 @@ def test_holzapfel_ogden_pure_fiber_sheets(u, mesh):
 
 
 def test_neo_hookean(u, mesh):
-    model = pulse.NeoHookean(mu=1.0, deviatoric=False)
+    model = pulse.NeoHookean(mu=1.0)
     u.interpolate(lambda x: x / 10)
     F = pulse.kinematics.DeformationGradient(u)
     C = F.T * F
@@ -128,7 +128,7 @@ def test_saint_venant_kirchhoff(u):
 def test_guccione_isotropic(u):
     C = 10.0
     bf = bt = bfs = 1.0
-    model = pulse.Guccione(C=C, bf=bf, bt=bt, bfs=bfs, deviatoric=False)
+    model = pulse.Guccione(C=C, bf=bf, bt=bt, bfs=bfs)
     assert model.is_isotropic()
 
     u.interpolate(lambda x: x / 10)
@@ -151,7 +151,7 @@ def test_guccione_anisotropic(u, mesh):
     bf = 1.0
     bt = 2.0
     bfs = 3.0
-    model = pulse.Guccione(C=C, bf=bf, bt=bt, bfs=bfs, f0=f0, s0=s0, n0=n0, deviatoric=False)
+    model = pulse.Guccione(C=C, bf=bf, bt=bt, bfs=bfs, f0=f0, s0=s0, n0=n0)
     assert not model.is_isotropic()
 
     u.interpolate(lambda x: x / 10)
