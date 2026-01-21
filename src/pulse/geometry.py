@@ -277,7 +277,7 @@ class HeartGeometry(Geometry):
         return dolfinx.fem.assemble_scalar(dolfinx.fem.form(form * self.ds(marker_id)))
 
     def get_marker_ids(
-        self: typing.Self,
+        self,
         marker: str | typing.Sequence[str],
     ) -> int | tuple[int, ...]:
         if isinstance(marker, str):
