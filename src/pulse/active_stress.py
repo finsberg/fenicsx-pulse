@@ -120,13 +120,15 @@ class ActiveStress(ActiveModel):
         else:
             raise NotImplementedError
 
-    def S(self, C: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
+    def S(self, C: ufl.core.expr.Expr, dev: bool = False) -> ufl.core.expr.Expr:
         """Cauchy stress tensor for the active stress model.
 
         Parameters
         ----------
         C : ufl.core.expr.Expr
             The right Cauchy-Green deformation tensor
+        dev : bool
+            Whether to compute the stress for the deviatoric part only
 
         Returns
         -------

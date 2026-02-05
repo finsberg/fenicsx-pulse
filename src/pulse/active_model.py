@@ -111,7 +111,7 @@ class ActiveModel(abc.ABC):
             The active strain energy density function
         """
 
-    def S(self, C: ufl.core.expr.Expr, dev: bool) -> ufl.core.expr.Expr:
+    def S(self, C: ufl.core.expr.Expr, dev: bool = False) -> ufl.core.expr.Expr:
         """Cauchy stress tensor for the active model.
 
         Parameters
@@ -132,7 +132,7 @@ class ActiveModel(abc.ABC):
             Cdev = C
         return 2.0 * ufl.diff(self.strain_energy(Cdev), Cdev)
 
-    def P(self, F: ufl.core.expr.Expr, dev: bool) -> ufl.core.expr.Expr:
+    def P(self, F: ufl.core.expr.Expr, dev: bool = False) -> ufl.core.expr.Expr:
         """First Piola-Kirchhoff stress tensor for the active model.
 
         Parameters
