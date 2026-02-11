@@ -107,9 +107,8 @@ class CardiacModel:
         C_dot: ufl.core.expr.Expr | None = None,
     ) -> ufl.core.expr.Expr:
         """Cauchy stress for the cardiac model."""
-        dev = self.compressibility.is_compressible()
 
-        S = self.material.S(C, dev=dev) + self.active.S(C, dev=dev) + self.compressibility.S(C)
+        S = self.material.S(C, dev=True) + self.active.S(C, dev=True) + self.compressibility.S(C)
         if C_dot is not None:
             S += self.viscoelasticity.S(C_dot)
         return S
@@ -120,9 +119,7 @@ class CardiacModel:
         F_dot: ufl.core.expr.Expr | None = None,
     ) -> ufl.core.expr.Expr:
         """First Piola-Kirchhoff stress for the cardiac model."""
-        dev = self.compressibility.is_compressible()
-
-        P = self.material.P(F, dev=dev) + self.active.P(F, dev=dev) + self.compressibility.P(F)
+        P = self.material.P(F, dev=True) + self.active.P(F, dev=True) + self.compressibility.P(F)
         if F_dot is not None:
             P += self.viscoelasticity.P(F_dot)
         return P
