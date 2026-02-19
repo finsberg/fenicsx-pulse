@@ -27,7 +27,7 @@ import dolfinx
 import ufl
 
 import ldrb
-import adios4dolfinx
+import io4dolfinx
 
 # Cardiac specific libraries
 import cardiac_geometries
@@ -166,7 +166,9 @@ geo = cardiac_geometries.geometry.Geometry.from_folder(comm=comm, folder=geodir)
 scale = 1e-3
 geo.mesh.geometry.x[:] *= scale
 
-geometry = pulse.HeartGeometry.from_cardiac_geometries(geo, metadata={"quadrature_degree": 6})
+geometry = pulse.HeartGeometry.from_cardiac_geometries(
+    geo, metadata={"quadrature_degree": 6},
+)
 
 # Store Target Volumes (ED)
 
@@ -196,6 +198,7 @@ def run_0D(init_state, nbeats=10):
     state = dict(zip(model.state_names(), model.state))
 
     return history, state
+
 
 # First use the target ED volumes to initialize the circulation model
 
@@ -246,6 +249,7 @@ if comm.rank == 0:
 # We use a peak activation of 100 kPa to match typical ventricular pressures, with the
 # time to peak at 150 ms and relaxation until 350 ms, and a total cycle length of 1 s.
 
+
 def get_activation(t):
     return 100 * circulation.time_varying_elastance.blanco_ventricle(
         EA=1.0,
@@ -272,7 +276,8 @@ if comm.rank == 0:
 def setup_problem(geometry, f0, s0, material_params):
     material = pulse.HolzapfelOgden(f0=f0, s0=s0, **material_params)
     Ta = pulse.Variable(
-        dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0)), "kPa",
+        dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0)),
+        "kPa",
     )
     active_model = pulse.ActiveStress(f0, activation=Ta)
     comp_model = pulse.compressibility.Compressible2()
@@ -284,12 +289,14 @@ def setup_problem(geometry, f0, s0, material_params):
     )
 
     alpha_epi = pulse.Variable(
-        dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(1e5)), "Pa / m",
+        dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(1e5)),
+        "Pa / m",
     )
     robin_epi = pulse.RobinBC(value=alpha_epi, marker=geometry.markers["EPI"][0])
 
     alpha_base = pulse.Variable(
-        dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(1e6)), "Pa / m",
+        dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(1e6)),
+        "Pa / m",
     )
     robin_base = pulse.RobinBC(value=alpha_base, marker=geometry.markers["BASE"][0])
 
@@ -306,7 +313,10 @@ def setup_problem(geometry, f0, s0, material_params):
 
 material_params = pulse.HolzapfelOgden.transversely_isotropic_parameters()
 model, robin, dirichlet_bc, Ta = setup_problem(
-    geometry=geometry, f0=geo.f0, s0=geo.s0, material_params=material_params,
+    geometry=geometry,
+    f0=geo.f0,
+    s0=geo.s0,
+    material_params=material_params,
 )
 
 # ## Prestressing (Inverse Elasticity)
@@ -316,7 +326,9 @@ model, robin, dirichlet_bc, Ta = setup_problem(
 p_LV_ED = mmHg_to_kPa(history["p_LV"][-1])
 p_RV_ED = mmHg_to_kPa(history["p_RV"][-1])
 
-logger.info(f"Target ED Pressures from 0D: p_LV={p_LV_ED:.2f} kPa, p_RV={p_RV_ED:.2f} kPa")
+logger.info(
+    f"Target ED Pressures from 0D: p_LV={p_LV_ED:.2f} kPa, p_RV={p_RV_ED:.2f} kPa",
+)
 
 # Since we want to apply pressures on both ventricles, we create two Neumann BCs.
 
@@ -326,30 +338,43 @@ neumann_lv = pulse.NeumannBC(traction=pressure_lv, marker=geometry.markers["LV"]
 neumann_rv = pulse.NeumannBC(traction=pressure_rv, marker=geometry.markers["RV"][0])
 
 bcs_prestress = pulse.BoundaryConditions(
-    robin=robin, dirichlet=(dirichlet_bc,), neumann=(neumann_lv, neumann_rv),
+    robin=robin,
+    dirichlet=(dirichlet_bc,),
+    neumann=(neumann_lv, neumann_rv),
 )
 
 # We store the prestressed displacement in a file to avoid recomputing it.
 
 prestress_fname = outdir / "prestress_biv_inverse.bp"
 if not prestress_fname.exists():
-    logger.info(f"Start prestressing... Targets: p_LV={p_LV_ED:.2f} kPa, p_RV={p_RV_ED:.2f} kPa")
+    logger.info(
+        f"Start prestressing... Targets: p_LV={p_LV_ED:.2f} kPa, p_RV={p_RV_ED:.2f} kPa",
+    )
     prestress_problem = pulse.unloading.PrestressProblem(
         geometry=geometry,
         model=model,
         bcs=bcs_prestress,
         parameters={"u_space": "P_2", "mesh_unit": mesh_unit},
         targets=[
-            pulse.unloading.TargetPressure(traction=pressure_lv, target=p_LV_ED, name="LV"),
-            pulse.unloading.TargetPressure(traction=pressure_rv, target=p_RV_ED, name="RV"),
+            pulse.unloading.TargetPressure(
+                traction=pressure_lv, target=p_LV_ED, name="LV",
+            ),
+            pulse.unloading.TargetPressure(
+                traction=pressure_rv, target=p_RV_ED, name="RV",
+            ),
         ],
         ramp_steps=20,
     )
 
     u_pre = prestress_problem.unload()
-    adios4dolfinx.write_function_on_input_mesh(prestress_fname, u_pre, time=0.0, name="u_pre")
+    io4dolfinx.write_function_on_input_mesh(
+        prestress_fname, u_pre, time=0.0, name="u_pre",
+    )
     with dolfinx.io.VTXWriter(
-        comm, outdir / "prestress_biv_backward.bp", [u_pre], engine="BP4",
+        comm,
+        outdir / "prestress_biv_backward.bp",
+        [u_pre],
+        engine="BP4",
     ) as vtx:
         vtx.write(0.0)
 
@@ -357,7 +382,7 @@ if not prestress_fname.exists():
 
 V = dolfinx.fem.functionspace(geometry.mesh, ("Lagrange", 2, (3,)))
 u_pre = dolfinx.fem.Function(V)
-adios4dolfinx.read_function(prestress_fname, u_pre, time=0.0, name="u_pre")
+io4dolfinx.read_function(prestress_fname, u_pre, time=0.0, name="u_pre")
 
 # We use the prestressed displacement to deform the mesh to the reference configuration.
 
@@ -367,10 +392,17 @@ geometry.deform(u_pre)
 # We now map the fiber fields to the reference configuration.
 
 logger.info("Mapping fibers to Reference Configuration...")
-f0_quad = pulse.utils.map_vector_field(f=geo.f0, u=u_pre, normalize=True, name="f0_unloaded")
-s0_quad = pulse.utils.map_vector_field(f=geo.s0, u=u_pre, normalize=True, name="s0_unloaded")
+f0_quad = pulse.utils.map_vector_field(
+    f=geo.f0, u=u_pre, normalize=True, name="f0_unloaded",
+)
+s0_quad = pulse.utils.map_vector_field(
+    f=geo.s0, u=u_pre, normalize=True, name="s0_unloaded",
+)
 f0_map = pulse.utils.map_vector_field(
-    geo.additional_data["f0_DG_1"], u=u_pre, normalize=True, name="f0",
+    geo.additional_data["f0_DG_1"],
+    u=u_pre,
+    normalize=True,
+    name="f0",
 )
 
 # Calculate unloaded volumes
@@ -381,13 +413,20 @@ logger.info(
     f"Unloaded volumes: LV={lvv_unloaded * volume2ml:.2f} mL, RV={rvv_unloaded * volume2ml:.2f} mL",
 )
 model, robin, dirichlet_bc, Ta = setup_problem(
-    geometry=geometry, f0=f0_quad, s0=s0_quad, material_params=material_params,
+    geometry=geometry,
+    f0=f0_quad,
+    s0=s0_quad,
+    material_params=material_params,
 )
 
 # Since we will be applying volume constraints, we define cavities for both ventricles.
 
-lv_volume = dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(lvv_unloaded))
-rv_volume = dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(rvv_unloaded))
+lv_volume = dolfinx.fem.Constant(
+    geometry.mesh, dolfinx.default_scalar_type(lvv_unloaded),
+)
+rv_volume = dolfinx.fem.Constant(
+    geometry.mesh, dolfinx.default_scalar_type(rvv_unloaded),
+)
 cavities = [
     pulse.problem.Cavity(marker="LV", volume=lv_volume),
     pulse.problem.Cavity(marker="RV", volume=rv_volume),
@@ -425,18 +464,23 @@ T = material_dg.sigma(F)
 
 fiber_stress = dolfinx.fem.Function(W, name="fiber_stress")
 fiber_stress_expr = dolfinx.fem.Expression(
-    ufl.inner(T * f_map, f_map), W.element.interpolation_points,
+    ufl.inner(T * f_map, f_map),
+    W.element.interpolation_points,
 )
 fiber_strain = dolfinx.fem.Function(W, name="fiber_strain")
 fiber_strain_expr = dolfinx.fem.Expression(
-    ufl.inner(E * f0_map, f0_map), W.element.interpolation_points,
+    ufl.inner(E * f0_map, f0_map),
+    W.element.interpolation_points,
 )
 
 
 # VTX Writers for visualization in ParaView
 
 vtx = dolfinx.io.VTXWriter(
-    geometry.mesh.comm, outdir / "displacement.bp", [problem.u], engine="BP4",
+    geometry.mesh.comm,
+    outdir / "displacement.bp",
+    [problem.u],
+    engine="BP4",
 )
 vtx_stress = dolfinx.io.VTXWriter(
     geometry.mesh.comm,
@@ -468,7 +512,9 @@ for i in range(ramp_steps):
     plv = problem.cavity_pressures[0].x.array[0] * 1e-3
     prv = problem.cavity_pressures[1].x.array[0] * 1e-3
     if comm.rank == 0:
-        logger.info(f"Inflation Step {i + 1}/{ramp_steps}: pLV={plv:.2f} kPa, pRV={prv:.2f} kPa")
+        logger.info(
+            f"Inflation Step {i + 1}/{ramp_steps}: pLV={plv:.2f} kPa, pRV={prv:.2f} kPa",
+        )
 
 
 vtx.write(0.0)
@@ -511,11 +557,14 @@ def p_BiV_func(V_LV, V_RV, t):
 
     # Only attempt to solve if there is a change in any of the targets
     if abs(dLV) > tol or abs(dRV) > tol or abs(dTa) > tol:
-
         while not converged and num_failures < 20:
             for i in range(num_steps):
-                lv_volume.value = old_lv_volume + (i + 1) * (new_value_LV - old_lv_it) / num_steps
-                rv_volume.value = old_rv_volume + (i + 1) * (new_value_RV - old_rv_it) / num_steps
+                lv_volume.value = (
+                    old_lv_volume + (i + 1) * (new_value_LV - old_lv_it) / num_steps
+                )
+                rv_volume.value = (
+                    old_rv_volume + (i + 1) * (new_value_RV - old_rv_it) / num_steps
+                )
                 Ta.assign(old_Ta + (i + 1) * dTa / num_steps)
                 try:
                     problem.solve()
@@ -549,15 +598,19 @@ def p_BiV_func(V_LV, V_RV, t):
     lv_p_kPa = problem.cavity_pressures[0].x.array[0] * 1e-3
     rv_p_kPa = problem.cavity_pressures[1].x.array[0] * 1e-3
 
-    return circulation.units.kPa_to_mmHg(lv_p_kPa), circulation.units.kPa_to_mmHg(rv_p_kPa)
+    return circulation.units.kPa_to_mmHg(lv_p_kPa), circulation.units.kPa_to_mmHg(
+        rv_p_kPa,
+    )
 
 
 # Write checkpoint of mesh meshtags, and functions for postprocessing
 
 filename = outdir / Path("function_checkpoint.bp")
 shutil.rmtree(filename, ignore_errors=True)
-adios4dolfinx.write_mesh(filename, geometry.mesh)
-adios4dolfinx.write_meshtags(filename, mesh=geometry.mesh, meshtags=geometry.facet_tags, meshtag_name="ffun")
+io4dolfinx.write_mesh(filename, geometry.mesh)
+io4dolfinx.write_meshtags(
+    filename, mesh=geometry.mesh, meshtags=geometry.facet_tags, meshtag_name="ffun",
+)
 
 output_file = outdir / "output.json"
 Ta_history: list[float] = []
@@ -571,9 +624,9 @@ def callback(model, i: int, t: float, save=True):
     if save:
         vtx.write(t)
         vtx_stress.write(t)
-        adios4dolfinx.write_function(filename, u=problem.u, name="displacement", time=t)
-        adios4dolfinx.write_function(filename, u=fiber_stress, name="fiber_stress", time=t)
-        adios4dolfinx.write_function(filename, u=fiber_strain, name="fiber_strain", time=t)
+        io4dolfinx.write_function(filename, u=problem.u, name="displacement", time=t)
+        io4dolfinx.write_function(filename, u=fiber_stress, name="fiber_stress", time=t)
+        io4dolfinx.write_function(filename, u=fiber_strain, name="fiber_strain", time=t)
         out = {k: v[: i + 1] for k, v in model.history.items()}
         out["Ta"] = Ta_history
         V_LV = model.history["V_LV"][: i + 1] - error_LV
@@ -593,7 +646,6 @@ def callback(model, i: int, t: float, save=True):
             ax5 = fig.add_subplot(gs[0, 3])
             ax6 = fig.add_subplot(gs[1, 3])
             ax7 = fig.add_subplot(gs[2, 2:])
-
 
             p_LV = model.history["p_LV"][: i + 1]
             p_RV = model.history["p_RV"][: i + 1]
@@ -641,7 +693,9 @@ logger.info("Starting coupled simulation...")
 num_beats = 8
 dt = 0.001
 end_time = 2 * dt if os.getenv("CI") else None
-circulation_model.solve(num_beats=num_beats, initial_state=circ_state, dt=dt, T=end_time)
+circulation_model.solve(
+    num_beats=num_beats, initial_state=circ_state, dt=dt, T=end_time,
+)
 logger.info("Simulation complete.")
 
 
