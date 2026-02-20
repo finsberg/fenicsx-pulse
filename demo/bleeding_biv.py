@@ -20,7 +20,7 @@ from matplotlib.gridspec import GridSpec
 import matplotlib.pyplot as plt
 import numpy as np
 import gotranx
-import adios4dolfinx
+import io4dolfinx
 import cardiac_geometries
 import cardiac_geometries.geometry
 import pulse
@@ -29,6 +29,7 @@ import pulse
 # Run first Zenker to get the correct heart rate for normal conditions
 def mmHg_to_kPa(x):
     return x * 0.133322
+
 
 def custom_json(obj):
     if isinstance(obj, np.float64):
@@ -141,8 +142,6 @@ def run_zenker(outdir: Path):
         history["before_index"] = before_index
         history["after_index"] = after_index
 
-
-
         Path(zenker_file).write_text(json.dumps(history, indent=4, default=custom_json))
 
     return json.loads(zenker_file.read_text())
@@ -202,7 +201,6 @@ def run_TorOrdLand(
                 monitor = mon(ti, states, p)
                 Tas[i] = monitor[Ta_index]
 
-
         nbeats = 10 if os.environ.get("CI") else 200
         times = np.arange(0, T, dt_cell)
         all_times = np.arange(0, T * nbeats, dt_cell)
@@ -261,7 +259,6 @@ def run_3D_model(
     mesh_unit: str = "m",
     volume2ml: float = 1000.0,
 ):
-
     geometry = pulse.HeartGeometry.from_cardiac_geometries(
         geo,
         metadata={"quadrature_degree": 6},
@@ -274,7 +271,8 @@ def run_3D_model(
     # We use an active stress approach with 30% transverse active stress (see {py:meth}`pulse.active_stress.transversely_active_stress`)
 
     Ta = pulse.Variable(
-        dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0)), "kPa",
+        dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0)),
+        "kPa",
     )
     active_model = pulse.ActiveStress(geo.f0, activation=Ta)
 
@@ -312,11 +310,15 @@ def run_3D_model(
     robin = [robin_epi, robin_epi_perp, robin_base]
 
     lvv_initial = comm.allreduce(geometry.volume("LV"), op=MPI.SUM)
-    lv_volume = dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(lvv_initial))
+    lv_volume = dolfinx.fem.Constant(
+        geometry.mesh, dolfinx.default_scalar_type(lvv_initial),
+    )
     lv_cavity = pulse.problem.Cavity(marker="LV", volume=lv_volume)
 
     rvv_initial = comm.allreduce(geometry.volume("RV"), op=MPI.SUM)
-    rv_volume = dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(rvv_initial))
+    rv_volume = dolfinx.fem.Constant(
+        geometry.mesh, dolfinx.default_scalar_type(rvv_initial),
+    )
     rv_cavity = pulse.problem.Cavity(marker="RV", volume=rv_volume)
 
     print("Initial volumes", lvv_initial * volume2ml, rvv_initial * volume2ml)
@@ -325,7 +327,11 @@ def run_3D_model(
     parameters = {"base_bc": pulse.problem.BaseBC.free, "mesh_unit": mesh_unit}
     bcs = pulse.BoundaryConditions(robin=robin)
     problem = pulse.problem.StaticProblem(
-        model=model, geometry=geometry, bcs=bcs, cavities=cavities, parameters=parameters,
+        model=model,
+        geometry=geometry,
+        bcs=bcs,
+        cavities=cavities,
+        parameters=parameters,
     )
 
     problem.solve()
@@ -339,7 +345,7 @@ def run_3D_model(
     vtx.write(0.0)
 
     filename = outdir / Path(f"function_checkpoint_{label}.bp")
-    adios4dolfinx.write_mesh(filename, geometry.mesh)
+    io4dolfinx.write_mesh(filename, geometry.mesh)
     output_file = outdir / f"output_{label}.json"
 
     Ta_history = []
@@ -348,9 +354,9 @@ def run_3D_model(
         Ta_history.append(get_activation(t))
 
         if save:
-            adios4dolfinx.write_function(filename, problem.u, time=t, name="displacement")
+            io4dolfinx.write_function(filename, problem.u, time=t, name="displacement")
             vtx.write(t)
-            out = {k: v[:i+1] for k, v in model.history.items()}
+            out = {k: v[: i + 1] for k, v in model.history.items()}
             out["Ta"] = Ta_history
             if comm.rank == 0:
                 output_file.write_text(json.dumps(out, indent=4, default=custom_json))
@@ -396,7 +402,9 @@ def run_3D_model(
     def p_BiV_func(V_LV, V_RV, t):
         print("Calculating pressure at time", t)
         value = get_activation(t)
-        print(f"Time{t} with activation: {value} and volumes: {V_LV} mL (LV) {V_RV} mL (RV)")
+        print(
+            f"Time{t} with activation: {value} and volumes: {V_LV} mL (LV) {V_RV} mL (RV)",
+        )
         old_Ta = Ta.value.value
         dTa = value - old_Ta
 
@@ -422,8 +430,12 @@ def run_3D_model(
                 Ta.assign(value)
                 problem.solve()
 
-        lv_pendo_mmHg = circulation.units.kPa_to_mmHg(problem.cavity_pressures[0].x.array[0] * 1e-3)
-        rv_pendo_mmHg = circulation.units.kPa_to_mmHg(problem.cavity_pressures[1].x.array[0] * 1e-3)
+        lv_pendo_mmHg = circulation.units.kPa_to_mmHg(
+            problem.cavity_pressures[0].x.array[0] * 1e-3,
+        )
+        rv_pendo_mmHg = circulation.units.kPa_to_mmHg(
+            problem.cavity_pressures[1].x.array[0] * 1e-3,
+        )
         print(f"Compute pressures: {lv_pendo_mmHg} mmHg (LV) {rv_pendo_mmHg} mmHg (RV)")
         return lv_pendo_mmHg, rv_pendo_mmHg
 
@@ -432,19 +444,23 @@ def run_3D_model(
     s = circulation.units.ureg("s")
     add_units = False
     lvv_init = (
-        geo.mesh.comm.allreduce(geometry.volume("LV", u=problem.u), op=MPI.SUM) * 1e6 * 1.0
+        geo.mesh.comm.allreduce(geometry.volume("LV", u=problem.u), op=MPI.SUM)
+        * 1e6
+        * 1.0
     )
     rvv_init = (
-        geo.mesh.comm.allreduce(geometry.volume("RV", u=problem.u), op=MPI.SUM) * 1e6 * 1.0
+        geo.mesh.comm.allreduce(geometry.volume("RV", u=problem.u), op=MPI.SUM)
+        * 1e6
+        * 1.0
     )
     print(f"Initial volume (LV): {lvv_init} mL and (RV): {rvv_init} mL")
     init_state = {
         "V_LV": lvv_initial * 1e6 * mL,
         "V_RV": rvv_initial * 1e6 * mL,
-        'p_AR_PUL': p_AR_PUL * mmHg,
-        'p_AR_SYS': p_AR_SYS * mmHg,
-        'p_VEN_PUL': p_VEN_PUL * mmHg,
-        'p_VEN_SYS': p_VEN_SYS * mmHg,
+        "p_AR_PUL": p_AR_PUL * mmHg,
+        "p_AR_SYS": p_AR_SYS * mmHg,
+        "p_VEN_PUL": p_VEN_PUL * mmHg,
+        "p_VEN_SYS": p_VEN_SYS * mmHg,
     }
 
     regazzoni_parmeters = circulation.regazzoni2020.Regazzoni2020.default_parameters()
@@ -475,7 +491,9 @@ def run_3D_model(
     )
     # Set end time for early stopping if running in CI
     end_time = 2 * dt if os.getenv("CI") else None
-    regazzoni.solve(num_beats=num_beats, initial_state=init_state, dt=dt, T=end_time) #, checkpoint=RR)
+    regazzoni.solve(
+        num_beats=num_beats, initial_state=init_state, dt=dt, T=end_time,
+    )  # , checkpoint=RR)
     regazzoni.print_info()
 
 
@@ -534,10 +552,20 @@ print(f"Pa: {Pa_after} mmHg, Pcvp: {Pcvp_after} mmHg")
 print(f"HR before: {HR_before}, HR after: {HR_after}")
 
 get_activation_before = run_TorOrdLand(
-    comm, outdir, HR_before, Ta_factor=1, label="before", dt=dt,
+    comm,
+    outdir,
+    HR_before,
+    Ta_factor=1,
+    label="before",
+    dt=dt,
 )
 get_activation_after = run_TorOrdLand(
-    comm, outdir, HR_after, Ta_factor=C_PRSW_factor, label="after", dt=dt,
+    comm,
+    outdir,
+    HR_after,
+    Ta_factor=C_PRSW_factor,
+    label="after",
+    dt=dt,
 )
 
 run_3D_model(
