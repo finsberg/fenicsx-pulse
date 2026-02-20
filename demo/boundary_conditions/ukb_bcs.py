@@ -23,7 +23,6 @@
 from pathlib import Path
 from mpi4py import MPI
 import dolfinx
-from dolfinx import log
 import cardiac_geometries
 import cardiac_geometries.geometry
 import pulse
@@ -191,8 +190,6 @@ problem = pulse.StaticProblem(
     geometry=geometry,
     bcs=bcs,
 )
-
-log.set_log_level(log.LogLevel.INFO)
 
 # ### Phase 1: Passive Inflation
 # We ramp up the pressure in both ventricles.

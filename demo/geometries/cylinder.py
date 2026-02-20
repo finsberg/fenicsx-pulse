@@ -51,12 +51,11 @@ import logging
 import circulation.bestel
 
 # %%
-from dolfinx import log
 import ufl
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.integrate import solve_ivp
-import adios4dolfinx
+import io4dolfinx
 import pulse
 import cardiac_geometries
 import cardiac_geometries.geometry
@@ -129,7 +128,9 @@ geo = cardiac_geometries.geometry.Geometry.from_folder(
 )
 
 # %%
-geometry = pulse.HeartGeometry.from_cardiac_geometries(geo, metadata={"quadrature_degree": 6})
+geometry = pulse.HeartGeometry.from_cardiac_geometries(
+    geo, metadata={"quadrature_degree": 6},
+)
 
 # %%
 try:
@@ -173,7 +174,9 @@ material = pulse.HolzapfelOgden(f0=geo.f0, s0=geo.s0, **material_params)  # type
 # $$
 
 # %%
-Ta = pulse.Variable(dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0)), "Pa")
+Ta = pulse.Variable(
+    dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0)), "Pa",
+)
 active_model = pulse.ActiveStress(geo.f0, activation=Ta)
 
 # %% [markdown]
@@ -219,7 +222,8 @@ robin = (
 
 # %%
 traction = pulse.Variable(
-    dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0)), "Pa",
+    dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0)),
+    "Pa",
 )
 neumann = (
     pulse.NeumannBC(traction=traction, marker=geometry.markers["INSIDE_CURVED"][0]),
@@ -231,6 +235,7 @@ neumann = (
 # To prevent rigid body motion in the z-direction and mimic the apical/basal constraints,
 # we fix the vertical displacement ($u_z = 0$) on the top and bottom faces.
 
+
 # %%
 def dirichlet_bc(
     V: dolfinx.fem.FunctionSpace,
@@ -240,7 +245,8 @@ def dirichlet_bc(
 
     # Locate facets on top and bottom
     geometry.mesh.topology.create_connectivity(
-        geometry.mesh.topology.dim - 1, geometry.mesh.topology.dim,
+        geometry.mesh.topology.dim - 1,
+        geometry.mesh.topology.dim,
     )
     facets_top = geometry.facet_tags.find(geometry.markers["TOP"][0])
     dofs_top = dolfinx.fem.locate_dofs_topological((V.sub(2), Vz), 2, facets_top)
@@ -258,6 +264,7 @@ def dirichlet_bc(
         dolfinx.fem.dirichletbc(u_fixed, dofs_bottom, V.sub(2)),
     ]
 
+
 # %% [markdown]
 # ## 4. Solving the Mechanics Problem
 #
@@ -269,12 +276,14 @@ parameters = {"mesh_unit": "m"}
 # %%
 bcs = pulse.BoundaryConditions(robin=robin, neumann=neumann, dirichlet=(dirichlet_bc,))
 problem = pulse.problem.StaticProblem(
-    model=model, geometry=geometry, bcs=bcs, parameters=parameters,
+    model=model,
+    geometry=geometry,
+    bcs=bcs,
+    parameters=parameters,
 )
 
 # %%
 # Initial solve to set up the system
-log.set_log_level(log.LogLevel.INFO)
 problem.solve()
 
 # %% [markdown]
@@ -303,7 +312,7 @@ res_p = solve_ivp(
     t_eval=times,
     method="Radau",
 )
-pressure_trace = res_p.y[0] # Pa
+pressure_trace = res_p.y[0]  # Pa
 
 # %%
 # Solve Activation ODE
@@ -315,7 +324,7 @@ res_a = solve_ivp(
     t_eval=times,
     method="Radau",
 )
-activation_trace = res_a.y[0] # Pa
+activation_trace = res_a.y[0]  # Pa
 
 # %%
 # Plot the input traces
@@ -334,19 +343,23 @@ fig.savefig(outdir / "pressure_activation.png")
 # %%
 # Prepare IO for displacement
 vtx = dolfinx.io.VTXWriter(
-    geometry.mesh.comm, f"{outdir}/displacement.bp", [problem.u], engine="BP4",
+    geometry.mesh.comm,
+    f"{outdir}/displacement.bp",
+    [problem.u],
+    engine="BP4",
 )
 vtx.write(0.0)
 
 # %%
 # Prepare IO for checkpointing (useful for restarts or advanced post-processing)
 filename = Path("function_checkpoint.bp")
-adios4dolfinx.write_mesh(filename, geometry.mesh)
+io4dolfinx.write_mesh(filename, geometry.mesh)
 
 # %% [markdown]
 # Setup for regional analysis
 # We define geometric locators to separate the "Curved" free wall from the "Flat" septum.
 # This allows us to compute regional stresses and strains.
+
 
 # %%
 def region_curved_locator(x):
@@ -362,19 +375,23 @@ def region_curved_locator(x):
         x[1] > -r_inner,
     )
 
+
 # %%
 def region_flat_locator(x):
     # Logic to identify the flat septum region
     return np.logical_and(
         np.logical_and(
             np.logical_and(
-                np.logical_and(x[0] > inner_flat_face_distance / 2, np.abs(x[2]) < 3 * height / 4),
+                np.logical_and(
+                    x[0] > inner_flat_face_distance / 2, np.abs(x[2]) < 3 * height / 4,
+                ),
                 np.abs(x[2]) > height / 4,
             ),
             x[1] < r_inner,
         ),
         x[1] > -r_inner,
     )
+
 
 # %%
 # Create tags for these regions for post-processing integration
@@ -441,7 +458,9 @@ dx_regions = ufl.Measure("dx", domain=geometry.mesh, subdomain_data=region_tags)
 W = dolfinx.fem.functionspace(geometry.mesh, ("DG", 1))
 F_expr = ufl.variable(ufl.grad(problem.u) + ufl.Identity(3))
 E_expr = 0.5 * (F_expr.T * F_expr - ufl.Identity(3))
-sigma_expr = material.sigma(F_expr) + active_model.S(F_expr.T*F_expr) # Total stress (Active + Passive) approximation
+sigma_expr = material.sigma(F_expr) + active_model.S(
+    F_expr.T * F_expr,
+)  # Total stress (Active + Passive) approximation
 
 # %%
 fiber_stress = dolfinx.fem.Function(W, name="fiber_stress")
@@ -477,18 +496,26 @@ vtx_stress_strain.write(0.0)
 
 # %%
 # Pre-assemble volume forms for averaging
-vol_form_flat = dolfinx.fem.form(dolfinx.fem.Constant(geometry.mesh, 1.0) * dx_regions(flat_marker))
-vol_form_curved = dolfinx.fem.form(dolfinx.fem.Constant(geometry.mesh, 1.0) * dx_regions(curved_marker))
+vol_form_flat = dolfinx.fem.form(
+    dolfinx.fem.Constant(geometry.mesh, 1.0) * dx_regions(flat_marker),
+)
+vol_form_curved = dolfinx.fem.form(
+    dolfinx.fem.Constant(geometry.mesh, 1.0) * dx_regions(curved_marker),
+)
 volume_flat = comm.allreduce(dolfinx.fem.assemble_scalar(vol_form_flat), op=MPI.SUM)
 volume_curved = comm.allreduce(dolfinx.fem.assemble_scalar(vol_form_curved), op=MPI.SUM)
 
 # %%
 # Initialize lists to store time histories
 results: dict[str, list[float]] = {
-    "fiber_stress_flat": [], "fiber_stress_curved": [],
-    "radial_stress_flat": [], "radial_stress_curved": [],
-    "fiber_strain_flat": [], "fiber_strain_curved": [],
-    "radial_strain_flat": [], "radial_strain_curved": [],
+    "fiber_stress_flat": [],
+    "fiber_stress_curved": [],
+    "radial_stress_flat": [],
+    "radial_stress_curved": [],
+    "fiber_strain_flat": [],
+    "fiber_strain_curved": [],
+    "radial_strain_flat": [],
+    "radial_strain_curved": [],
 }
 
 # %%
@@ -563,10 +590,10 @@ if comm.rank == 0 and not os.getenv("CI"):
     ax[1, 1].set_title("Radial Strain [-]")
 
     # Loading conditions for reference
-    ax[0, 2].plot(times, pressure_trace, 'k--')
+    ax[0, 2].plot(times, pressure_trace, "k--")
     ax[0, 2].set_title("Pressure Load [Pa]")
 
-    ax[1, 2].plot(times, activation_trace, 'r--')
+    ax[1, 2].plot(times, activation_trace, "r--")
     ax[1, 2].set_title("Activation [Pa]")
 
     for a in ax.flat:

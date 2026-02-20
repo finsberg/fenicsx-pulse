@@ -30,14 +30,11 @@
 
 from pathlib import Path
 from mpi4py import MPI
-from dolfinx import log
 import dolfinx
 import numpy as np
 import math
 import cardiac_geometries
 import pulse
-
-# log.set_log_level(log.LogLevel.INFO)
 
 # ## 1. Geometry and Fibers
 # We regenerate the mesh with the specific fiber angles required for Problem 3 ($+90^\circ$ to $-90^\circ$).

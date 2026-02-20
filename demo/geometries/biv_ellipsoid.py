@@ -35,15 +35,10 @@ from pathlib import Path
 from mpi4py import MPI
 import numpy as np
 import dolfinx
-from dolfinx import log
 import ldrb
 import cardiac_geometries
 import cardiac_geometries.geometry
 import pulse
-
-# We enable info logging to track solver progress.
-
-# log.set_log_level(log.LogLevel.INFO)
 
 # ## Geometry and Microstructure
 #
