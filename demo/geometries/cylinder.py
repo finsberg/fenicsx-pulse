@@ -51,7 +51,6 @@ import logging
 import circulation.bestel
 
 # %%
-from dolfinx import log
 import ufl
 import matplotlib.pyplot as plt
 import numpy as np
@@ -285,7 +284,6 @@ problem = pulse.problem.StaticProblem(
 
 # %%
 # Initial solve to set up the system
-log.set_log_level(log.LogLevel.INFO)
 problem.solve()
 
 # %% [markdown]
