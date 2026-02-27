@@ -29,7 +29,7 @@ Note that installing with `pip` requires [FEniCSx already installed](https://fen
 
 We also provide a pre-built docker image with FEniCSx and `fenicsx_pulse` installed. You pull this image using the command
 ```
-docker pull ghcr.io/finsberg/fenicsx-pulse:v0.5.1
+docker pull ghcr.io/finsberg/fenicsx-pulse:v0.5.2
 ```
 
 ## Getting started
