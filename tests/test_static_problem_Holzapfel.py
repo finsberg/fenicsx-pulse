@@ -67,7 +67,11 @@ def test_IncompressibleProblem_and_boundary_conditions(mesh):
 
     # With the HolzapfelOgden model the hydrostatic pressure
     # should equal the negative of the material parameter a
-    assert np.allclose(p.x.array, -material_params["a"].to_base_units())
+    # assert np.allclose(p.x.array, -material_params["a"].to_base_units())
+
+    # However when using the deviatoric strain only,
+    # the hydrostatic pressure should be zero
+    assert np.allclose(p.x.array, 0.0)
     # And with no external forces, there should be no displacement
     assert np.allclose(u.x.array, 0.0)
 
