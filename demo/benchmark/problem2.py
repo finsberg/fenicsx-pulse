@@ -24,7 +24,6 @@
 
 from pathlib import Path
 from mpi4py import MPI
-from dolfinx import log
 import logging
 import dolfinx
 import numpy as np
@@ -113,8 +112,6 @@ bcs = pulse.BoundaryConditions(neumann=(neumann,))
 problem = pulse.StaticProblem(
     model=model, geometry=geometry, bcs=bcs, parameters={"base_bc": pulse.BaseBC.fixed},
 )
-
-log.set_log_level(log.LogLevel.INFO)
 
 # ### Continuation Solver
 # We ramp the pressure up to 10 kPa. We use a custom continuation loop to handle the nonlinearity.

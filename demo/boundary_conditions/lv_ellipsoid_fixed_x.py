@@ -131,8 +131,6 @@ problem = pulse.StaticProblem(
     bcs=bcs,
 )
 
-log.set_log_level(log.LogLevel.INFO)
-
 # ### Phase 1: Passive Inflation
 
 vtx = dolfinx.io.VTXWriter(geometry.mesh.comm, outdir / "lv_displacement.bp", [problem.u], engine="BP4")

@@ -233,14 +233,14 @@ class HolzapfelOgden(HyperElasticMaterial):
                 )
 
             if exceptions.check_value_greater_than(b.value, 1e-10):
-                return (
-                    lambda I4: (a.to_base_units() / (2.0 * b.to_base_units()))
+                return lambda I4: (
+                    (a.to_base_units() / (2.0 * b.to_base_units()))
                     * heaviside(I4 - 1, use_heaviside=self.use_heaviside)
                     * (ufl.exp(b.to_base_units() * subplus(I4 - 1) ** 2) - 1.0)
                 )
             else:
-                return (
-                    lambda I4: (a.to_base_units() / 2.0)
+                return lambda I4: (
+                    (a.to_base_units() / 2.0)
                     * heaviside(I4 - 1, use_heaviside=self.use_heaviside)
                     * subplus(I4 - 1) ** 2
                 )

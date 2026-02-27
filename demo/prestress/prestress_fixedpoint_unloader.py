@@ -41,7 +41,7 @@ import logging
 import numpy as np
 import pulse
 import pulse.unloading
-import adios4dolfinx
+import io4dolfinx
 import cardiac_geometries
 import cardiac_geometries.geometry
 
@@ -86,7 +86,9 @@ geo = cardiac_geometries.geometry.Geometry.from_folder(
     folder=geodir,
 )
 
-geometry = pulse.HeartGeometry.from_cardiac_geometries(geo, metadata={"quadrature_degree": 6})
+geometry = pulse.HeartGeometry.from_cardiac_geometries(
+    geo, metadata={"quadrature_degree": 6},
+)
 
 # ## 2. Constitutive Model & Boundary Conditions
 #
@@ -100,7 +102,6 @@ geometry = pulse.HeartGeometry.from_cardiac_geometries(geo, metadata={"quadratur
 
 
 def setup_problem(geometry, f0, s0, n0, target_pressure=2000.0):
-
     material = pulse.material_models.Usyk(f0=f0, s0=s0, n0=n0)
     comp = pulse.compressibility.Compressible3(kappa=pulse.Variable(5e4, "Pa"))
 
@@ -123,7 +124,6 @@ def setup_problem(geometry, f0, s0, n0, target_pressure=2000.0):
     )
     robin_base = pulse.RobinBC(value=alpha_base, marker=geometry.markers["BASE"][0])
 
-
     # Endocardial Pressure
     neumann = pulse.NeumannBC(traction=pressure, marker=geometry.markers["ENDO"][0])
 
@@ -136,7 +136,9 @@ def setup_problem(geometry, f0, s0, n0, target_pressure=2000.0):
 model, bcs, pressure, target_pressure = setup_problem(geometry, geo.f0, geo.s0, geo.n0)
 
 # Define the loading target for the unloader
-target_pressure_obj = pulse.unloading.TargetPressure(traction=pressure, target=target_pressure)
+target_pressure_obj = pulse.unloading.TargetPressure(
+    traction=pressure, target=target_pressure,
+)
 
 # ## 3. Solving the Inverse Problem (Fixed Point Iteration)
 #
@@ -163,7 +165,7 @@ if not prestress_fname.exists():
     u_pre = prestress_problem.unload()
 
     # Save the result
-    adios4dolfinx.write_function_on_input_mesh(
+    io4dolfinx.write_function_on_input_mesh(
         prestress_fname,
         u_pre,
         time=0.0,
@@ -171,7 +173,10 @@ if not prestress_fname.exists():
     )
 
     with dolfinx.io.VTXWriter(
-        comm, outdir / "prestress_lv_backward.bp", [u_pre], engine="BP4",
+        comm,
+        outdir / "prestress_lv_backward.bp",
+        [u_pre],
+        engine="BP4",
     ) as vtx:
         vtx.write(0.0)
 
@@ -187,11 +192,15 @@ if not prestress_fname.exists():
         grid = pyvista.UnstructuredGrid(topology, cell_types, vtk_geometry)
 
         grid["u"] = u_pre.x.array.reshape((vtk_geometry.shape[0], 3))
-        actor_0 = p.add_mesh(grid, style="wireframe", color="k", label="Target (Loaded)")
+        actor_0 = p.add_mesh(
+            grid, style="wireframe", color="k", label="Target (Loaded)",
+        )
 
         # Warp by u_pre to show the recovered Reference (Unloaded) configuration
         warped = grid.warp_by_vector("u", factor=1.0)
-        actor_1 = p.add_mesh(warped, color="red", opacity=0.8, label="Reference (Unloaded)")
+        actor_1 = p.add_mesh(
+            warped, color="red", opacity=0.8, label="Reference (Unloaded)",
+        )
 
         p.add_legend()
         p.show_axes()
@@ -214,7 +223,7 @@ if not prestress_fname.exists():
 # Reload u_pre
 V = dolfinx.fem.functionspace(geometry.mesh, ("Lagrange", 2, (3,)))
 u_pre = dolfinx.fem.Function(V)
-adios4dolfinx.read_function(
+io4dolfinx.read_function(
     prestress_fname,
     u_pre,
     time=0.0,
@@ -231,7 +240,9 @@ s0 = pulse.utils.map_vector_field(f=geo.s0, u=u_pre, normalize=True, name="s0_un
 n0 = pulse.utils.map_vector_field(f=geo.n0, u=u_pre, normalize=True, name="n0_unloaded")
 
 # Setup Forward Problem on Reference Mesh
-model_unloaded, bcs_unloaded, pressure_unloaded, target_pressure_unloaded = setup_problem(geometry, f0, s0, n0)
+model_unloaded, bcs_unloaded, pressure_unloaded, target_pressure_unloaded = (
+    setup_problem(geometry, f0, s0, n0)
+)
 
 forward_problem = pulse.StaticProblem(
     model=model_unloaded,
@@ -242,8 +253,11 @@ forward_problem = pulse.StaticProblem(
 
 # Solve
 import shutil
+
 shutil.rmtree(outdir / "prestress_lv.bp", ignore_errors=True)
-vtx = dolfinx.io.VTXWriter(comm, outdir / "prestress_lv.bp", [forward_problem.u], engine="BP4")
+vtx = dolfinx.io.VTXWriter(
+    comm, outdir / "prestress_lv.bp", [forward_problem.u], engine="BP4",
+)
 
 print("\nSolving forward problem: Initial state (Reference)...")
 pressure_unloaded.assign(0.0)
@@ -262,7 +276,9 @@ for ramp in np.linspace(0.0, 1.0, ramp_steps):
 
 vtx.close()
 
-print("Done. You can now verify that the final geometry matches the original target geometry.")
+print(
+    "Done. You can now verify that the final geometry matches the original target geometry.",
+)
 
 # Visualization of Forward Result
 try:
