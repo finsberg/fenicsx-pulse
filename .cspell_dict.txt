@@ -10,6 +10,7 @@ Barnafi
 Bartolucci
 basix
 bcast
+bddc
 behaviour
 bestel
 Bestel
@@ -81,6 +82,7 @@ linalg
 linesearch
 lmbda
 Luca
+MATIS
 Matteo
 mechanicsproblem
 ment
@@ -134,6 +136,7 @@ Taras
 tomek
 Tomek
 TRAME
+unassembled
 ureg
 Usyk
 varepsilon

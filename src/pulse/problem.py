@@ -550,6 +550,28 @@ class StaticProblem:
                 bcs=bcs,
                 **kwargs,
             )
+
+            if kwargs["petsc_options"].get("pc_type") == "bddc":
+                # Create the unassembled MATIS matrix required by BDDC
+                # Note: problem.a is the compiled bilinear form of the Jacobian
+                from petsc4py import PETSc
+
+                J_form = dolfinx.fem.form(K)
+                A_is = dolfinx.fem.petsc.create_matrix(J_form, kind=PETSc.Mat.Type.IS)
+
+                # Define a custom Python callback to assemble the
+                # MATIS matrix at every Newton step
+                def compute_jacobian(snes, x, J, P):
+                    J.zeroEntries()
+                    dolfinx.fem.petsc.assemble_matrix(J, J_form, bcs=bcs)
+                    J.assemble()
+
+                # 4. Retrieve the SNES solver and swap both the matrix AND the callback
+                snes = self.problem.solver
+                snes.setJacobian(compute_jacobian, J=A_is, P=A_is)
+
+                # Apply options so PETSc registers the MATIS matrix before setup
+                snes.setFromOptions()
         else:
             petsc_options = self.parameters["petsc_options"]
             # Pop options that are not supported in older dolfinx versions
