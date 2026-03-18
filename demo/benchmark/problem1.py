@@ -27,7 +27,6 @@
 from mpi4py import MPI
 import numpy as np
 import dolfinx
-from dolfinx import log
 import pulse
 
 # ## 1. Geometry and Mesh
@@ -119,8 +118,6 @@ bcs = pulse.BoundaryConditions(dirichlet=(dirichlet_bc,), neumann=(neumann,))
 
 problem = pulse.StaticProblem(model=model, geometry=geo, bcs=bcs)
 
-log.set_log_level(log.LogLevel.INFO)
-
 target_pressure = 0.004
 steps = [0.0005, 0.001, 0.002, 0.003, 0.004]
 
@@ -128,8 +125,6 @@ for p in steps:
     print(f"Solving for pressure = {p} kPa")
     pressure.assign(p)
     problem.solve()
-
-log.set_log_level(log.LogLevel.WARNING)
 
 # ## 5. Post-processing
 #

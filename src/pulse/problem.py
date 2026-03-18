@@ -104,6 +104,7 @@ class StaticProblem:
 
         self._init_cavity_pressure_spaces()
         self._init_rigid_body()
+        self.update_fields()
 
     def _init_p_space(self):
         logger.debug("Initializing pressure function space...")
@@ -144,10 +145,11 @@ class StaticProblem:
             shape=(self.geometry.mesh.topology.dim,),
         )
         self.u_space = dolfinx.fem.functionspace(self.geometry.mesh, u_element)
-        self.u = self.Function(self.u_space)
-        self.u_old = self.Function(self.u_space)
+        self.u = self.Function(self.u_space, name="u")
+        self.u_old = self.Function(self.u_space, name="u_old")
         self.u_test = ufl.TestFunction(self.u_space)
         self.du = ufl.TrialFunction(self.u_space)
+        self.u_full = dolfinx.fem.Function(self.u_space, name="u_full")
 
     @property
     def is_incompressible(self):
@@ -256,15 +258,35 @@ class StaticProblem:
         forms = self._create_residual_form(form)
         return forms
 
+    # def _material_form(self, u: dolfinx.fem.Function, p: dolfinx.fem.Function):
+    #     logger.debug("Creating material form...")
+    #     F = ufl.grad(u) + ufl.Identity(3)
+
+    #     J = ufl.det(F)
+    #     var_C = ufl.grad(self.u_test).T * F + F.T * ufl.grad(self.u_test)
+    #     C = ufl.variable(F.T * F)
+
+    #     forms = self._empty_form()
+    #     forms[0] += ufl.inner(self.model.S(C), 0.5 * var_C) * self.geometry.dx
+
+    #     if self.is_incompressible:
+    #         forms[-1] += (J - 1.0) * self.p_test * self.geometry.dx
+
+    #     return forms
     def _material_form(self, u: dolfinx.fem.Function, p: dolfinx.fem.Function):
         logger.debug("Creating material form...")
-        F = ufl.grad(u) + ufl.Identity(3)
 
-        J = ufl.det(F)
-        var_C = ufl.grad(self.u_test).T * F + F.T * ufl.grad(self.u_test)
+        I = ufl.Identity(3)
+        F = I + ufl.grad(u)
+
         C = ufl.variable(F.T * F)
+        J = ufl.det(F)
+
+        # Automatic differentiation for the variation of C
+        var_C = ufl.derivative(C, u, self.u_test)
 
         forms = self._empty_form()
+        # Integrate over reference configuration dX = J_map * dx
         forms[0] += ufl.inner(self.model.S(C), 0.5 * var_C) * self.geometry.dx
 
         if self.is_incompressible:
@@ -313,7 +335,8 @@ class StaticProblem:
         if not self.bcs.neumann:
             return forms
         logger.debug("Creating Neumann boundary condition form...")
-        F = ufl.grad(u) + ufl.Identity(3)
+        I = ufl.Identity(3)
+        F = I + ufl.grad(u)
 
         N = self.geometry.facet_normal
         ds = self.geometry.ds
@@ -352,6 +375,7 @@ class StaticProblem:
             raise RuntimeError("Cavity pressures are only supported for HeartGeometry")
 
         V_u = self.geometry.volume_form(u)
+
         form = ufl.as_ufl(0.0)
 
         assert cavity_pressures is not None
@@ -806,7 +830,7 @@ class DynamicProblem(StaticProblem):
         """Update old values of displacement, velocity
         and acceleration
         """
-
+        super().update_fields()
         u = self.u.x.array.copy()
         u_old = self.u_old.x.array.copy()
         v_old = self.v_old.x.array.copy()

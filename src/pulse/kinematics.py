@@ -2,6 +2,44 @@ import dolfinx
 import ufl
 
 
+def Fdev(F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
+    """Deviatoric part of the deformation gradient.
+
+    Parameters
+    ----------
+    F : ufl.core.expr.Expr
+        Deformation gradient
+
+    Returns
+    -------
+    ufl.core.expr.Expr
+        Deviatoric part of the deformation gradient
+    """
+    J = ufl.det(F)
+    dim = F.ufl_shape[0]
+    Fdev = J ** (-1.0 / dim) * F
+    return Fdev
+
+
+def Cdev(C: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
+    """Deviatoric part of the right Cauchy-Green deformation tensor.
+
+    Parameters
+    ----------
+    C : ufl.core.expr.Expr
+        Right Cauchy-Green deformation tensor
+
+    Returns
+    -------
+    ufl.core.expr.Expr
+        Deviatoric part of the right Cauchy-Green deformation tensor
+    """
+    J = ufl.sqrt(ufl.det(C))
+    dim = C.ufl_shape[0]
+    Cdev = J ** (-2.0 / dim) * C
+    return Cdev
+
+
 # Second order identity tensor
 def SecondOrderIdentity(F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
     """Return identity with same dimension as input"""

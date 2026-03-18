@@ -24,7 +24,6 @@
 
 from pathlib import Path
 from mpi4py import MPI
-from dolfinx import log
 import logging
 import dolfinx
 import numpy as np
@@ -33,6 +32,7 @@ import cardiac_geometries
 import pulse
 
 logging.basicConfig(level=logging.INFO)
+logging.getLogger("scifem").setLevel(logging.WARNING)
 
 # ## 1. Geometry
 #
@@ -66,6 +66,7 @@ geo = cardiac_geometries.geometry.Geometry.from_folder(
 )
 
 # We convert to `pulse.Geometry`. We assume the mesh units are mm (consistent with parameters).
+
 geometry = pulse.Geometry.from_cardiac_geometries(geo, metadata={"quadrature_degree": 4})
 
 # ## 2. Constitutive Model
@@ -74,6 +75,7 @@ geometry = pulse.Geometry.from_cardiac_geometries(geo, metadata={"quadrature_deg
 # By setting $b_f = b_t = b_{fs} = 1.0$, the exponent $Q$ becomes $Q = (E_{11}^2 + E_{22}^2 + E_{33}^2 + 2E_{12}^2 + \dots) = \text{tr}(\mathbf{E}^2)$, making the model isotropic.
 # For an isotropic material, the fiber direction vectors don't affect the energy (as b parameters are equal),
 # but the class requires them. We can use dummy fields or the ones from the mesh.
+
 material = pulse.Guccione(
     C=pulse.Variable(dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(10.0)), "kPa"),
     bf=pulse.Variable(dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(1.0)), "dimensionless"),
@@ -110,8 +112,6 @@ bcs = pulse.BoundaryConditions(neumann=(neumann,))
 problem = pulse.StaticProblem(
     model=model, geometry=geometry, bcs=bcs, parameters={"base_bc": pulse.BaseBC.fixed},
 )
-
-log.set_log_level(log.LogLevel.INFO)
 
 # ### Continuation Solver
 # We ramp the pressure up to 10 kPa. We use a custom continuation loop to handle the nonlinearity.

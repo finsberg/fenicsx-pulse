@@ -54,7 +54,7 @@ from matplotlib.gridspec import GridSpec
 import matplotlib.pyplot as plt
 import numpy as np
 import gotranx
-import adios4dolfinx
+import io4dolfinx
 import pulse
 import cardiac_geometries
 import cardiac_geometries.geometry
@@ -62,6 +62,8 @@ import cardiac_geometries.geometry
 # Next we set up the logging and the MPI communicator
 
 circulation.log.setup_logging(logging.INFO)
+logging.getLogger("scifem").setLevel(logging.WARNING)
+logger = logging.getLogger("pulse")
 comm = MPI.COMM_WORLD
 
 # ## 1. Geometry Generation
@@ -97,7 +99,9 @@ geo = cardiac_geometries.geometry.Geometry.from_folder(
 
 # Next we transform the geometry to a `HeartGeometry` object
 
-geometry = pulse.HeartGeometry.from_cardiac_geometries(geo, metadata={"quadrature_degree": 6})
+geometry = pulse.HeartGeometry.from_cardiac_geometries(
+    geo, metadata={"quadrature_degree": 6},
+)
 
 # ## 2. Constitutive Model
 #
@@ -108,7 +112,9 @@ material = pulse.HolzapfelOgden(f0=geo.f0, s0=geo.s0, **material_params)  # type
 
 # We use an active stress approach with 30% transverse active stress (see {py:meth}`pulse.active_stress.transversely_active_stress`)
 
-Ta = pulse.Variable(dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0)), "kPa")
+Ta = pulse.Variable(
+    dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0)), "kPa",
+)
 active_model = pulse.ActiveStress(geo.f0, activation=Ta)
 
 # a compressible material model
@@ -131,11 +137,13 @@ model = pulse.CardiacModel(
 # Instead of applying a known pressure (Neumann BC), we enforce the cavity volume to match a target value provided by the circulation model. The Lagrange multiplier associated with this constraint is the cavity pressure.
 
 alpha_epi = pulse.Variable(
-    dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(1e8)), "Pa / m",
+    dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(1e8)),
+    "Pa / m",
 )
 robin_epi = pulse.RobinBC(value=alpha_epi, marker=geometry.markers["EPI"][0])
 alpha_base = pulse.Variable(
-    dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(1e5)), "Pa / m",
+    dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(1e5)),
+    "Pa / m",
 )
 robin_base = pulse.RobinBC(value=alpha_base, marker=geometry.markers["BASE"][0])
 
@@ -143,7 +151,9 @@ robin_base = pulse.RobinBC(value=alpha_base, marker=geometry.markers["BASE"][0])
 # To do this we create a `Cavity` object with a given volume, and specify which marker to use for the boundary condition.
 
 initial_volume = geo.mesh.comm.allreduce(geometry.volume("ENDO"), op=MPI.SUM)
-Volume = dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(initial_volume))
+Volume = dolfinx.fem.Constant(
+    geometry.mesh, dolfinx.default_scalar_type(initial_volume),
+)
 cavity = pulse.problem.Cavity(marker="ENDO", volume=Volume)
 
 # We also specify the parameters for the problem and say that we want the base to move freely and that the units of the mesh is meters
@@ -153,13 +163,15 @@ parameters = {"base_bc": pulse.problem.BaseBC.free, "mesh_unit": "m"}
 # Next we set up the problem.
 outdir = Path("lv_ellipsoid_time_dependent_circulation_static")
 bcs = pulse.BoundaryConditions(robin=(robin_epi, robin_base))
-problem = pulse.problem.StaticProblem(model=model, geometry=geometry, bcs=bcs, cavities=[cavity], parameters=parameters)
+problem = pulse.problem.StaticProblem(
+    model=model, geometry=geometry, bcs=bcs, cavities=[cavity], parameters=parameters,
+)
 
 outdir.mkdir(exist_ok=True)
 
 # Now we can solve the problem
 
-log.set_log_level(log.LogLevel.INFO)
+# log.set_log_level(log.LogLevel.INFO)
 problem.solve()
 
 # We also use the time step from the problem to set the time step for the 0D cell model
@@ -175,7 +187,9 @@ if comm.rank == 0:
     ode = gotranx.load_ode("TorOrdLand.ode")
     ode = ode.remove_singularities()
     code = gotranx.cli.gotran2py.get_code(
-        ode, scheme=[gotranx.schemes.Scheme.generalized_rush_larsen], shape=gotranx.codegen.base.Shape.single,
+        ode,
+        scheme=[gotranx.schemes.Scheme.generalized_rush_larsen],
+        shape=gotranx.codegen.base.Shape.single,
     )
     Path("TorOrdLand.py").write_text(code)
 comm.barrier()
@@ -187,6 +201,7 @@ y = TorOrdLand_model["init_state_values"]()
 # Get initial parameter values
 p = TorOrdLand_model["init_parameter_values"]()
 import numba
+
 fgr = numba.njit(TorOrdLand_model["generalized_rush_larsen"])
 mon = numba.njit(TorOrdLand_model["monitor_values"])
 V_index = TorOrdLand_model["state_index"]("v")
@@ -211,7 +226,6 @@ if not state_file.is_file():
             monitor = mon(ti, states, p)
             Tas[i] = monitor[Ta_index]
 
-
     # Time in milliseconds
 
     nbeats = 200
@@ -222,21 +236,21 @@ if not state_file.is_file():
     Vs = np.zeros(len(times) * nbeats)
     Cais = np.zeros(len(times) * nbeats)
     Tas = np.zeros(len(times) * nbeats)
+    logger.info(f"Starting to solve {nbeats} beats of the cell model")
     for beat in range(nbeats):
-        print(f"Solving beat {beat}")
+        logger.debug(f"Solving beat {beat}")
         V_tmp = Vs[beat * len(times) : (beat + 1) * len(times)]
         Cai_tmp = Cais[beat * len(times) : (beat + 1) * len(times)]
         Ta_tmp = Tas[beat * len(times) : (beat + 1) * len(times)]
         solve_beat(times, y, dt_cell, p, V_index, Ca_index, V_tmp, Cai_tmp, Ta_tmp)
 
-
     fig, ax = plt.subplots(3, 2, sharex="col", sharey="row", figsize=(10, 10))
     ax[0, 0].plot(all_times, Vs)
     ax[1, 0].plot(all_times, Cais)
     ax[2, 0].plot(all_times, Tas)
-    ax[0, 1].plot(times, Vs[-len(times):])
-    ax[1, 1].plot(times, Cais[-len(times):])
-    ax[2, 1].plot(times, Tas[-len(times):])
+    ax[0, 1].plot(times, Vs[-len(times) :])
+    ax[1, 1].plot(times, Cais[-len(times) :])
+    ax[2, 1].plot(times, Tas[-len(times) :])
     ax[0, 0].set_ylabel("V")
     ax[1, 0].set_ylabel("Cai")
     ax[2, 0].set_ylabel("Ta")
@@ -283,21 +297,24 @@ def get_activation(t: float):
 
 # Next we will save the displacement of the LV to a file
 
-vtx = dolfinx.io.VTXWriter(geometry.mesh.comm, f"{outdir}/displacement.bp", [problem.u], engine="BP4")
+vtx = dolfinx.io.VTXWriter(
+    geometry.mesh.comm, f"{outdir}/displacement.bp", [problem.u], engine="BP4",
+)
 vtx.write(0.0)
 
-# Here we also use [`adios4dolfinx`](https://jsdokken.com/adios4dolfinx/README.html) to save the displacement over at different time steps. Currently it is not a straight forward way to save functions and to later load them in a time dependent simulation in FEniCSx. However `adios4dolfinx` allows us to save the function to a file and later load it in a time dependent simulation. We will first need to save the mesh to the same file.
+# Here we also use [`io4dolfinx`](https://jsdokken.com/io4dolfinx/README.html) to save the displacement over at different time steps. Currently it is not a straight forward way to save functions and to later load them in a time dependent simulation in FEniCSx. However `io4dolfinx` allows us to save the function to a file and later load it in a time dependent simulation. We will first need to save the mesh to the same file.
 
 filename = Path("function_checkpoint.bp")
-adios4dolfinx.write_mesh(filename, geometry.mesh)
+io4dolfinx.write_mesh(filename, geometry.mesh)
 
 Ta_history = []
 # Next we set up the callback function that will be called at each time step. Here we save the displacement of the LV, the pressure volume loop, and the active tension, and we also plot the pressure volume loop at each time step.
 
+
 def callback(model, i: int, t: float, save=True):
     Ta_history.append(get_activation(t))
     if save:
-        adios4dolfinx.write_function(filename, problem.u, time=t, name="displacement")
+        io4dolfinx.write_function(filename, problem.u, time=t, name="displacement")
         vtx.write(t)
 
         if comm.rank == 0:
@@ -307,21 +324,21 @@ def callback(model, i: int, t: float, save=True):
             ax2 = fig.add_subplot(gs[0, 1])
             ax3 = fig.add_subplot(gs[1, 1])
             ax4 = fig.add_subplot(gs[2, 1])
-            ax1.plot(model.history["V_LV"][:i+1], model.history["p_LV"][:i+1])
+            ax1.plot(model.history["V_LV"][: i + 1], model.history["p_LV"][: i + 1])
             ax1.set_xlabel("V [mL]")
             ax1.set_ylabel("p [mmHg]")
 
-            ax2.plot(model.history["time"][:i+1], model.history["p_LV"][:i+1])
+            ax2.plot(model.history["time"][: i + 1], model.history["p_LV"][: i + 1])
             ax2.set_ylabel("p [mmHg]")
-            ax3.plot(model.history["time"][:i+1], model.history["V_LV"][:i+1])
+            ax3.plot(model.history["time"][: i + 1], model.history["V_LV"][: i + 1])
             ax3.set_ylabel("V [mL]")
-            ax4.plot(model.history["time"][:i+1], Ta_history[:i+1])
+            ax4.plot(model.history["time"][: i + 1], Ta_history[: i + 1])
             ax4.set_ylabel("Ta [kPa]")
 
             for axi in [ax2, ax3, ax4]:
                 axi.set_xlabel("Time [s]")
 
-            print(f"Saving figure to {outdir / 'pv_loop_incremental.png'}")
+            logger.debug(f"Saving figure to {outdir / 'pv_loop_incremental.png'}")
             fig.savefig(outdir / "pv_loop_incremental.png")
             plt.close(fig)
             # fig, ax = plt.subplots(4, 1)
@@ -338,7 +355,6 @@ def callback(model, i: int, t: float, save=True):
             # plt.close(fig)
 
 
-
 # ## 5. Coupling Function: 0D $\rightarrow$ 3D
 #
 # This function defines the interface between the circulation loop and the 3D model.
@@ -348,10 +364,11 @@ def callback(model, i: int, t: float, save=True):
 # 3.  **Solve 3D**: We update the `Volume` constant in the `StaticProblem` and the activation `Ta`. The solver then finds the displacement field $\mathbf{u}$ that satisfies the volume constraint.
 # 4.  **Output**: The Lagrange multiplier associated with the volume constraint is the cavity pressure. We return this pressure (converted to mmHg) to the circulation model.
 
+
 def p_LV_func(V_LV, t):
-    print("Calculating pressure at time", t)
+    logger.debug("Calculating pressure at time %f", t)
     value = get_activation(t)
-    print("Time", t, "Activation", value)
+    logger.debug("Time %f Activation %f", t, value)
     Ta.assign(value)
     Volume.value = V_LV * 1e-6
     problem.solve()
@@ -370,8 +387,10 @@ def p_LV_func(V_LV, t):
 mL = circulation.units.ureg("mL")
 add_units = False
 surface_area = geometry.surface_area("ENDO")
-initial_volume = geo.mesh.comm.allreduce(geometry.volume("ENDO", u=problem.u), op=MPI.SUM) * 1e6
-print(f"Initial volume: {initial_volume}")
+initial_volume = (
+    geo.mesh.comm.allreduce(geometry.volume("ENDO", u=problem.u), op=MPI.SUM) * 1e6
+)
+logger.info(f"Initial volume: {initial_volume}")
 init_state = {"V_LV": initial_volume * mL}
 
 
@@ -390,7 +409,7 @@ circulation_model_3D.solve(num_beats=5, initial_state=init_state, dt=dt, T=end_t
 circulation_model_3D.print_info()
 
 
-# ```{figure} ../_static/pv_loop_time_dependent_land_circ_lv.png
+# ```{figure} ../../_static/pv_loop_time_dependent_land_circ_lv.png
 # ---
 # name: pv_loop_time_dependent_land_circ_lv
 # ---
@@ -398,7 +417,7 @@ circulation_model_3D.print_info()
 # ```
 #
 # <video controls loop autoplay muted>
-#   <source src="../_static/time_dependent_land_circ_lv.mp4" type="video/mp4">
+#   <source src="../../_static/time_dependent_land_circ_lv.mp4" type="video/mp4">
 #   <p>Video showing the motion of the LV.</p>
 # </video>
 #

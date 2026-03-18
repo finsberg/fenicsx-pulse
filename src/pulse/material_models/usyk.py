@@ -66,7 +66,6 @@ class Usyk(HyperElasticMaterial):
     bfs: Variable = field(default_factory=lambda: Variable(12.0, "dimensionless"))
     bfn: Variable = field(default_factory=lambda: Variable(3.0, "dimensionless"))
     bsn: Variable = field(default_factory=lambda: Variable(3.0, "dimensionless"))
-    deviatoric: bool = True
 
     def __post_init__(self):
         # Check that all values are positive
@@ -141,9 +140,6 @@ class Usyk(HyperElasticMaterial):
 
     def _Q(self, C: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
         dim = C.ufl_shape[0]
-        if self.deviatoric:
-            Jm23 = pow(ufl.det(C), -1.0 / dim)
-            C *= Jm23  # Make C deviatoric
         E = 0.5 * (C - ufl.Identity(dim))
 
         bf = self.bf.to_base_units()

@@ -20,8 +20,10 @@ Bucelli
 Bursi
 caplog
 cardiomyocytes
+Cdev
 cellname
 Chiara
+CMAME
 cntl
 cofac
 cofnorm
@@ -35,11 +37,13 @@ dofmap
 dofs
 dolfinx
 dvlp
+elasto
 elastodynamics
 Elife
 Elsevier
 endo
 Erlicher
+Fdev
 Fedele
 fenics
 fenicsx
@@ -63,10 +67,12 @@ hstack
 hyperelastic
 icntl
 inproceedings
+interventricular
 Intracomm
 isclose
 isochoric
 isscalar
+issn
 Jakub
 Javiera
 Jilberto
@@ -75,11 +81,13 @@ Kasra
 Kluwer
 kwonlyargs
 Laszlo
+LDRB
 levelname
 libgl
 libxrender
 linalg
 linesearch
+linspace
 lmbda
 Luca
 MATIS
@@ -91,6 +99,7 @@ MICCAI
 Minchole
 Mises
 multiplicatively
+Multiscale
 myocyte
 nabla
 ndarray
@@ -124,6 +133,7 @@ rique
 rspa
 rtol
 scifem
+SELLIER
 Severi
 Shrier
 Silvano
@@ -137,6 +147,7 @@ tomek
 Tomek
 TRAME
 unassembled
+transmural
 ureg
 Usyk
 varepsilon

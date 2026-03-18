@@ -34,7 +34,6 @@
 from pathlib import Path
 from mpi4py import MPI
 import dolfinx
-from dolfinx import log
 import cardiac_geometries
 import cardiac_geometries.geometry
 import pulse
@@ -156,10 +155,6 @@ problem = pulse.StaticProblem(
     bcs=bcs,
     parameters={"base_bc": pulse.BaseBC.fixed},
 )
-
-# We initialize the solver log level to INFO to track convergence.
-
-log.set_log_level(log.LogLevel.INFO)
 
 # ### Phase 1: Passive Inflation
 # We first solve the passive mechanics by increasing the endocardial pressure.

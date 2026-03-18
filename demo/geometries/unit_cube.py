@@ -156,9 +156,7 @@ Ta.value = 2.0
 
 # Solve the nonlinear system of equations.
 
-log.set_log_level(log.LogLevel.INFO)
 problem.solve()
-log.set_log_level(log.LogLevel.WARNING)
 
 # ## Post-processing
 # The solution displacement field `u` is extracted from the problem.

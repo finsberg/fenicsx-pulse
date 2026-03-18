@@ -1,6 +1,5 @@
 import math
 
-import gmsh
 import numpy as np
 import pytest
 import ufl
@@ -112,7 +111,6 @@ def test_HeartGeometry_lv(tmp_path):
     # assert np.isclose(geo2.volume("ENDO"), endo_volume, atol=1e-7)
 
 
-@pytest.mark.skipif(gmsh.__version__ == "4.14.0", reason="GMSH 4.14.0 has a bug with fuse")
 def test_HeartGeometry_biv(tmp_path):
     geo1 = cardiac_geometries.mesh.biv_ellipsoid(
         outdir=tmp_path,

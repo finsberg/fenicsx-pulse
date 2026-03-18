@@ -72,13 +72,16 @@ class HyperElasticMaterial(Material, abc.ABC):
             The strain energy density
         """
 
-    def P(self, F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
+    def P(self, F: ufl.core.expr.Expr, dev: bool = True) -> ufl.core.expr.Expr:
         r"""First Piola-Kirchhoff stress tensor
 
         Parameters
         ----------
         F : ufl.core.expr.Expr
            The deformation gradient
+        dev : bool
+            Whether to compute the stress for the deviatoric part only
+            This should be True for compressible materials
 
         Returns
         -------
@@ -95,22 +98,34 @@ class HyperElasticMaterial(Material, abc.ABC):
             \mathbf{P} = \frac{\partial \Psi}{\partial \mathbf{F}}
         """
         C = F.T * F
-        return ufl.diff(self.strain_energy(C), F)
+        if dev:
+            Cdev = kinematics.Cdev(C)
+        else:
+            Cdev = C
+        return ufl.diff(self.strain_energy(Cdev), F)
 
     def sigma(self, F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
         return kinematics.InversePiolaTransform(self.P(F), F)
 
-    def S(self, C: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
+    def S(self, C: ufl.core.expr.Expr, dev: bool = True) -> ufl.core.expr.Expr:
         """Cauchy stress tensor for the hyperelastic material model.
 
         Parameters
         ----------
         C : ufl.core.expr.Expr
             The right Cauchy-Green deformation tensor
+        dev : bool
+            Whether to compute the stress for the deviatoric part only
+            This should be True for compressible materials
 
         Returns
         -------
         ufl.core.expr.Expr
             The Cauchy stress tensor
+
         """
-        return 2.0 * ufl.diff(self.strain_energy(C), C)
+        if dev:
+            Cdev = kinematics.Cdev(C)
+        else:
+            Cdev = C
+        return 2.0 * ufl.diff(self.strain_energy(Cdev), C)

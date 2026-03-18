@@ -35,15 +35,10 @@ from pathlib import Path
 from mpi4py import MPI
 import numpy as np
 import dolfinx
-from dolfinx import log
 import ldrb
 import cardiac_geometries
 import cardiac_geometries.geometry
 import pulse
-
-# We enable info logging to track solver progress.
-
-log.set_log_level(log.LogLevel.INFO)
 
 # ## Geometry and Microstructure
 #
@@ -90,7 +85,7 @@ if not geodir.exists():
     cardiac_geometries.fibers.utils.save_microstructure(
         mesh=geo.mesh,
         functions=[system.f0, system.s0, system.n0],
-        outdir=geodir,
+        path=geodir / "geometry.bp",
     )
 
 # Load the geometry with fibers
@@ -157,7 +152,6 @@ geometry = pulse.Geometry.from_cardiac_geometries(geo, metadata={"quadrature_deg
 # \Psi_{NH} = \frac{\mu}{2} (I_1 - 3)
 # $$
 #
-# `deviatoric=True` (default) means we use the isochoric invariant $\bar{I}_1 = J^{-2/3} I_1$.
 
 material = pulse.NeoHookean(mu=dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(15.0)))
 
