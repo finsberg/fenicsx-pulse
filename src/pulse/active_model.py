@@ -130,7 +130,7 @@ class ActiveModel(abc.ABC):
             Cdev = kinematics.Cdev(C)
         else:
             Cdev = C
-        return 2.0 * ufl.diff(self.strain_energy(Cdev), Cdev)
+        return 2.0 * ufl.diff(self.strain_energy(Cdev), C)
 
     def P(self, F: ufl.core.expr.Expr, dev: bool = False) -> ufl.core.expr.Expr:
         """First Piola-Kirchhoff stress tensor for the active model.
