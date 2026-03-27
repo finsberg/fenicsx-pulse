@@ -609,6 +609,10 @@ class StaticProblem:
             petsc_options.pop("snes_error_if_not_converged", None)
             petsc_options.pop("snes_type", None)
             petsc_options.pop("snes_linesearch_type", None)
+            petsc_options.pop("snes_atol", None)
+            petsc_options.pop("snes_rtol", None)
+            petsc_options.pop("snes_stol", None)
+            petsc_options.pop("snes_max_it", None)
 
             # Keep old behavior for older dolfinx versions
             self._solver = scifem.NewtonSolver(
