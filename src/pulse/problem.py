@@ -172,7 +172,7 @@ class StaticProblem:
                 "ksp_error_if_not_converged": True,
                 # "snes_monitor": None,
                 # "ksp_monitor": None,
-                "snes_linesearch_monitor": None,
+                # "snes_linesearch_monitor": None,
                 "snes_type": "newtonls",
                 "snes_atol": 1e-6,
                 "snes_rtol": 1e-10,
