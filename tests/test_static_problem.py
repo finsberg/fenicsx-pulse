@@ -150,7 +150,7 @@ def handle_control_lv(
         def gen(problem):
             dvlp = (target_lvp - initial_lvp) / 3.0
 
-            for lvp in np.arange(0.0, target_lvp + 1e-9, dvlp):
+            for lvp in np.arange(initial_lvp + dvlp, target_lvp + 1e-9, dvlp):
                 print(f"Solve Pressure: {lvp}")
                 traction.assign(lvp)
                 problem.solve()
@@ -166,7 +166,8 @@ def handle_control_lv(
         def gen(problem):
             dlv = (target_lvv - initial_volume) / 4.0
 
-            for lvv in np.arange(initial_volume, target_lvv + 1e-9, dlv):
+            for lvv in np.arange(initial_volume + dlv, target_lvv + 1e-9, dlv):
+                problem.u.x.array[:] = 0.00001
                 print("Solve Volume: ", lvv)
                 volume.value = lvv
                 problem.solve()
@@ -247,7 +248,7 @@ def test_static_problem_lv(
         },
         cavities=cavities,
     )
-    problem.solve()
+
     for lvp, lvv in gen(problem):
         print(f"LVP: {lvp}, LVV: {lvv}")
 

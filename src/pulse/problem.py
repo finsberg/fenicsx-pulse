@@ -176,12 +176,14 @@ class StaticProblem:
                 "snes_type": "newtonls",
                 "snes_atol": 1e-6,
                 "snes_rtol": 1e-10,
-                # "snes_stol": 1e-8,
+                "snes_stol": 1e-8,
                 "snes_max_it": 50,
+                # "snes_linesearch_maxstep": 50,
+                # "snes_view": None,
                 # "snes_type": "newtontr",
                 # "snes_type": "vinewtonrsls",
                 # "snes_linesearch_type": "none",
-                "snes_linesearch_type": "secant",
+                "snes_linesearch_type": "l2",
                 # "mat_mumps_icntl_24": 1,  # Zero pivot detection
                 # "mat_mumps_icntl_25": 0,  # Which nullspace to extract
                 # "mat_mumps_icntl_4": 1,  # Verbosity
