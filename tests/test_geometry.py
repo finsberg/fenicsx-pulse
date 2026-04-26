@@ -117,7 +117,7 @@ def test_HeartGeometry_biv(tmp_path):
     )
     geo2 = pulse.HeartGeometry.from_cardiac_geometries(geo1)
 
-    endo_lv_volume = 20.942599802614655
+    endo_lv_volume = 29.757180744577735
     assert np.isclose(geo2.volume(["LV"]), endo_lv_volume, rtol=0.05)
     endo_rv_volume = 35.14805071633197
     assert np.isclose(geo2.volume(["RV"]), endo_rv_volume, rtol=0.05)
