@@ -53,31 +53,10 @@ geo = cardiac_geometries.geometry.Geometry.from_folder(
 
 geo.mesh.geometry.x[:] *= 1.5e-2
 
-# Now we need to redefine the markers to have so that facets on the endo- and epicardium combine both
-# free wall and the septum.
-
-markers = {"ENDO_LV": [1, 2], "ENDO_RV": [2, 2], "BASE": [3, 2], "EPI": [4, 2]}
-marker_values = geo.ffun.values.copy()
-marker_values[np.isin(geo.ffun.indices, geo.ffun.find(geo.markers["LV_ENDO_FW"][0]))] = markers["ENDO_LV"][0]
-marker_values[np.isin(geo.ffun.indices, geo.ffun.find(geo.markers["LV_SEPTUM"][0]))] = markers["ENDO_LV"][0]
-marker_values[np.isin(geo.ffun.indices, geo.ffun.find(geo.markers["RV_ENDO_FW"][0]))] = markers["ENDO_RV"][0]
-marker_values[np.isin(geo.ffun.indices, geo.ffun.find(geo.markers["RV_SEPTUM"][0]))] = markers["ENDO_RV"][0]
-marker_values[np.isin(geo.ffun.indices, geo.ffun.find(geo.markers["BASE"][0]))] = markers["BASE"][0]
-marker_values[np.isin(geo.ffun.indices, geo.ffun.find(geo.markers["LV_EPI_FW"][0]))] = markers["EPI"][0]
-marker_values[np.isin(geo.ffun.indices, geo.ffun.find(geo.markers["RV_EPI_FW"][0]))] = markers["EPI"][0]
-geo.markers = markers
-ffun = dolfinx.mesh.meshtags(
-    geo.mesh,
-    geo.ffun.dim,
-    geo.ffun.indices,
-    marker_values,
-)
-geo.ffun = ffun
-
 # We create the geometry object and print the volumes of the LV and RV cavities
 
 geometry = pulse.HeartGeometry.from_cardiac_geometries(geo, metadata={"quadrature_degree": 6})
-print(geometry.volume("ENDO_LV") * 1e6, geometry.volume("ENDO_RV") * 1e6)
+print(geometry.volume("LV") * 1e6, geometry.volume("RV") * 1e6)
 
 material_params = pulse.HolzapfelOgden.orthotropic_parameters()
 material = pulse.HolzapfelOgden(f0=geo.f0, s0=geo.s0, **material_params)  # type: ignore
@@ -96,10 +75,10 @@ model = pulse.CardiacModel(
 # One difference with the LV example is that we now have two different pressure boundary conditions, one for the LV and one for the RV
 
 traction_lv = pulse.Variable(dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0)), "Pa")
-neumann_lv = pulse.NeumannBC(traction=traction_lv, marker=geometry.markers["ENDO_LV"][0])
+neumann_lv = pulse.NeumannBC(traction=traction_lv, marker=geometry.markers["LV"][0])
 
 traction_rv = pulse.Variable(dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0)), "Pa")
-neumann_rv = pulse.NeumannBC(traction=traction_rv, marker=geometry.markers["ENDO_RV"][0])
+neumann_rv = pulse.NeumannBC(traction=traction_rv, marker=geometry.markers["RV"][0])
 
 # Otherwize we have the same Robin boundary conditions as in the LV example
 
@@ -204,8 +183,8 @@ vtx = dolfinx.io.VTXWriter(geometry.mesh.comm, outdir / "displacement.bp", [prob
 vtx.write(0.0)
 
 volume_form = geometry.volume_form(u=problem.u)
-lv_volume_form = dolfinx.fem.form(volume_form * geometry.ds(geometry.markers["ENDO_LV"][0]))
-rv_volume_form = dolfinx.fem.form(volume_form * geometry.ds(geometry.markers["ENDO_RV"][0]))
+lv_volume_form = dolfinx.fem.form(volume_form * geometry.ds(geometry.markers["LV"][0]))
+rv_volume_form = dolfinx.fem.form(volume_form * geometry.ds(geometry.markers["RV"][0]))
 
 lv_volumes = []
 rv_volumes = []
