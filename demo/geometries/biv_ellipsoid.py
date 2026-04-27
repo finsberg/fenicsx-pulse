@@ -44,16 +44,6 @@ import pulse
 #
 # We generate the mesh and fibers if they don't already exist.
 #
-# ### 1. Mesh Generation
-# `cardiac_geometries.mesh.biv_ellipsoid` creates the mesh with markers for:
-# * **LV_ENDO_FW**: LV Endocardium Free Wall
-# * **LV_SEPTUM**: LV Septum
-# * **RV_ENDO_FW**: RV Endocardium Free Wall
-# * **RV_SEPTUM**: RV Septum
-# * **LV_EPI_FW**: LV Epicardium Free Wall
-# * **RV_EPI_FW**: RV Epicardium Free Wall
-# * **BASE**: Base
-#
 # ### 2. Fiber Generation (LDRB)
 # The LDRB algorithm solves Laplace equations to define transmural and apicobasal coordinates.
 # Based on these coordinates, it assigns fiber angles (e.g., +60 to -60 degrees transmurally).
@@ -61,24 +51,21 @@ import pulse
 outdir = Path("biv_ellipsoid")
 outdir.mkdir(parents=True, exist_ok=True)
 geodir = outdir / "geometry"
-
 if not geodir.exists():
     # Generate mesh
     geo = cardiac_geometries.mesh.biv_ellipsoid(outdir=geodir)
-
-    # Map mesh markers to the format expected by LDRB
-    markers = cardiac_geometries.mesh.transform_biv_markers(geo.markers)
 
     # Run LDRB algorithm
     system = ldrb.dolfinx_ldrb(
         mesh=geo.mesh,
         ffun=geo.ffun,
-        markers=markers,
+        markers=geo.markers,
         alpha_endo_lv=60,  # Fiber angle at LV endocardium
         alpha_epi_lv=-60,  # Fiber angle at LV epicardium
         beta_endo_lv=0,    # Sheet angle (0 for now)
         beta_epi_lv=0,
         fiber_space="P_2",
+        create_fibers=True,
     )
 
     # Save microstructure to XDMF/H5
@@ -92,49 +79,6 @@ if not geodir.exists():
 geo = cardiac_geometries.geometry.Geometry.from_folder(
     comm=MPI.COMM_WORLD,
     folder=geodir,
-)
-
-# ### Marker Consolidation
-# We group the detailed surface markers into broader categories for applying boundary conditions.
-#
-# * **ENDO_LV**: All LV endocardial surfaces (Free Wall + Septum).
-# * **ENDO_RV**: All RV endocardial surfaces (Free Wall + Septum).
-# * **EPI**: All epicardial surfaces.
-# * **BASE**: The base.
-
-markers = {"ENDO_LV": [1, 2], "ENDO_RV": [2, 2], "BASE": [3, 2], "EPI": [4, 2]}
-
-# Create a new marker array based on the old one
-marker_values = geo.ffun.values.copy()
-marker_indices = geo.ffun.indices
-
-# Helper to update markers
-def update_marker(old_name, new_id):
-    old_id = geo.markers[old_name][0]
-    marker_values[np.isin(marker_indices, geo.ffun.find(old_id))] = new_id
-
-# Update LV Endo
-update_marker("LV_ENDO_FW", markers["ENDO_LV"][0])
-update_marker("LV_SEPTUM", markers["ENDO_LV"][0])
-
-# Update RV Endo
-update_marker("RV_ENDO_FW", markers["ENDO_RV"][0])
-update_marker("RV_SEPTUM", markers["ENDO_RV"][0])
-
-# Update Base
-update_marker("BASE", markers["BASE"][0])
-
-# Update Epi
-update_marker("LV_EPI_FW", markers["EPI"][0])
-update_marker("RV_EPI_FW", markers["EPI"][0])
-
-# Assign back to geometry object
-geo.markers = markers
-geo.ffun = dolfinx.mesh.meshtags(
-    geo.mesh,
-    geo.ffun.dim,
-    geo.ffun.indices,
-    marker_values,
 )
 
 # Scale the geometry from mm to meters (approximate scale factor)
@@ -195,10 +139,10 @@ model = pulse.CardiacModel(
 # * $P_{RV}$ on $\Gamma_{endo, RV}$
 
 lvp = dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0))
-neumann_lv = pulse.NeumannBC(traction=lvp, marker=geometry.markers["ENDO_LV"][0])
+neumann_lv = pulse.NeumannBC(traction=lvp, marker=geometry.markers["LV"][0])
 
 rvp = dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0))
-neumann_rv = pulse.NeumannBC(traction=rvp, marker=geometry.markers["ENDO_RV"][0])
+neumann_rv = pulse.NeumannBC(traction=rvp, marker=geometry.markers["RV"][0])
 
 # ### Robin BC: Pericardial Constraint
 # We model the pericardium as a spring-like boundary condition on the epicardium.
