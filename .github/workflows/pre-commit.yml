@@ -13,6 +13,9 @@ jobs:
     steps:
       # This action sets the current path to the root of your github repo
       - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
 
       - name: Install pre-commit
         run: python3 -m pip install pre-commit
