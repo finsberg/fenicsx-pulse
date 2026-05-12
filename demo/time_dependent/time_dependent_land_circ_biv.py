@@ -244,7 +244,7 @@ Tas = [get_activation(ti) for ti in ts]
 filename = Path("function_checkpoint.bp")
 io4dolfinx.write_mesh(filename, geometry.mesh)
 
-Ta_history = []
+Ta_history: list[float] = []
 
 
 def callback(model, i: int, t: float, save=True):
