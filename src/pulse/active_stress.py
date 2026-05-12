@@ -145,6 +145,71 @@ class ActiveStress(ActiveModel):
         return "Ta (I4f - 1 + \u03b7 ((I1 - 3) - (I4f - 1)))"
 
 
+@dataclass(slots=True)
+class FrankStarlingActiveStress(ActiveStress):
+    """
+    Active stress model incorporating the Frank-Starling mechanism.
+    Multiplies the baseline time-dependent activation by a stretch-dependent factor.
+    """
+
+    amp_min: float = 0.0
+    amp_max: float = 1.0
+    lam_threslo: float = 0.85
+    lam_maxlo: float = 1.15
+
+    # Internal field to store the displacement.
+    # init=False ensures it is not requested in the class constructor.
+    _u: dolfinx.fem.Function | None = field(default=None, init=False, repr=False)
+
+    def register(self, u: dolfinx.fem.Function) -> None:
+        """
+        Register the displacement field.
+        This must be called before the active stress is evaluated.
+        """
+        self._u = u
+
+    def frank_starling_multiplier(self) -> ufl.core.expr.Expr:
+        """Computes the stretch-dependent multiplier g(lambda)."""
+        if self._u is None:
+            # return 1.0
+            raise ValueError("Displacement 'u' has not been registered. Call register(u) first.")
+
+        # Reconstruct kinematics from the registered displacement
+        dim = self._u.ufl_shape[0]
+        I = ufl.Identity(dim)
+        F = I + ufl.grad(self._u)
+        C = F.T * F
+
+        # Calculate fiber stretch: lambda_f = sqrt(f0 * C * f0)
+        I4 = ufl.inner(C * self.f0, self.f0)
+        lam = ufl.sqrt(I4)
+
+        # Slope for the linear ascending limb
+        slope = (self.amp_max - self.amp_min) / (self.lam_maxlo - self.lam_threslo)
+
+        # Piecewise linear Frank-Starling curve
+        g_lam = ufl.conditional(
+            ufl.le(lam, self.lam_threslo),
+            self.amp_min,
+            ufl.conditional(
+                ufl.le(lam, self.lam_maxlo),
+                self.amp_min + slope * (lam - self.lam_threslo),
+                self.amp_max,
+            ),
+        )
+        return g_lam
+
+    @property
+    def Ta(self) -> ufl.core.expr.Expr:
+        """
+        Overrides the base active tension property.
+        The parent class methods (like S and stress_tensor) will automatically
+        use this stretch-dependent tension.
+        """
+        Ta = self.activation.to_base_units()
+        return self.T_ref * Ta * self.frank_starling_multiplier()
+
+
 def transversely_active_stress_strain_energy(Ta, C, f0, eta=0.0):
     r"""
     Return active strain energy when activation is only
