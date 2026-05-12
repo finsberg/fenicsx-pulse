@@ -307,7 +307,7 @@ vtx.write(0.0)
 filename = Path("function_checkpoint.bp")
 io4dolfinx.write_mesh(filename, geometry.mesh)
 
-Ta_history = []
+Ta_history: list[float] = []
 # Next we set up the callback function that will be called at each time step. Here we save the displacement of the LV, the pressure volume loop, and the active tension, and we also plot the pressure volume loop at each time step.
 
 
