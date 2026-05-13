@@ -154,6 +154,9 @@ class ActiveModel(abc.ABC):
             Cdev = C
         return ufl.diff(self.strain_energy(Cdev), F)
 
+    def register(self, u: dolfinx.fem.Function) -> None:
+        pass
+
 
 class Passive(ActiveModel):
     """Active model with no active component.

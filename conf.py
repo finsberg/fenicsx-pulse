@@ -36,6 +36,7 @@ extensions = [
     "sphinx_codeautolink",
     "sphinx_multitoc_numbering",
 ]
+autodoc_typehints = "description"
 external_toc_exclude_missing = True
 external_toc_path = "_toc.yml"
 html_baseurl = ""
@@ -102,3 +103,10 @@ pygments_style = "sphinx"
 suppress_warnings = ["mystnb.unknown_mime_type", "bibtex.duplicate_citation"]
 use_jupyterbook_latex = True
 use_multitoc_numbering = True
+nitpick_ignore = [
+    ("py:class", "T"),
+    ("py:class", "pulse.problem.DynamicProblem.Function.T"),
+    ("py:class", "pulse.problem.StaticProblem.Function.T"),
+    ("py:class", "dolfinx.fem.function.Function"),
+    ("py:class", "dolfinx.fem.petsc.NonlinearProblem"),
+]

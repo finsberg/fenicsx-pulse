@@ -29,7 +29,7 @@ from . import (
     viscoelasticity,
 )
 from .active_model import ActiveModel, Passive
-from .active_stress import ActiveStress
+from .active_stress import ActiveStress, FrankStarlingActiveStress
 from .boundary_conditions import BoundaryConditions, NeumannBC, RobinBC
 from .cardiac_model import CardiacModel
 from .compressibility import (
@@ -106,4 +106,5 @@ __all__ = [
     "FixedPointUnloader",
     "PrestressProblem",
     "TargetPressure",
+    "FrankStarlingActiveStress",
 ]

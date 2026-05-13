@@ -150,6 +150,7 @@ class StaticProblem:
         self.u_test = ufl.TestFunction(self.u_space)
         self.du = ufl.TrialFunction(self.u_space)
         self.u_full = dolfinx.fem.Function(self.u_space, name="u_full")
+        self.model.active.register(self.u)
 
     @property
     def is_incompressible(self):

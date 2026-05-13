@@ -76,7 +76,7 @@ geometry
 
 
 problem
-----------------
+-------
 .. automodule:: pulse.problem
     :members:
     :inherited-members:
