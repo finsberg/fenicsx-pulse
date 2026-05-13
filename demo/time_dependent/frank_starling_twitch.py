@@ -1,5 +1,5 @@
 # %% [markdown]
-# # Tutorial: Isometric Contraction and the Frank-Starling Mechanism
+# # Isometric Contraction and the Frank-Starling Mechanism
 #
 # In cardiac mechanics, the **Frank-Starling mechanism** describes how the heart inherently generates a greater active contraction force when it is subjected to a larger initial stretch (preload). At the cellular level, stretching the tissue moves the sarcomeres into a more optimal overlap configuration, allowing more myosin-actin cross-bridges to form.
 #

@@ -145,66 +145,174 @@ class ActiveStress(ActiveModel):
         return "Ta (I4f - 1 + \u03b7 ((I1 - 3) - (I4f - 1)))"
 
 
+def compute_frank_starling_multiplier(
+    u: ufl.core.expr.Expr,
+    f0: ufl.core.expr.Expr,
+    amp_min: float,
+    amp_max: float,
+    stretch_threshold: float,
+    stretch_optimal: float,
+) -> ufl.core.expr.Expr:
+    r"""
+    Computes a stretch-dependent scalar multiplier for active tension to model
+    the Frank-Starling mechanism using a piecewise linear ascending limb.
+
+    Parameters
+    ----------
+    u : ufl.core.expr.Expr
+        The macroscopic displacement vector field.
+    f0 : ufl.core.expr.Expr
+        The reference fiber direction vector field.
+    amp_min : float
+        The minimum amplification factor (used for tissue at resting or compressed lengths).
+    amp_max : float
+        The maximum amplification factor (used for tissue at or beyond the optimal stretch length).
+    stretch_threshold : float
+        The stretch ratio below which the active force remains at its minimum.
+    stretch_optimal : float
+        The optimal stretch ratio where the active force reaches its maximum plateau.
+
+    Returns
+    -------
+    ufl.core.expr.Expr
+        A symbolic UFL expression representing the spatial multiplier field g(lambda).
+
+    Notes
+    -----
+    Mathematical Formulation:
+
+    Let the right Cauchy-Green deformation tensor be :math:`\mathbf{C} = \mathbf{F}^T \mathbf{F}`
+    where :math:`\mathbf{F} = \mathbf{I} + \nabla \mathbf{u}` is the deformation gradient.
+
+    The local fiber stretch :math:`\lambda` is computed as:
+
+    .. math::
+
+        \lambda = \sqrt{\mathbf{f}_0 \cdot (\mathbf{C} \mathbf{f}_0)}
+
+    The multiplier :math:`g(\lambda)` is defined as a piecewise function:
+
+    .. math::
+
+        g(\lambda) =
+        \begin{cases}
+            a_{\min} & \text{if } \lambda \le \lambda_{\text{threshold}} \\
+            a_{\min} + m (\lambda - \lambda_{\text{threshold}}) & \text{if }
+            \lambda_{\text{threshold}} < \lambda \le \lambda_{\text{opt}} \\
+            a_{\max} & \text{if } \lambda > \lambda_{\text{opt}}
+        \end{cases}
+
+    where the slope :math:`m` is calculated as:
+
+    .. math::
+
+        m = \frac{a_{\max} - a_{\min}}{\lambda_{\text{opt}} - \lambda_{\text{threshold}}}
+    """
+    dim = u.ufl_shape[0]
+    I = ufl.Identity(dim)
+    F = I + ufl.grad(u)
+    C = F.T * F
+
+    # Calculate fiber stretch: lambda_f = sqrt(f0 * C * f0)
+    I4 = ufl.inner(C * f0, f0)
+    lam = ufl.sqrt(I4)
+
+    # Slope for the linear ascending limb
+    slope = (amp_max - amp_min) / (stretch_optimal - stretch_threshold)
+
+    # Piecewise linear ascending limb using UFL conditionals
+    g_lam = ufl.conditional(
+        ufl.le(lam, stretch_threshold),
+        amp_min,
+        ufl.conditional(
+            ufl.le(lam, stretch_optimal),
+            amp_min + slope * (lam - stretch_threshold),
+            amp_max,
+        ),
+    )
+    return g_lam
+
+
 @dataclass(slots=True)
 class FrankStarlingActiveStress(ActiveStress):
     """
     Active stress model incorporating the Frank-Starling mechanism.
     Multiplies the baseline time-dependent activation by a stretch-dependent factor.
+
+    Parameters
+    ----------
+    amp_min : float, optional
+        The minimum amplification factor, by default 0.0.
+    amp_max : float, optional
+        The maximum amplification factor, by default 1.0.
+    stretch_threshold : float, optional
+        The stretch ratio below which the active force
+        remains at its minimum, by default 0.85.
+    stretch_optimal : float, optional
+        The optimal stretch ratio where the active force reaches
+        its maximum plateau, by default 1.15.
     """
 
     amp_min: float = 0.0
     amp_max: float = 1.0
-    lam_threslo: float = 0.85
-    lam_maxlo: float = 1.15
+    stretch_threshold: float = 0.85
+    stretch_optimal: float = 1.15
 
     # Internal field to store the displacement.
     # init=False ensures it is not requested in the class constructor.
     _u: dolfinx.fem.Function | None = field(default=None, init=False, repr=False)
 
-    def register(self, u: dolfinx.fem.Function) -> None:
+    def register(self, u: dolfinx.fem.Function):
         """
-        Register the displacement field.
-        This must be called before the active stress is evaluated.
+        Registers the displacement field into the material model.
+        This must be called before the active stress is evaluated so the model
+        can calculate the dynamic stretch.
+
+        Parameters
+        ----------
+        u : ufl.core.expr.Expr
+            The displacement vector field to register.
         """
         self._u = u
 
     def frank_starling_multiplier(self) -> ufl.core.expr.Expr:
-        """Computes the stretch-dependent multiplier g(lambda)."""
+        """
+        Class method wrapper that evaluates the standalone Frank-Starling multiplier
+        function using the registered displacement and material properties.
+
+        Returns
+        -------
+        ufl.core.expr.Expr
+            A symbolic UFL expression of the multiplier.
+
+        Raises
+        ------
+        ValueError
+            If the displacement field `u` has not been registered yet.
+        """
         if self._u is None:
-            # return 1.0
             raise ValueError("Displacement 'u' has not been registered. Call register(u) first.")
 
-        # Reconstruct kinematics from the registered displacement
-        dim = self._u.ufl_shape[0]
-        I = ufl.Identity(dim)
-        F = I + ufl.grad(self._u)
-        C = F.T * F
-
-        # Calculate fiber stretch: lambda_f = sqrt(f0 * C * f0)
-        I4 = ufl.inner(C * self.f0, self.f0)
-        lam = ufl.sqrt(I4)
-
-        # Slope for the linear ascending limb
-        slope = (self.amp_max - self.amp_min) / (self.lam_maxlo - self.lam_threslo)
-
-        # Piecewise linear Frank-Starling curve
-        g_lam = ufl.conditional(
-            ufl.le(lam, self.lam_threslo),
-            self.amp_min,
-            ufl.conditional(
-                ufl.le(lam, self.lam_maxlo),
-                self.amp_min + slope * (lam - self.lam_threslo),
-                self.amp_max,
-            ),
+        return compute_frank_starling_multiplier(
+            u=self._u,
+            f0=self.f0,
+            amp_min=self.amp_min,
+            amp_max=self.amp_max,
+            stretch_threshold=self.stretch_threshold,
+            stretch_optimal=self.stretch_optimal,
         )
-        return g_lam
 
     @property
     def Ta(self) -> ufl.core.expr.Expr:
         """
-        Overrides the base active tension property.
+        Overrides the base active tension property from `ActiveStress`.
         The parent class methods (like S and stress_tensor) will automatically
-        use this stretch-dependent tension.
+        use this dynamically scaled active tension.
+
+        Returns
+        -------
+        ufl.core.expr.Expr
+            The total active tension (baseline activation * multiplier)
         """
         Ta = self.activation.to_base_units()
         return self.T_ref * Ta * self.frank_starling_multiplier()

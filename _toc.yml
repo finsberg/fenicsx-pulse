@@ -32,6 +32,7 @@ parts:
       - file: "demo/time_dependent/time_dependent_land_circ_lv"
       - file: "demo/time_dependent/time_dependent_land_circ_biv"
       - file: "demo/time_dependent/complete_cycle"
+      - file: "demo/time_dependent/frank_starling_twitch"
     - file: "demo/postprocess_cycle"
 
   - caption: Community
