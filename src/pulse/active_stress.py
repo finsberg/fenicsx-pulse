@@ -332,7 +332,7 @@ def transversely_active_stress_strain_energy(Ta, C, f0, eta=0.0):
 
     Arguments
     ---------
-    Ta : dolfinx.fem.Function or dolfinx.femConstant
+    Ta : dolfinx.fem.Function or dolfinx.fem.Constant
         A scalar function representing the magnitude of the
         active stress in the reference configuration (first Piola)
     C : ufl.Form
@@ -364,7 +364,7 @@ def transversely_active_stress(Ta, f0, eta=0.0):
 
     Arguments
     ---------
-    Ta : dolfinx.fem.Function or dolfinx.femConstant
+    Ta : dolfinx.fem.Function or dolfinx.fem.Constant
         A scalar function representing the magnitude of the
         active stress in the reference configuration (first Piola)
     f0 : dolfinx.fem.Function
