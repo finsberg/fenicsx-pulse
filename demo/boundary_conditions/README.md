@@ -61,10 +61,14 @@ Neumann boundary conditions in this package primarily represent a
 **follower pressure load**. This means the force acts normal to the
 **deformed** surface area.
 
-The total force vector t on a surface element ds is given by:
-    t = -p * J * inv(F).T * N
-where p is the scalar traction magnitude (pressure), and the term
-J * inv(F).T * N represents the area-weighted normal in the current configuration.
+The total force vector $\mathbf{t}$ on a surface element $ds$ is given by:
+
+$$
+\mathbf{t} = -p \, J \, \mathbf{F}^{-T} \mathbf{N}
+$$
+
+where $p$ is the scalar traction magnitude (pressure), and the term
+$J \mathbf{F}^{-T} \mathbf{N}$ represents the area-weighted normal in the current configuration.
 
 ```python
 # Define the pressure magnitude (can be a Constant or Function).
@@ -85,8 +89,12 @@ or velocity (dashpot/damping). These are often used to model the pericardium
 or surrounding tissue support in cardiac mechanics.
 
 The general form for a spring is:
-    P * N + k * (u . n) * n = 0
-where k is the stiffness and n is the normal vector.
+
+$$
+\mathbf{P} \mathbf{N} + k (\mathbf{u} \cdot \mathbf{n}) \mathbf{n} = 0
+$$
+
+where $k$ is the stiffness and $\mathbf{n}$ is the normal vector.
 
 Configuration Options:
 - `damping`: If True, force is proportional to velocity (viscous damper).
@@ -148,7 +156,10 @@ cavity = pulse.problem.Cavity(marker="ENDO", volume=target_vol)
 ```
 
 Example usage in a problem (commented out):
+
+```python
 problem = pulse.StaticProblem(..., bcs=bcs, cavities=[cavity])
+```
 
 The solver will compute the pressure required to maintain `target_vol`.
 You can access this computed pressure via `problem.cavity_pressures`.

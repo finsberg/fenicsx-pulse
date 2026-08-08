@@ -68,13 +68,13 @@ geometry = pulse.HeartGeometry.from_cardiac_geometries(
     geo, metadata={"quadrature_degree": 6},
 )
 
-# Next we create the material object, and we will use the transversely isotropic version of the {py:class}`Holzapfel Ogden model <pulse.holzapfelogden.HolzapfelOgden>`
+# Next we create the material object, and we will use the transversely isotropic version of the {py:class}`Holzapfel Ogden model <pulse.material_models.holzapfelogden.HolzapfelOgden>`
 
 material_params = pulse.HolzapfelOgden.transversely_isotropic_parameters()
 # material_params = pulse.HolzapfelOgden.orthotropic_parameters()
 material = pulse.HolzapfelOgden(f0=geo.f0, s0=geo.s0, **material_params)  # type: ignore
 
-# We use an active stress approach with 30% transverse active stress (see {py:meth}`pulse.active_stress.transversely_active_stress`)
+# We use an active stress approach with 30% transverse active stress (see {py:func}`pulse.active_stress.transversely_active_stress`)
 
 Ta = pulse.Variable(
     dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0)), "kPa",
@@ -367,10 +367,10 @@ circulation_model_3D.print_info()
 #
 # <video width="720" controls loop autoplay muted>
 #   <source src="../../_static/time_dependent_land_circ_biv.mp4" type="video/mp4">
-#   <p>Video showing the motion of the LV.</p>
+#   <p>Video showing the motion of the BiV.</p>
 # </video>
 #
-# # References
+# ## References
 # ```{bibliography}
 # :filter: docname in docnames
-#
+# ```

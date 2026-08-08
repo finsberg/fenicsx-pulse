@@ -308,16 +308,16 @@ mesh_volume = comm.allreduce(dolfinx.fem.assemble_scalar(dolfinx.fem.form(dolfin
 comm.allreduce(dolfinx.fem.assemble_scalar(dolfinx.fem.form(J * geo.dx)), op=MPI.SUM) / mesh_volume
 
 # %% [markdown]
-# Here we first compiles form
+# Here we first compile the form
 # ```python
-# dolfinx.fem.form(J * ufl.dx)
+# dolfinx.fem.form(J * geo.dx)
 # ```
 # then we assemble the form
 # ```python
-# dolfinx.fem.assemble_scalar(dolfinx.fem.form(J * ufl.dx))
+# dolfinx.fem.assemble_scalar(dolfinx.fem.form(J * geo.dx))
 # ```
 # which will assemble the form locally on each process, and finally we perform an allreduce using the MPI communicator to sum up the contributions from all the processors.
-# Note that we also divide by the volume (which is 1.0 in the case of the Unit Cube) which is computed the same fashion.
+# Note that we also divide by the volume (which is 1.0 in the case of the Unit Cube) which is computed in the same fashion.
 
 # %% [markdown]
 # ### Strain Tensors
@@ -340,7 +340,7 @@ E = pulse.kinematics.GreenLagrangeStrain(F)
 Eff_ufl_expr = ufl.inner(E * f0, f0)
 
 # %% [markdown]
-# If we now would like to visualize this in Pyvista or Paraview then we need to first interpolate this into a function space. Since we have $\mathbf{u}$ being $\mathbb{P}_2$, i.e second order polynomial but only continous and not continously differentiable that dofs, the graient $\nabla \mathbf{u}$ belongs to a discountinous first order space. Since $\mathbf{E}$ is a function of the $\nabla \mathbf{u}^T \nabla \mathbf{u}$ a reasonable space would be a second order discontinous space
+# If we now would like to visualize this in Pyvista or Paraview then we need to first interpolate this into a function space. Since $\mathbf{u}$ is $\mathbb{P}_2$, i.e. a second order polynomial that is continuous but not continuously differentiable across elements, the gradient $\nabla \mathbf{u}$ belongs to a discontinuous first order space. Since $\mathbf{E}$ is a function of $\nabla \mathbf{u}^T \nabla \mathbf{u}$, a reasonable space would be a second order discontinuous space.
 
 # %%
 V_strain = dolfinx.fem.functionspace(mesh, ("DG", 2))
@@ -354,7 +354,7 @@ Eff_expr = dolfinx.fem.Expression(Eff_ufl_expr, V_strain.element.interpolation_p
 Eff.interpolate(Eff_expr)
 
 # %% [markdown]
-# We can now visualize the the strain
+# We can now visualize the strain
 
 # %%
 try:
@@ -470,4 +470,4 @@ else:
 #
 # ```{bibliography}
 # :filter: docname in docnames
-#
+# ```

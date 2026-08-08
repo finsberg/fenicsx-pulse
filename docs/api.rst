@@ -51,6 +51,7 @@ active_model
 
 compressibility
 ---------------
+
 .. automodule:: pulse.compressibility
     :members:
     :inherited-members:
@@ -64,12 +65,14 @@ viscoelasticity
 
 cardiac_model
 -------------
+
 .. automodule:: pulse.cardiac_model
     :members:
     :inherited-members:
 
 geometry
 --------
+
 .. automodule:: pulse.geometry
     :members:
     :inherited-members:
@@ -77,6 +80,7 @@ geometry
 
 problem
 -------
+
 .. automodule:: pulse.problem
     :members:
     :inherited-members:

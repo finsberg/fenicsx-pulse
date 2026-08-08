@@ -110,7 +110,7 @@ geometry = pulse.HeartGeometry.from_cardiac_geometries(
 material_params = pulse.HolzapfelOgden.transversely_isotropic_parameters()
 material = pulse.HolzapfelOgden(f0=geo.f0, s0=geo.s0, **material_params)  # type: ignore
 
-# We use an active stress approach with 30% transverse active stress (see {py:meth}`pulse.active_stress.transversely_active_stress`)
+# We use an active stress approach with 30% transverse active stress (see {py:func}`pulse.active_stress.transversely_active_stress`)
 
 Ta = pulse.Variable(
     dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0)), "kPa",
@@ -421,7 +421,7 @@ circulation_model_3D.print_info()
 #   <p>Video showing the motion of the LV.</p>
 # </video>
 #
-# # References
+# ## References
 # ```{bibliography}
 # :filter: docname in docnames
-#
+# ```

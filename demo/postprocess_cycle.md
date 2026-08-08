@@ -46,8 +46,8 @@ import cardiac_geometries
 comm = MPI.COMM_WORLD
 ```
 
-Paths must match the output of the simulation demo
-Changing to 'results_biv_complete' to match the previous demo script
+Paths must match the output of the simulation demo. Here we point to
+`results_biv_complete` to match the output of the previous demo script.
 
 ```python
 result_folder = Path("results_biv_complete")
@@ -269,9 +269,8 @@ We perform a regional analysis by computing the average fiber stress and strain 
 2.  **Integrate**: We define integration measures `dx_aha(i)` for each segment.
 3.  **Trace**: We loop over time, compute the average, and store the history.
 
-
-# Need geometry markers to generate AHA (LV/RV/Epi etc)
-# These should be in the geometry folder
+We need geometry markers to generate the AHA segments (LV/RV/Epi etc.). These
+should be found in the geometry folder created by the simulation demo.
 
 ```python
 markers_file = result_folder / "geometry" / "markers.json"
@@ -279,6 +278,7 @@ markers = json.loads(markers_file.read_text())
 ```
 
 Note: We need a mesh tags object 'ffun' describing surface markers. This was saved during the simulation setup.
+
 ```python
 ffun = io4dolfinx.read_meshtags(checkpoint_filename, mesh, "ffun")
 ```
@@ -441,7 +441,7 @@ for fname, clim, region_dict in [("fiber_stress", (0, 60), fiber_stress_regions)
 ```
 
 
-# 8. Plot Regional Fiber Stress/Strain
+## 8. Plot Regional Fiber Stress/Strain
 
 ```python
 fiber_strain_regions = np.load(screenshot_dir / "fiber_strain_regions.npy", allow_pickle=True).item()
@@ -473,9 +473,15 @@ fig.savefig(screenshot_dir / "fiber_stress_regions.png")
 ```
 
 
-## 8. Plot Regional Traces
+## 9. Plot Regional Traces
 
 Finally, we use `matplotlib` to plot the time evolution of stress/strain for the AHA segments.
+We first collect the strain and stress histories computed above into a single
+dictionary keyed by field name, so that we can loop over both in the same way.
+
+```python
+data_history = {"fiber_strain": fiber_strain_regions, "fiber_stress": fiber_stress_regions}
+```
 
 ```python
 if comm.rank == 0 and volumes_regions:
