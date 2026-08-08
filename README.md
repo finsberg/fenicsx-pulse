@@ -18,17 +18,17 @@
 
 ## Install
 You can install the library with `pip`
-```
+```bash
 python3 -m pip install fenicsx-pulse
 ```
 or with `conda`
-```
+```bash
 conda install -c conda-forge fenicsx-pulse
 ```
 Note that installing with `pip` requires [FEniCSx already installed](https://fenicsproject.org/download/)
 
 We also provide a pre-built docker image with FEniCSx and `fenicsx_pulse` installed. You pull this image using the command
-```
+```bash
 docker pull ghcr.io/finsberg/fenicsx-pulse:v0.6.1
 ```
 
@@ -58,7 +58,7 @@ material = pulse.HolzapfelOgden(f0=geo.f0, s0=geo.s0, **material_params)
 Ta = pulse.Variable(dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0)), "kPa")
 active_model = pulse.ActiveStress(geo.f0, activation=Ta)
 
-# Define mode for compressibility
+# Define model for compressibility
 comp_model = pulse.Incompressible()
 
 # Assemble into a cardiac model
@@ -139,7 +139,7 @@ https://github.com/user-attachments/assets/8e2f5d85-3fbf-4e30-9574-22e7f718230c
 
 
 
-Checkout out [the demos](https://finsberg.github.io/fenicsx-pulse/demo/unit_cube.html) in the documentation for more examples.
+Check out [the demos](https://finsberg.github.io/fenicsx-pulse/demo/geometries/unit_cube.html) in the documentation for more examples.
 
 
 

@@ -226,7 +226,7 @@ for i, (tai, plv, prv, ti) in enumerate(zip(activation, lv_pressure, rv_pressure
 #   <p>Video showing the motion of the BiV.</p>
 # </video>
 #
-# # References
+# ## References
 # ```{bibliography}
 # :filter: docname in docnames
-#
+# ```

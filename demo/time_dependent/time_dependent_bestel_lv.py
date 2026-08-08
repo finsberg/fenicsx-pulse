@@ -104,13 +104,15 @@
 # with $b(\cdot)$ being the activation function described below:
 #
 # $$
-#         b(t) =& a_{\mathrm{pre}}(t) + \alpha_{\mathrm{pre}}g_{\mathrm{pre}}(t)
+# \begin{aligned}
+#         b(t) &= a_{\mathrm{pre}}(t) + \alpha_{\mathrm{pre}}g_{\mathrm{pre}}(t)
 #         + \alpha_{\mathrm{mid}} \\
-#         a_{\mathrm{pre}}(t) :=& \alpha_{\mathrm{max}} \cdot f_{\mathrm{pre}}(t)
+#         a_{\mathrm{pre}}(t) &:= \alpha_{\mathrm{max}} \cdot f_{\mathrm{pre}}(t)
 #         + \alpha_{\mathrm{min}} \cdot (1 - f_{\mathrm{pre}}(t)) \\
-#         f_{\mathrm{pre}}(t) =& S^+(t - t_{\mathrm{sys}-\mathrm{pre}}) \cdot
-#          S^-(t  t_{\mathrm{dias} - \mathrm{pre}}) \\
-#         g_{\mathrm{pre}}(t) =& S^-(t - t_{\mathrm{dias} - \mathrm{pre}})
+#         f_{\mathrm{pre}}(t) &= S^+(t - t_{\mathrm{sys}-\mathrm{pre}}) \cdot
+#          S^-(t - t_{\mathrm{dias} - \mathrm{pre}}) \\
+#         g_{\mathrm{pre}}(t) &= S^-(t - t_{\mathrm{dias} - \mathrm{pre}})
+# \end{aligned}
 # $$
 # with $S^{\pm}$ given by
 #
@@ -124,19 +126,21 @@
 #         \dot{\tau}(t) = -|a(t)|\tau(t) + \sigma_0|a(t)|_+
 # $$
 #
-# with $a(\cdot)$ being the activation function and \sigma_0 contractility, where each remaining term is described below:
+# with $a(\cdot)$ being the activation function and $\sigma_0$ the contractility, where each remaining term is described below:
 #
 # $$
-#         |a(t)|_+ =& \mathrm{max}\{a(t), 0\} \\
-#         a(t) :=& \alpha_{\mathrm{max}} \cdot f(t)
+# \begin{aligned}
+#         |a(t)|_+ &= \mathrm{max}\{a(t), 0\} \\
+#         a(t) &:= \alpha_{\mathrm{max}} \cdot f(t)
 #         + \alpha_{\mathrm{min}} \cdot (1 - f(t)) \\
-#         f(t) =& S^+(t - t_{\mathrm{sys}}) \cdot S^-(t - t_{\mathrm{dias}}) \\
-#         S^{\pm}(\Delta t) =& \frac{1}{2}(1 \pm \mathrm{tanh}(\frac{\Delta t}{\gamma}))
+#         f(t) &= S^+(t - t_{\mathrm{sys}}) \cdot S^-(t - t_{\mathrm{dias}}) \\
+#         S^{\pm}(\Delta t) &= \frac{1}{2}(1 \pm \mathrm{tanh}(\frac{\Delta t}{\gamma}))
+# \end{aligned}
 # $$
 #
 # ### Constitutive model
 #
-# We will use a nearly incompressible, orthotropic and viscoelastic version of the Holzapfel Ogden model. The material parameters are taken from {cite}`holzapfel2009constitutive`. The anistropic material strain energy function is given by
+# We will use a nearly incompressible, orthotropic and viscoelastic version of the Holzapfel Ogden model. The material parameters are taken from {cite}`holzapfel2009constitutive`. The anisotropic material strain energy function is given by
 #
 # $$
 # \Psi_{\text{aniso}} = \frac{a}{2 b} \left( e^{ b (I_1 - 3)}  -1 \right)
@@ -154,10 +158,10 @@
 # \Psi_{\text{visco}} = \frac{\eta}{2} \mathrm{tr} ( \dot{\mathbf{E}}^2 )
 # $$
 #
-# where $\dot{\mathbf{E}}$ is temporal derivative the Green-Lagrange strain tensor and $\eta$ is the viscosity parameter. Here the  temporal derivative is computed by first computing the temporal deformation gradient
+# where $\dot{\mathbf{E}}$ is the temporal derivative of the Green-Lagrange strain tensor and $\eta$ is the viscosity parameter. Here the temporal derivative is computed by first computing the temporal deformation gradient
 #
 # $$
-# \dot{\mathbf{F}} = \dot{\mathbf{F}} = \dot{\mathbf{I} + \nabla \mathbf{u}} = \nabla \dot{\mathbf{u}} = \nabla \mathbf{v}
+# \dot{\mathbf{F}} = \dot{\mathbf{I} + \nabla \mathbf{u}} = \nabla \dot{\mathbf{u}} = \nabla \mathbf{v}
 # $$
 #
 # and then
@@ -238,7 +242,7 @@ geo = cardiac_geometries.geometry.Geometry.from_folder(
 )
 geometry = pulse.HeartGeometry.from_cardiac_geometries(geo, metadata={"quadrature_degree": 6})
 
-# Next we create the material object using the class {py:class}`Holzapfel Ogden model <pulse.holzapfelogden.HolzapfelOgden>`
+# Next we create the material object using the class {py:class}`Holzapfel Ogden model <pulse.material_models.holzapfelogden.HolzapfelOgden>`
 
 material_params = pulse.HolzapfelOgden.orthotropic_parameters()
 material = pulse.HolzapfelOgden(f0=geo.f0, s0=geo.s0, **material_params)  # type: ignore
@@ -304,7 +308,7 @@ bcs = pulse.BoundaryConditions(robin=(robin_epi_u, robin_epi_v, robin_base_u, ro
 
 problem = pulse.problem.DynamicProblem(model=model, geometry=geometry, bcs=bcs, parameters={"base_bc": pulse.problem.BaseBC.free})
 
-# Note that we also specify that the base is free to move, meaning that there will be no Dirichlet boundary conditions on the base. Now we can do an initial solve the problem
+# Note that we also specify that the base is free to move, meaning that there will be no Dirichlet boundary conditions on the base. Now we can do an initial solve of the problem
 
 # log.set_log_level(log.LogLevel.INFO)
 problem.solve()
@@ -395,7 +399,7 @@ for i, (tai, pi, ti) in enumerate(zip(activation, pressure, times)):
 #   <p>Video showing the motion of the LV.</p>
 # </video>
 #
-# # References
+# ## References
 # ```{bibliography}
 # :filter: docname in docnames
-#
+# ```

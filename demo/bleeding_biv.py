@@ -1,6 +1,6 @@
 # # Bleeding BiV to a 0D circulatory model and a 0D cell model
 
-# This example is similar to the [BiV example](time_dependent_land_circ_biv.py). However, in this example we also simulate a bleeding of the BiV by draining the
+# This example is similar to the [BiV example](time_dependent/time_dependent_land_circ_biv.py). However, in this example we also simulate a bleeding event by withdrawing blood volume using a 0D Zenker circulatory model, and observe how the BiV mechanics and circulation respond.
 
 
 from pathlib import Path
@@ -268,7 +268,7 @@ def run_3D_model(
     # material_params = pulse.HolzapfelOgden.orthotropic_parameters()
     material = pulse.HolzapfelOgden(f0=geo.f0, s0=geo.s0, **material_params)  # type: ignore
 
-    # We use an active stress approach with 30% transverse active stress (see {py:meth}`pulse.active_stress.transversely_active_stress`)
+    # We use an active stress approach with 30% transverse active stress (see {py:func}`pulse.active_stress.transversely_active_stress`)
 
     Ta = pulse.Variable(
         dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0)),
@@ -623,7 +623,7 @@ run_3D_model(
 
 #
 
-# # References
+# ## References
 # ```{bibliography}
 # :filter: docname in docnames
 # ```

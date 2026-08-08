@@ -8,7 +8,7 @@
 # acquired geometry and the known end-diastolic pressure. This process is often called "pre-stressing" or
 # "inverse mechanics".
 #
-# In this demo, we solve the inverse problem using a **Fixed-Point Iteration** (also known as the Backward Displacement Method o
+# In this demo, we solve the inverse problem using a **Fixed-Point Iteration** (also known as the Backward Displacement Method or
 # Sellier's method) {cite}`SELLIER20111461`.
 # Unlike the Inverse Elasticity Problem (IEP) which formulates equilibrium on the target configuration, this method
 # iteratively updates the reference coordinates $\mathbf{X}$ by subtracting the displacement $\mathbf{u}$ computed from a
@@ -212,7 +212,7 @@ if not prestress_fname.exists():
 
 # ## 4. Verification (Forward Problem)
 #
-# To verify the result, we perform a explicit deformation to the reference configuration and solve the forward problem.
+# To verify the result, we perform an explicit deformation to the reference configuration and solve the forward problem.
 #
 # 1.  **Deform Mesh**: Apply `u_pre` to the mesh nodes. The mesh now represents the **Reference** configuration.
 # 2.  **Map Fibers**: Pull back the fiber fields to the reference configuration.

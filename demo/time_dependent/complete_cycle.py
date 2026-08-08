@@ -1,16 +1,16 @@
 # # Complete Multiscale Simulation with Prestressing
 #
 # This comprehensive demo illustrates a complete cardiac mechanics pipeline involving:
-# 1.  **Geometry**: Generating a Bi-Ventricular (BiV) mesh from the UK Biobank Atlas, rotating it, and generating fiber fields using LDRB, which is similar to what is implemented in [rotated BiV demo](../boundary_conditions/ukb_bcs.py). In addition we show how to generate additional fields such as longitudinal and circumferential fields for computing e.g longitudinal strain, similar to the [additional data demo in `caridac-geometriesx`](https://computationalphysiology.github.io/cardiac-geometriesx/demos/additional_data.html)
+# 1.  **Geometry**: Generating a Bi-Ventricular (BiV) mesh from the UK Biobank Atlas, rotating it, and generating fiber fields using LDRB, which is similar to what is implemented in [rotated BiV demo](../boundary_conditions/ukb_bcs.py). In addition we show how to generate additional fields such as longitudinal and circumferential fields for computing e.g. longitudinal strain, similar to the [additional data demo in `cardiac-geometriesx`](https://computationalphysiology.github.io/cardiac-geometriesx/demos/additional_data.html)
 # 2.  **0D Circulation**: Running a 0D closed-loop circulation model (Regazzoni) to establish physiological pressure traces.
-# 3.  **Prestressing**: Solving the Inverse Elasticity Problem (IEP) to find the unloaded reference configuration that matches the atlas geometry at End-Diastole (ED). This is similar to what is impemtented in [the BiV prestress demo](../prestress/prestress_biv.py)
+# 3.  **Prestressing**: Solving the Inverse Elasticity Problem (IEP) to find the unloaded reference configuration that matches the atlas geometry at End-Diastole (ED). This is similar to what is implemented in [the BiV prestress demo](../prestress/prestress_biv.py)
 # 4.  **Inflation**: Ramping the unloaded mesh back to the End-Diastolic state to initialize the dynamic simulation.
 # 5.  **Multiscale Coupling**: Running a forward simulation coupled to the 0D circulation model, which is similar to what is implemented in the [time dependent BiV problem](time_dependent_land_circ_biv.py)
 # 6.  **Post-processing**: Computing Fiber Stress and Fiber Strain.
 #
 # ---
 
-# ## Imports and Setup
+# ## 1. Imports and Setup
 
 import json
 import os
@@ -75,7 +75,7 @@ mpi_filter = MPIFilter(comm)
 logger.addFilter(mpi_filter)
 
 
-# ## Geometry Generation & Rotation
+# ## 2. Geometry Generation & Rotation
 # We generate the BiV geometry from the UK Biobank Atlas, rotate it to align the base normal with the x-axis,
 # and generate fiber fields using LDRB. The fibers are based on the fiber orientation angles from
 # https://doi.org/10.1002/cnm.3185. Additional data such as fibers in DG 1 space are also stored for post-processing.
@@ -185,7 +185,7 @@ logger.info(
     f"ED Volumes: LV={lvv_target * volume2ml:.2f} mL, RV={rvv_target * volume2ml:.2f} mL",
 )
 
-# ## 0D Circulation Model (Initialization)
+# ## 3. 0D Circulation Model (Initialization)
 #
 # We run the 0D circulation model to get the target End-Diastolic pressures for prestressing.
 
@@ -243,7 +243,7 @@ if comm.rank == 0:
 if comm.rank == 0:
     plt.close(fig)
 
-# ## Activation Model (Synthetic)
+# ## 4. Activation Model (Synthetic)
 #
 # We use the Blanco time-varying elastance function for a synthetic activation trace.
 # We use a peak activation of 100 kPa to match typical ventricular pressures, with the
@@ -319,7 +319,7 @@ model, robin, dirichlet_bc, Ta = setup_problem(
     material_params=material_params,
 )
 
-# ## Prestressing (Inverse Elasticity)
+# ## 5. Prestressing (Inverse Elasticity)
 
 # We use the target ED pressures from the 0D circulation model to prestress the mesh.
 
@@ -378,7 +378,7 @@ if not prestress_fname.exists():
     ) as vtx:
         vtx.write(0.0)
 
-# ## Forward Problem Setup
+# ## 6. Forward Problem Setup
 
 V = dolfinx.fem.functionspace(geometry.mesh, ("Lagrange", 2, (3,)))
 u_pre = dolfinx.fem.Function(V)
@@ -489,7 +489,7 @@ vtx_stress = dolfinx.io.VTXWriter(
     engine="BP4",
 )
 
-# ## 8. Inflation (Reference -> End-Diastole)
+# ## 7. Inflation (Reference -> End-Diastole)
 #
 # We now ramp the volumes from the unloaded state back to the target ED volumes.
 # This establishes the correct initial condition (stress/strain) for the time-dependent loop.
@@ -527,7 +527,7 @@ problem.old_Ta = Ta.value.value.copy()  # type: ignore
 problem.old_lv_volume = lv_volume.value.copy()  # type: ignore
 problem.old_rv_volume = rv_volume.value.copy()  # type: ignore
 
-# ## 10. Multiscale Coupling Loop
+# ## 8. Multiscale Coupling Loop
 
 
 def p_BiV_func(V_LV, V_RV, t):
