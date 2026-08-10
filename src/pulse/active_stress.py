@@ -7,11 +7,13 @@ is used to compute the active stress given the deformation gradient.
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Any, cast
 
 import dolfinx
 import numpy as np
 import ufl
 
+from . import kinematics
 from .active_model import ActiveModel
 from .units import Variable
 
@@ -22,6 +24,38 @@ class ActiveStressModels(str, Enum):
     transversely = "transversely"
     orthotropic = "orthotropic"
     fully_anisotropic = "fully_anisotropic"
+
+
+class ActiveStressFormulation(str, Enum):
+    r"""Which power of the fiber stretch the active energy is linear in.
+
+    Both formulations put the active stress along the fiber, and differ only
+    in what :math:`T_a` is taken to multiply -- by a factor of the fiber
+    stretch :math:`\lambda`. Both appear in the literature, so the choice
+    must be explicit rather than implied.
+
+    ``invariant``
+        :math:`\Psi_a = \frac{1}{2} T_a (I_{4f} - 1)`, giving
+        :math:`\mathbf{S}_a = T_a\, f_0 \otimes f_0` and
+        :math:`\mathbf{P}_a = T_a\, \mathbf{F} f_0 \otimes f_0`.
+        The historical default in this package.
+
+    ``stretch``
+        :math:`\Psi_a = T_a (\lambda - 1)` with
+        :math:`\lambda = \sqrt{I_{4f}}`, giving
+        :math:`\mathbf{S}_a = \frac{T_a}{\lambda} f_0 \otimes f_0` and
+        :math:`\mathbf{P}_a = T_a \frac{\mathbf{F} f_0 \otimes f_0}
+        {|\mathbf{F} f_0|}`.
+        This is the convention used by Regazzoni & Quarteroni, and the one
+        :class:`StabilizedActiveStress` is derived in. Choose it when
+        :math:`T_a` comes from a force-generation model whose active
+        stiffness is defined as :math:`\partial \dot{T_a}/\partial
+        \dot\lambda`, so that tension and stiffness refer to the same
+        kinematic variable.
+    """
+
+    invariant = "invariant"
+    stretch = "stretch"
 
 
 @dataclass(slots=True)
@@ -58,6 +92,7 @@ class ActiveStress(ActiveModel):
     T_ref: dolfinx.fem.Constant = dolfinx.default_scalar_type(1.0)
     eta: dolfinx.fem.Constant = dolfinx.default_scalar_type(0.0)
     isotropy: ActiveStressModels = ActiveStressModels.transversely
+    formulation: ActiveStressFormulation = ActiveStressFormulation.invariant
 
     def __post_init__(self) -> None:
         if not isinstance(self.activation, Variable):
@@ -110,15 +145,19 @@ class ActiveStress(ActiveModel):
         NotImplementedError
             _description_
         """
-        if self.isotropy == ActiveStressModels.transversely:
-            return transversely_active_stress_strain_energy(
-                Ta=self.Ta,
-                C=C,
-                f0=self.f0,
-                eta=self.eta,
-            )
-        else:
+        if self.isotropy != ActiveStressModels.transversely:
             raise NotImplementedError
+
+        if self.formulation == ActiveStressFormulation.stretch:
+            _check_no_transverse(self.eta)
+            return stretch_active_stress_strain_energy(Ta=self.Ta, C=C, f0=self.f0)
+
+        return transversely_active_stress_strain_energy(
+            Ta=self.Ta,
+            C=C,
+            f0=self.f0,
+            eta=self.eta,
+        )
 
     def S(self, C: ufl.core.expr.Expr, dev: bool = False) -> ufl.core.expr.Expr:
         """Cauchy stress tensor for the active stress model.
@@ -136,13 +175,206 @@ class ActiveStress(ActiveModel):
             The Cauchy stress tensor
         """
 
-        if self.isotropy == ActiveStressModels.transversely:
-            return transversely_active_stress(Ta=self.Ta, f0=self.f0, eta=self.eta)
-        else:
+        if self.isotropy != ActiveStressModels.transversely:
             raise NotImplementedError
 
+        if self.formulation == ActiveStressFormulation.stretch:
+            _check_no_transverse(self.eta)
+            return stretch_active_stress(Ta=self.Ta, C=C, f0=self.f0)
+
+        return transversely_active_stress(Ta=self.Ta, f0=self.f0, eta=self.eta)
+
     def __str__(self) -> str:
+        if self.formulation == ActiveStressFormulation.stretch:
+            return "Ta (\u03bb - 1)"
         return "Ta (I4f - 1 + \u03b7 ((I1 - 3) - (I4f - 1)))"
+
+
+@dataclass(slots=True)
+class StabilizedActiveStress(ActiveModel):
+    r"""Active stress with the consistent stabilization term of Regazzoni &
+    Quarteroni, for use when :math:`T_a` comes from an *external*
+    force-generation solver.
+
+    Why you probably want this
+    --------------------------
+    The usual way to drive :class:`ActiveStress` is to advance some cell-level
+    contraction model, write its tension into ``activation``, and solve
+    mechanics with that value held fixed. This is a segregated (staggered)
+    scheme, and it has a failure mode that is easy to hit and hard to
+    diagnose: whenever the *active* stiffness of the tissue exceeds its
+    passive stiffness -- routine in contracting myocardium -- the scheme
+    develops non-physical oscillations in :math:`T_a` and :math:`\lambda`.
+    Regazzoni & Quarteroni [1]_ show it is then not merely inaccurate but not
+    convergent, its amplification factor tending to :math:`-K_a/K_p < -1` as
+    :math:`\Delta t \to 0`. **Reducing the time step makes it worse**, so the
+    problem cannot be tuned away.
+
+    The cause is that a staggered scheme treats active tension as a dead load
+    over the mechanics solve, when physically it is a population of
+    crossbridges behaving as springs. Restoring that gives
+
+    .. math::
+        \mathbf{P}_{act} = \left[T_a + K_a(\lambda - \lambda_{prev})\right]
+            \frac{\mathbf{F} f_0 \otimes f_0}{|\mathbf{F} f_0|}
+
+    which is the gradient of
+
+    .. math::
+        \Psi_a = T_a (\lambda - \lambda_{prev})
+               + \tfrac{1}{2} K_a (\lambda - \lambda_{prev})^2
+
+    and is what this class implements. The extra term is
+    :math:`\mathcal{O}(\Delta t)` and vanishes in the limit, so the scheme
+    remains consistent with the same continuous problem -- it is a numerical
+    device, not a change of model -- while becoming unconditionally stable.
+
+    Usage
+    -----
+    Each time step, in this order:
+
+    1. advance the force-generation model using :math:`\lambda_{prev}`,
+    2. assign the resulting tension and stiffness to ``activation`` and
+       ``active_stiffness``,
+    3. solve mechanics,
+    4. call :meth:`update_prev` with the new displacement.
+
+    Step 4 matters: :math:`\lambda_{prev}` must be the *same* stretch that was
+    fed to the force-generation model in step 1. If the two drift apart the
+    added term is no longer a consistent perturbation and can itself
+    destabilize the solve.
+
+    Parameters
+    ----------
+    f0 : dolfinx.fem.Function | dolfinx.fem.Constant
+        The cardiac fiber direction
+    activation : Variable
+        The active tension :math:`T_a`, from the force-generation model
+    active_stiffness : Variable
+        The active stiffness :math:`K_a = \partial \dot{T_a} /
+        \partial \dot\lambda`, from the same model, in the same units as
+        ``activation`` and per unit of the *same* stretch variable. Setting
+        it to zero recovers the plain staggered scheme -- useful for
+        demonstrating the instability, not for production.
+    lmbda_prev : dolfinx.fem.Function | dolfinx.fem.Constant | None
+        Fiber stretch at the previous time step. Defaults to a constant 1.0,
+        i.e. the reference configuration. Pass a ``Function`` (and use
+        :meth:`update_prev`) for anything beyond a single step.
+
+    Notes
+    -----
+    Unlike :class:`ActiveStress` this takes no ``T_ref`` or ``eta``. A
+    reference scaling applied to :math:`T_a` but not :math:`K_a` would
+    silently break the consistency of the stabilization, and there is no
+    accepted transverse generalization of an energy written in
+    :math:`\lambda`. Scale both quantities before assigning them instead.
+
+    References
+    ----------
+    .. [1] F. Regazzoni and A. Quarteroni, "An oscillation-free fully
+       partitioned scheme for the numerical modeling of cardiac active
+       mechanics", Comput. Methods Appl. Mech. Engrg. 373 (2021) 113506.
+    """
+
+    f0: dolfinx.fem.Function | dolfinx.fem.Constant
+    activation: Variable = field(default_factory=lambda: Variable(0.0, "kPa"))
+    active_stiffness: Variable = field(default_factory=lambda: Variable(0.0, "kPa"))
+    lmbda_prev: dolfinx.fem.Function | dolfinx.fem.Constant | None = None
+
+    def __post_init__(self) -> None:
+        mesh = ufl.domain.extract_unique_domain(self.f0)
+
+        self.activation = _as_constant_variable(self.activation, mesh, "activation")
+        self.active_stiffness = _as_constant_variable(
+            self.active_stiffness,
+            mesh,
+            "active_stiffness",
+        )
+
+        if self.lmbda_prev is None:
+            self.lmbda_prev = dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(1.0))
+
+        logger.debug("Created StabilizedActiveStress model")
+
+    @property
+    def Ta(self) -> ufl.core.expr.Expr:
+        """Active tension, in base units."""
+        return cast(ufl.core.expr.Expr, self.activation.to_base_units())
+
+    @property
+    def Ka(self) -> ufl.core.expr.Expr:
+        """Active stiffness, in base units."""
+        return cast(ufl.core.expr.Expr, self.active_stiffness.to_base_units())
+
+    def dlmbda(self, C: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
+        """Increment in fiber stretch since the previous time step."""
+        return fiber_stretch(C, self.f0) - self.lmbda_prev
+
+    def Fe(self, F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
+        return F
+
+    def strain_energy(self, C: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
+        r""":math:`\Psi_a = T_a \Delta\lambda + \frac{1}{2} K_a \Delta\lambda^2`"""
+        dl = self.dlmbda(C)
+        return self.Ta * dl + 0.5 * self.Ka * dl**2
+
+    def S(self, C: ufl.core.expr.Expr, dev: bool = False) -> ufl.core.expr.Expr:
+        r"""Second Piola-Kirchhoff stress,
+
+        .. math::
+            \mathbf{S} = \frac{T_a + K_a \Delta\lambda}{\lambda}
+                         f_0 \otimes f_0
+
+        Given in closed form rather than by differentiating
+        :meth:`strain_energy`; the two agree, which
+        ``test_stabilized_active_stress.py`` checks.
+        """
+        lmbda = fiber_stretch(C, self.f0)
+        return ((self.Ta + self.Ka * self.dlmbda(C)) / lmbda) * ufl.outer(self.f0, self.f0)
+
+    def update_prev(self, u: dolfinx.fem.Function) -> None:
+        """Record the fiber stretch of displacement ``u`` as :math:`\\lambda_{prev}`.
+
+        Call once per time step, after the mechanics solve. Requires
+        ``lmbda_prev`` to be a ``Function``; a ``Constant`` cannot hold a
+        spatially varying stretch.
+        """
+        if not isinstance(self.lmbda_prev, dolfinx.fem.Function):
+            raise TypeError(
+                "update_prev requires lmbda_prev to be a dolfinx.fem.Function, got "
+                f"{type(self.lmbda_prev).__name__}. Construct StabilizedActiveStress "
+                "with lmbda_prev=dolfinx.fem.Function(V) to step it in time.",
+            )
+        F = kinematics.DeformationGradient(u)
+        self.lmbda_prev.interpolate(
+            dolfinx.fem.Expression(
+                fiber_stretch(F.T * F, self.f0),
+                self.lmbda_prev.function_space.element.interpolation_points,
+            ),
+        )
+
+    def __str__(self) -> str:
+        return "Ta Δλ + ½ Ka Δλ²"
+
+
+def _as_constant_variable(value, mesh, name: str) -> Variable:
+    """Coerce a raw number or Variable into a Variable holding a dolfinx object."""
+    if not isinstance(value, Variable):
+        logger.warning("%s is not a Variable, defaulting to kPa", name)
+        value = Variable(value, "kPa")
+
+    base: Any = value.to_base_units()
+    if base is None:
+        base = 0.0
+
+    if isinstance(base, (float, int)) or np.isscalar(base):
+        # cast: default_scalar_type is float or complex depending on how dolfinx
+        # was built, so neither concrete scalar type type-checks on its own.
+        return Variable(
+            dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(cast(Any, base))),
+            value.unit,
+        )
+    return value
 
 
 def compute_frank_starling_multiplier(
@@ -316,6 +548,81 @@ class FrankStarlingActiveStress(ActiveStress):
         """
         Ta = self.activation.to_base_units()
         return self.T_ref * Ta * self.frank_starling_multiplier()
+
+
+def _check_no_transverse(eta) -> None:
+    """The stretch formulation is defined for purely fiber-directed activation.
+
+    There is no single accepted way to blend a transverse component into an
+    energy written in :math:`\\lambda` rather than :math:`I_{4f}`, so rather
+    than invent one, refuse it.
+    """
+    if not np.isclose(float(eta), 0.0):
+        raise NotImplementedError(
+            "ActiveStressFormulation.stretch is only defined for eta = 0 "
+            f"(purely fiber-directed active stress), got eta = {float(eta)}. "
+            "Use ActiveStressFormulation.invariant for transverse activation.",
+        )
+
+
+def fiber_stretch(C: ufl.core.expr.Expr, f0) -> ufl.core.expr.Expr:
+    r"""Stretch along the fiber direction, :math:`\lambda = \sqrt{f_0 \cdot C f_0}`.
+
+    Equal to :math:`|\mathbf{F} f_0|`, and to 1 in the reference configuration.
+
+    Arguments
+    ---------
+    C : ufl.core.expr.Expr
+        The right Cauchy-Green deformation tensor
+    f0 : dolfinx.fem.Function or dolfinx.fem.Constant
+        A vector function representing the fiber direction
+    """
+    return ufl.sqrt(ufl.inner(C * f0, f0))
+
+
+def stretch_active_stress_strain_energy(Ta, C, f0):
+    r"""Active strain energy that is linear in the fiber *stretch*,
+
+    .. math::
+        W = T_a (\lambda - 1), \qquad \lambda = \sqrt{I_{4f}}
+
+    whose second Piola-Kirchhoff stress is :math:`T_a f_0 \otimes f_0 /
+    \lambda` and whose first Piola-Kirchhoff stress is therefore
+    :math:`T_a \mathbf{F} f_0 \otimes f_0 / |\mathbf{F} f_0|` -- the
+    normalization used by Regazzoni & Quarteroni.
+
+    Compare :func:`transversely_active_stress_strain_energy`, which is linear
+    in :math:`I_{4f} = \lambda^2` instead and hence differs by a factor of
+    :math:`\lambda` in the resulting stress.
+
+    Arguments
+    ---------
+    Ta : dolfinx.fem.Function or dolfinx.fem.Constant
+        A scalar function representing the magnitude of the active tension
+    C : ufl.Form
+        The right Cauchy-Green deformation tensor
+    f0 : dolfinx.fem.Function
+        A vector function representing the fiber direction
+    """
+    return Ta * (fiber_stretch(C, f0) - 1.0)
+
+
+def stretch_active_stress(Ta, C, f0):
+    r"""Second Piola-Kirchhoff stress for :func:`stretch_active_stress_strain_energy`,
+
+    .. math::
+        \mathbf{S} = \frac{T_a}{\lambda} f_0 \otimes f_0
+
+    Arguments
+    ---------
+    Ta : dolfinx.fem.Function or dolfinx.fem.Constant
+        A scalar function representing the magnitude of the active tension
+    C : ufl.Form
+        The right Cauchy-Green deformation tensor
+    f0 : dolfinx.fem.Function
+        A vector function representing the fiber direction
+    """
+    return (Ta / fiber_stretch(C, f0)) * ufl.outer(f0, f0)
 
 
 def transversely_active_stress_strain_energy(Ta, C, f0, eta=0.0):

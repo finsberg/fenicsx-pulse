@@ -29,7 +29,12 @@ from . import (
     viscoelasticity,
 )
 from .active_model import ActiveModel, Passive
-from .active_stress import ActiveStress, FrankStarlingActiveStress
+from .active_stress import (
+    ActiveStress,
+    ActiveStressFormulation,
+    FrankStarlingActiveStress,
+    StabilizedActiveStress,
+)
 from .boundary_conditions import BoundaryConditions, NeumannBC, RobinBC
 from .cardiac_model import CardiacModel
 from .compressibility import (
@@ -71,6 +76,8 @@ __all__ = [
     "active_model",
     "active_stress",
     "ActiveStress",
+    "ActiveStressFormulation",
+    "StabilizedActiveStress",
     "ActiveModel",
     "Passive",
     "geometry",
