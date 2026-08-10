@@ -49,7 +49,7 @@ def _uniaxial_u(mesh, stretch):
     V = dolfinx.fem.functionspace(mesh, ("P", 2, (3,)))
     u = dolfinx.fem.Function(V)
     u.interpolate(
-        lambda x: np.vstack([(stretch - 1.0) * x[0], np.zeros_like(x[1]), np.zeros_like(x[2])])
+        lambda x: np.vstack([(stretch - 1.0) * x[0], np.zeros_like(x[1]), np.zeros_like(x[2])]),
     )
     return u
 

@@ -1,6 +1,7 @@
 Alfio
 allclose
 allreduce
+Appl
 Arens
 argsort
 arostica
@@ -27,6 +28,7 @@ CMAME
 cntl
 cofac
 cofnorm
+Comput
 cpus
 Cristobal
 crossbridges
@@ -35,6 +37,7 @@ Davide
 destabilize
 deviatoric
 dirichletbc
+dlmbda
 dofmap
 dofs
 dolfinx
@@ -44,6 +47,7 @@ elastodynamics
 Elife
 Elsevier
 endo
+Engrg
 Erlicher
 Fdev
 Fedele
@@ -132,6 +136,7 @@ regazzoni
 Regazzoni
 Reidmen
 Remedios
+resid
 Riccobelli
 rique
 rspa
@@ -153,6 +158,7 @@ Tomek
 TRAME
 transmural
 unassembled
+undeformed
 unstabilized
 ureg
 Usyk
