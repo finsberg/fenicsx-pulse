@@ -1,6 +1,7 @@
 import logging
 import operator
 from dataclasses import dataclass
+from typing import cast
 
 from mpi4py import MPI
 
@@ -35,7 +36,7 @@ def check_value_greater_than(
     """
     op = operator.ge if inclusive else operator.gt
     if np.isscalar(f):
-        return op(f, bound)
+        return op(cast(float, f), bound)
     elif isinstance(f, dolfinx.fem.Constant):
         return op(f.value.max(), bound)
     elif isinstance(f, dolfinx.fem.Function):
@@ -47,7 +48,7 @@ def check_value_greater_than(
     elif isinstance(f, ufl.indexed.Indexed):
         try:
             func, index = f.ufl_operands
-            value = func.x.array[int(index[0])]
+            value = cast(dolfinx.fem.Function, func).x.array[int(index[0])]
             return op(value, bound)
         except Exception:
             logger.warning(
@@ -85,7 +86,7 @@ def check_value_lower_than(
     """
     op = operator.le if inclusive else operator.lt
     if np.isscalar(f):
-        return op(f, bound)
+        return op(cast(float, f), bound)
     elif isinstance(f, dolfinx.fem.Constant):
         return op(f.value.min(), bound)
     elif isinstance(f, dolfinx.fem.Function):

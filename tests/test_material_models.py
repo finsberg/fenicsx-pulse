@@ -31,7 +31,7 @@ def test_holzapfel_ogden(params_func, expected_value, mesh, u) -> None:
     psi = model.strain_energy(C)
     value = dolfinx.fem.assemble_scalar(dolfinx.fem.form(psi * ufl.dx))
 
-    assert math.isclose(value, expected_value)
+    assert math.isclose(value.real, expected_value)
 
 
 def test_holzapfel_ogden_invalid_range():

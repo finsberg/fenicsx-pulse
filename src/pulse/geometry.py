@@ -58,12 +58,16 @@ class Geometry:
             hstack = lambda x: np.array(x) if len(x) == 0 else np.hstack(x).astype(np.int32)
             self._facet_indices = hstack(facet_indices)
             self._facet_markers = hstack(facet_markers)
-            self._sorted_facets = np.argsort(self._facet_indices)
-            entities = (
-                [] if len(self._sorted_facets) == 0 else self._facet_indices[self._sorted_facets]
+            self._sorted_facets = np.argsort(self._facet_indices).astype(np.int32)
+            entities: npt.NDArray[np.int32] = (
+                np.array([], dtype=np.int32)
+                if len(self._sorted_facets) == 0
+                else self._facet_indices[self._sorted_facets]
             )
-            values = (
-                [] if len(self._sorted_facets) == 0 else self._facet_markers[self._sorted_facets]
+            values: npt.NDArray[np.int32] = (
+                np.array([], dtype=np.int32)
+                if len(self._sorted_facets) == 0
+                else self._facet_markers[self._sorted_facets]
             )
             self.facet_tags = dolfinx.mesh.meshtags(
                 self.mesh,
@@ -274,7 +278,7 @@ class HeartGeometry(Geometry):
 
         marker_id = self.get_marker_ids(marker)
         form = self.volume_form(u=u)
-        return dolfinx.fem.assemble_scalar(dolfinx.fem.form(form * self.ds(marker_id)))
+        return dolfinx.fem.assemble_scalar(dolfinx.fem.form(form * self.ds(marker_id))).real
 
     def get_marker_ids(
         self,

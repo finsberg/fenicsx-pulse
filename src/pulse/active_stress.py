@@ -98,8 +98,8 @@ class ActiveStress(ActiveModel):
     activation: Variable = field(default_factory=lambda: Variable(0.0, "kPa"))
     s0: dolfinx.fem.Function | dolfinx.fem.Constant | None = None
     n0: dolfinx.fem.Function | dolfinx.fem.Constant | None = None
-    T_ref: dolfinx.fem.Constant = dolfinx.default_scalar_type(1.0)
-    eta: dolfinx.fem.Constant = dolfinx.default_scalar_type(0.0)
+    T_ref: dolfinx.fem.Constant | float = 1.0
+    eta: dolfinx.fem.Constant | float = 0.0
     isotropy: ActiveStressModels = ActiveStressModels.transversely
     formulation: ActiveStressFormulation = ActiveStressFormulation.invariant
 
@@ -118,20 +118,25 @@ class ActiveStress(ActiveModel):
             self.activation = Variable(
                 dolfinx.fem.Constant(
                     ufl.domain.extract_unique_domain(self.f0),
-                    dolfinx.default_scalar_type(Ta),
+                    dolfinx.default_scalar_type(cast(Any, Ta)),
                 ),
                 self.activation.unit,
             )
 
-        self.T_ref = dolfinx.fem.Constant(ufl.domain.extract_unique_domain(self.f0), self.T_ref)
-        self.eta = dolfinx.fem.Constant(ufl.domain.extract_unique_domain(self.f0), self.eta)
+        if not isinstance(self.T_ref, dolfinx.fem.Constant):
+            self.T_ref = dolfinx.fem.Constant(
+                ufl.domain.extract_unique_domain(self.f0),
+                self.T_ref,
+            )
+        if not isinstance(self.eta, dolfinx.fem.Constant):
+            self.eta = dolfinx.fem.Constant(ufl.domain.extract_unique_domain(self.f0), self.eta)
         logger.debug(f"Created ActiveStress model with Isotropy: {self.isotropy}")
 
     @property
     def Ta(self) -> ufl.core.expr.Expr:
         """The active stress"""
         Ta = self.activation.to_base_units()
-        return self.T_ref * Ta
+        return cast(ufl.core.expr.Expr, self.T_ref * Ta)
 
     def Fe(self, F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
         return F

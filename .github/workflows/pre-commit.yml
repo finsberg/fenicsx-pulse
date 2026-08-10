@@ -10,6 +10,9 @@ on:
 jobs:
   check-code:
     runs-on: ubuntu-24.04
+    container: ghcr.io/fenics/dolfinx/dolfinx:stable
+    env:
+      DEB_PYTHON_INSTALL_LAYOUT: deb_system
     steps:
       # This action sets the current path to the root of your github repo
       - uses: actions/checkout@v7
@@ -17,8 +20,14 @@ jobs:
         with:
           node-version: "24"
 
-      - name: Install pre-commit
-        run: python3 -m pip install pre-commit
+      - name: Install build dependencies
+        run: |
+          python3 -m pip install -r https://raw.githubusercontent.com/scientificcomputing/scifem/refs/heads/main/build-requirements.txt
+
+      - name: Install package
+        run: |
+          python3 -m pip install scifem --no-build-isolation
+          python3 -m pip install .[dev,test]
 
       - name: Run hooks
         run: pre-commit run --all

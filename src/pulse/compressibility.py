@@ -64,7 +64,7 @@ class Incompressible(Compressibility):
 
     """
 
-    p: dolfinx.fem.Function = field(default=None, init=False)
+    p: dolfinx.fem.Function | None = field(default=None, init=False)
 
     def __post_init__(self):
         logger.debug("Created Incompressible compressibility model")

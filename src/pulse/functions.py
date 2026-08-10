@@ -13,10 +13,10 @@ def subplus(x):
 
 
 def heaviside(
-    x: ufl.Coefficient,
+    x: ufl.core.expr.Expr,
     k: float = 1.0,
     use_exp: bool = False,
-) -> ufl.Coefficient:
+) -> ufl.core.expr.Expr:
     r"""
     Heaviside function
 

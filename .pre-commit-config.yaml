@@ -33,6 +33,18 @@ repos:
     rev: v2.3.0
     hooks:
       - id: mypy
+        # The default hook spins up an isolated venv that can't see dolfinx
+        # (not pip-installable outside the container image) or this repo's
+        # other deps, so run the mypy already on PATH in this environment
+        # instead -- the one `python3 -m mypy .` uses, with pyproject.toml's
+        # [tool.mypy] config picked up as normal.
+        language: system
+        args: ["--scripts-are-modules"]
+        # mypy's own `exclude` config only applies when it discovers files by
+        # recursing into a directory, not to filenames pre-commit passes
+        # explicitly -- so demo/ (needs the `demo`/`docs` extras, see
+        # CLAUDE.md) has to be excluded here too, same as ruff-format above.
+        exclude: 'demo/.*.py$'
 
   - repo: https://github.com/streetsidesoftware/cspell-cli
     rev: v10.0.1

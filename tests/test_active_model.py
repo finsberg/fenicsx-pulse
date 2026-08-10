@@ -1,4 +1,5 @@
 import itertools
+import typing
 
 from mpi4py import MPI
 
@@ -45,7 +46,7 @@ def test_transversely_active_stress(eta, Ta, mesh, u) -> None:
         dolfinx.fem.assemble_scalar(dolfinx.fem.form(active_model.Ta * ufl.dx)),
         Ta,
     )
-    active_model.T_ref.value = 2.0
+    typing.cast(dolfinx.fem.Constant, active_model.T_ref).value = 2.0  # type: ignore[assignment]
     assert np.isclose(
         dolfinx.fem.assemble_scalar(dolfinx.fem.form(active_model.Ta * ufl.dx)),
         2 * Ta,
