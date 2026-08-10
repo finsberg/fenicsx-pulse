@@ -38,7 +38,11 @@ class ActiveStressFormulation(str, Enum):
         :math:`\Psi_a = \frac{1}{2} T_a (I_{4f} - 1)`, giving
         :math:`\mathbf{S}_a = T_a\, f_0 \otimes f_0` and
         :math:`\mathbf{P}_a = T_a\, \mathbf{F} f_0 \otimes f_0`.
-        The historical default in this package.
+        Adding :math:`T_a f_0 \otimes f_0` to the second Piola stress is the
+        most widespread form of the active stress approach in cardiac
+        mechanics, and it remains the default here for that reason and for
+        backwards compatibility. Note the fibre traction it delivers scales
+        with the stretch: :math:`|\mathbf{P}_a f_0| = T_a \lambda`.
 
     ``stretch``
         :math:`\Psi_a = T_a (\lambda - 1)` with
@@ -83,6 +87,11 @@ class ActiveStress(ActiveModel):
     isotropy: ActiveStressModels
         What kind of active stress model to use, by
         default 'transversely'
+    formulation: ActiveStressFormulation
+        Which active-stress convention to use, by default 'invariant'.
+        The two differ by a factor of the fiber stretch, so this changes
+        results rather than just their derivation -- see
+        :class:`ActiveStressFormulation` for how to choose.
     """
 
     f0: dolfinx.fem.Function | dolfinx.fem.Constant
@@ -640,8 +649,14 @@ def transversely_active_stress_strain_energy(Ta, C, f0, eta=0.0):
     Arguments
     ---------
     Ta : dolfinx.fem.Function or dolfinx.fem.Constant
-        A scalar function representing the magnitude of the
-        active stress in the reference configuration (first Piola)
+        A scalar function representing the magnitude of the active stress.
+        Note that with this (``invariant``) formulation the resulting fibre
+        traction is :math:`|\mathbf{P}_a f_0| = T_a \lambda`, not
+        :math:`T_a` -- it is :class:`ActiveStressFormulation` ``stretch``
+        under which :math:`T_a` is itself the first Piola fibre traction.
+        Which one to supply depends on what your activation model's
+        :math:`T_a` was calibrated to mean; see
+        :class:`ActiveStressFormulation`.
     C : ufl.Form
         The right Cauchy-Green deformation tensor
     f0 : dolfinx.fem.Function
@@ -672,8 +687,10 @@ def transversely_active_stress(Ta, f0, eta=0.0):
     Arguments
     ---------
     Ta : dolfinx.fem.Function or dolfinx.fem.Constant
-        A scalar function representing the magnitude of the
-        active stress in the reference configuration (first Piola)
+        A scalar function representing the magnitude of the active stress.
+        With this (``invariant``) formulation the resulting fibre traction is
+        :math:`|\mathbf{P}_a f_0| = T_a \lambda`; see
+        :class:`ActiveStressFormulation`.
     f0 : dolfinx.fem.Function
         A vector function representing the direction of the
         active stress
