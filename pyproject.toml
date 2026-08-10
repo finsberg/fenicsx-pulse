@@ -24,7 +24,7 @@ test = [
 dev = [
     "pdbpp",
     "ipython",
-    "bump2version",
+    "bump-my-version",
     "pre-commit",
     "mypy",
 ]
