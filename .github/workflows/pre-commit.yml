@@ -8,17 +8,37 @@ on:
 
 
 jobs:
+  # Everything except mypy: none of these hooks need dolfinx, so they run on
+  # the plain runner (which has git preinstalled, unlike the dolfinx
+  # container -- see the mypy job below).
   check-code:
     runs-on: ubuntu-24.04
-    container: ghcr.io/fenics/dolfinx/dolfinx:stable
-    env:
-      DEB_PYTHON_INSTALL_LAYOUT: deb_system
     steps:
       # This action sets the current path to the root of your github repo
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: "24"
+
+      - name: Install pre-commit
+        run: python3 -m pip install pre-commit
+
+      - name: Run hooks
+        env:
+          SKIP: mypy
+        run: pre-commit run --all
+
+  # mypy needs dolfinx (not pip-installable outside the container image), so
+  # it runs separately inside the container. Invoked directly rather than via
+  # pre-commit, since pre-commit shells out to git and the dolfinx container
+  # doesn't have git installed.
+  mypy:
+    runs-on: ubuntu-24.04
+    container: ghcr.io/fenics/dolfinx/dolfinx:stable
+    env:
+      DEB_PYTHON_INSTALL_LAYOUT: deb_system
+    steps:
+      - uses: actions/checkout@v7
 
       - name: Install build dependencies
         run: |
@@ -29,5 +49,5 @@ jobs:
           python3 -m pip install scifem --no-build-isolation
           python3 -m pip install .[dev,test]
 
-      - name: Run hooks
-        run: pre-commit run --all
+      - name: Run mypy
+        run: python3 -m mypy .
