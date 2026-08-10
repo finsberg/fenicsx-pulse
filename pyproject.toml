@@ -87,6 +87,7 @@ testpaths = [
 [tool.mypy]
 exclude = [
     "^demo/",
+    "^build/",
 ]
 
 [[tool.mypy.overrides]]
