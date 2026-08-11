@@ -40,6 +40,11 @@ jobs:
         run: |
           apt-get update
           apt-get install -y --no-install-recommends git
+          # actions/checkout runs as a different UID than the workspace ends
+          # up owned by inside `container:` jobs, and git >=2.35.2 refuses to
+          # touch a repo it doesn't "own" for this reason -- mark it safe
+          # rather than debug UID mismatches per container image.
+          git config --global --add safe.directory '*'
 
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
