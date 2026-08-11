@@ -1,3 +1,13 @@
+# pre-commit.ci (the hosted app, if it's still installed) can't run
+# `language: system` hooks, so it would fail on mypy -- our own CI instead
+# runs the real `pre-commit` (see .github/workflows/pre-commit.yml) inside
+# the dolfinx container, where `language: system` works fine. `skip` only
+# affects which hooks the hosted app *runs*; autoupdate still bumps `rev:`
+# for every repo below, mypy included.
+ci:
+  autoupdate_schedule: weekly
+  skip: [mypy]
+
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
