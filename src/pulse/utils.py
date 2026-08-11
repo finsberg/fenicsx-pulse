@@ -43,7 +43,7 @@ def map_vector_field(
     if _dolfinx_version >= Version("0.10"):
         points = f.function_space.element.interpolation_points
     else:
-        points = f.function_space.element.interpolation_points()
+        points = f.function_space.element.interpolation_points()  # type: ignore[operator]
 
     if u is None:
         f_new.interpolate(f)

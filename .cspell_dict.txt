@@ -1,6 +1,7 @@
 Alfio
 allclose
 allreduce
+Appl
 Arens
 argsort
 arostica
@@ -27,12 +28,16 @@ CMAME
 cntl
 cofac
 cofnorm
+Comput
 cpus
 Cristobal
+crossbridges
 Culloch
 Davide
+destabilize
 deviatoric
 dirichletbc
+dlmbda
 dofmap
 dofs
 dolfinx
@@ -42,6 +47,7 @@ elastodynamics
 Elife
 Elsevier
 endo
+Engrg
 Erlicher
 Fdev
 Fedele
@@ -101,6 +107,7 @@ Minchole
 Mises
 multiplicatively
 Multiscale
+myocardium
 myocyte
 nabla
 ndarray
@@ -129,6 +136,7 @@ regazzoni
 Regazzoni
 Reidmen
 Remedios
+resid
 Riccobelli
 rique
 rspa
@@ -140,6 +148,7 @@ Shrier
 Silvano
 snes
 Sorine
+staggered
 Stefano
 stica
 subplus
@@ -149,6 +158,8 @@ Tomek
 TRAME
 transmural
 unassembled
+undeformed
+unstabilized
 ureg
 Usyk
 varepsilon

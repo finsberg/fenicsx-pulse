@@ -1,11 +1,11 @@
 from dataclasses import dataclass, field
-from typing import Any, Generic, TypeVar
+from typing import Any, Generic, TypeVar, cast
 
 import dolfinx
 import numpy as np
 import pint
 
-ureg = pint.UnitRegistry()
+ureg: pint.UnitRegistry = pint.UnitRegistry()
 T = TypeVar("T", bound=float | dolfinx.fem.Function | dolfinx.fem.Constant)
 
 
@@ -13,7 +13,10 @@ def mesh_factor(mesh_unit: str) -> float:
     return ureg(mesh_unit).to_base_units().magnitude
 
 
-def assign(variable: "Variable", value) -> None:
+def assign(
+    variable: "Variable | float | dolfinx.fem.Function | dolfinx.fem.Constant",
+    value,
+) -> None:
     if not isinstance(variable, Variable):
         return assign(Variable(variable, None), value)
     if isinstance(variable.value, (float, int)) or np.isscalar(variable.value):
@@ -61,7 +64,7 @@ class Variable(Generic[T]):
 
     @classmethod
     def from_quantity(cls, quantity: pint.Quantity) -> "Variable":
-        return cls(quantity.magnitude, quantity.units)
+        return cls(quantity.magnitude, cast(pint.Unit, quantity.units))
 
     def assign(self, value) -> None:
         assign(self, value)

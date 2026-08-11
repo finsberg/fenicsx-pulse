@@ -219,7 +219,7 @@ class HolzapfelOgden(HyperElasticMaterial):
             else:
                 return lambda I1: (a / 2.0) * (I1 - 3)
         else:
-            return lambda I1: 0.0
+            return lambda I1: ufl.as_ufl(0.0)
 
     def _resolve_W4(self, a: Variable, b: Variable, required_attr: str) -> Invariant:
         subplus = functions.subplus if self.use_subplus else lambda x: x
@@ -245,7 +245,7 @@ class HolzapfelOgden(HyperElasticMaterial):
                     * subplus(I4 - 1) ** 2
                 )
         else:
-            return lambda I4: 0.0
+            return lambda I4: ufl.as_ufl(0.0)
 
     def _resolve_W8fs(self) -> Invariant:
         a_fs = self.a_fs.to_base_units()
@@ -261,7 +261,7 @@ class HolzapfelOgden(HyperElasticMaterial):
             else:
                 return lambda I8: a_fs / 2.0 * I8**2
         else:
-            return lambda I8: 0.0
+            return lambda I8: ufl.as_ufl(0.0)
 
     @staticmethod
     def transversely_isotropic_parameters() -> HolzapfelOgdenParameters:

@@ -26,6 +26,7 @@ dev = [
     "ipython",
     "bump2version",
     "pre-commit",
+    "mypy",
 ]
 demo = [
     "cardiac-geometriesx",
@@ -81,6 +82,17 @@ addopts = [
 testpaths = [
     "tests"
 ]
+
+
+[tool.mypy]
+exclude = [
+    "^demo/",
+    "^build/",
+]
+
+[[tool.mypy.overrides]]
+module = ["scifem", "scifem.*", "cardiac_geometries", "cardiac_geometries.*"]
+ignore_missing_imports = true
 
 
 [tool.ruff]

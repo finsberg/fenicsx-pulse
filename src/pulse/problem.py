@@ -51,7 +51,7 @@ class Geometry(typing.Protocol):
     dx: ufl.Measure
     ds: ufl.Measure
     mesh: dolfinx.mesh.Mesh
-    facet_tags: dolfinx.mesh.MeshTags
+    facet_tags: dolfinx.mesh.MeshTags | None
     markers: dict[str, tuple[int, int]]
 
     @property
@@ -651,7 +651,7 @@ class StaticProblem:
             self.update_old_states()
         if _dolfinx_version >= Version("0.10"):
             self.problem.solve()
-            converged = self.problem.solver.getConvergedReason() > 0
+            converged = typing.cast(int, self.problem.solver.getConvergedReason()) > 0
             iters = self.problem.solver.getIterationNumber()
             logger.debug(f"Solved in {iters} iterations, converged: {converged}")
         else:

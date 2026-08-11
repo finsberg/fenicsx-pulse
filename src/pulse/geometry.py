@@ -37,17 +37,14 @@ class Geometry:
     _facet_indices: npt.NDArray[np.int32] = field(init=False, repr=False)
     _facet_markers: npt.NDArray[np.int32] = field(init=False, repr=False)
     _sorted_facets: npt.NDArray[np.int32] = field(init=False, repr=False)
-    facet_tags: dolfinx.mesh.MeshTags = field(
-        default_factory=lambda: dolfinx.mesh.MeshTags([]),
-        repr=False,
-    )
+    facet_tags: dolfinx.mesh.MeshTags | None = field(default=None, repr=False)
     markers: dict[str, tuple[int, int]] = field(default_factory=dict)
     dx: ufl.Measure = field(init=False, repr=False)
     ds: ufl.Measure = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         # Check if facet_tags are empty. If so, create them
-        if not hasattr(self.facet_tags, "values"):
+        if self.facet_tags is None:
             facet_indices, facet_markers = [], []
             # TODO: Handle when dim is not 2
             for _, marker, dim, locator in self.boundaries:
@@ -58,12 +55,16 @@ class Geometry:
             hstack = lambda x: np.array(x) if len(x) == 0 else np.hstack(x).astype(np.int32)
             self._facet_indices = hstack(facet_indices)
             self._facet_markers = hstack(facet_markers)
-            self._sorted_facets = np.argsort(self._facet_indices)
-            entities = (
-                [] if len(self._sorted_facets) == 0 else self._facet_indices[self._sorted_facets]
+            self._sorted_facets = np.argsort(self._facet_indices).astype(np.int32)
+            entities: npt.NDArray[np.int32] = (
+                np.array([], dtype=np.int32)
+                if len(self._sorted_facets) == 0
+                else self._facet_indices[self._sorted_facets]
             )
-            values = (
-                [] if len(self._sorted_facets) == 0 else self._facet_markers[self._sorted_facets]
+            values: npt.NDArray[np.int32] = (
+                np.array([], dtype=np.int32)
+                if len(self._sorted_facets) == 0
+                else self._facet_markers[self._sorted_facets]
             )
             self.facet_tags = dolfinx.mesh.meshtags(
                 self.mesh,
@@ -135,6 +136,7 @@ class Geometry:
         )
 
     def dump_mesh_tags(self, fname: str) -> None:
+        assert self.facet_tags is not None
         if self.facet_tags.values.size == 0:
             raise exceptions.MeshTagNotFoundError
         self.mesh.topology.create_connectivity(self.facet_dimension, self.dim)
@@ -274,7 +276,7 @@ class HeartGeometry(Geometry):
 
         marker_id = self.get_marker_ids(marker)
         form = self.volume_form(u=u)
-        return dolfinx.fem.assemble_scalar(dolfinx.fem.form(form * self.ds(marker_id)))
+        return dolfinx.fem.assemble_scalar(dolfinx.fem.form(form * self.ds(marker_id))).real
 
     def get_marker_ids(
         self,

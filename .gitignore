@@ -1,3 +1,5 @@
+.devcontainer/nightly/devcontainer-lock.json
+.devcontainer/stable/devcontainer-lock.json
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
