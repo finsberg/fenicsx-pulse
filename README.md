@@ -141,7 +141,25 @@ https://github.com/user-attachments/assets/8e2f5d85-3fbf-4e30-9574-22e7f718230c
 
 Check out [the demos](https://finsberg.github.io/fenicsx-pulse/demo/geometries/unit_cube.html) in the documentation for more examples.
 
+## Using with Claude
 
+This repo ships a [Claude Agent Skill](https://docs.claude.com/en/docs/claude-code/skills) at
+[`.claude/skills/fenicsx-pulse/SKILL.md`](.claude/skills/fenicsx-pulse/SKILL.md) that teaches
+Claude the `fenicsx-pulse` composition model (`CardiacModel`, `StaticProblem`/`DynamicProblem`,
+materials, active contraction, boundary conditions, units, ...) so it can write and review code
+against this library more accurately.
+
+To use it in your own project with [Claude Code](https://claude.com/product/claude-code), copy the
+skill into your project's `.claude/skills/` directory:
+
+```bash
+mkdir -p .claude/skills/fenicsx-pulse
+curl -o .claude/skills/fenicsx-pulse/SKILL.md \
+    https://raw.githubusercontent.com/finsberg/fenicsx-pulse/main/.claude/skills/fenicsx-pulse/SKILL.md
+```
+
+Claude will then automatically load it whenever your prompt or code touches `fenicsx-pulse`/`pulse`.
+To install it globally for all your projects, copy it to `~/.claude/skills/fenicsx-pulse/` instead.
 
 ## Contributing
 See https://finsberg.github.io/fenicsx-pulse/CONTRIBUTING.html
