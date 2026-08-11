@@ -51,7 +51,7 @@ class Geometry(typing.Protocol):
     dx: ufl.Measure
     ds: ufl.Measure
     mesh: dolfinx.mesh.Mesh
-    facet_tags: dolfinx.mesh.MeshTags
+    facet_tags: dolfinx.mesh.MeshTags | None
     markers: dict[str, tuple[int, int]]
 
     @property
