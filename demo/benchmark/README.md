@@ -1,8 +1,6 @@
 # Cardiac Mechanics Benchmark
 
-This folder contains the implementation of the benchmark problems for cardiac mechanics described in the paper:
-
-> Land, S., Gurev, V., Arens, S. et al. Verification of cardiac mechanics software: benchmark problems and solutions for testing active and passive material behaviour. Proc. R. Soc. A 471, 20150641 (2015). DOI: 10.1098/rspa.2015.0641
+This folder contains the implementation of the benchmark problems for cardiac mechanics described in {cite}`land2015verification`.
 
 The benchmark suite consists of three problems of increasing complexity designed to verify the implementation of passive and active cardiac mechanics solvers.
 

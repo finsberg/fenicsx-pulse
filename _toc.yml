@@ -35,8 +35,15 @@ parts:
       - file: "demo/time_dependent/time_dependent_land_circ_lv"
       - file: "demo/time_dependent/time_dependent_land_circ_biv"
       - file: "demo/time_dependent/complete_cycle"
-      - file: "demo/time_dependent/frank_starling_twitch"
     - file: "demo/postprocess_cycle"
+    - file: "demo/crossbridge/README"
+      sections:
+      - file: "demo/crossbridge/frank_starling_twitch"
+      - file: "demo/crossbridge/crossbridge_land2017"
+      - file: "demo/crossbridge/crossbridge_lewalle2024"
+      - file: "demo/crossbridge/crossbridge_rdq18"
+      - file: "demo/crossbridge/crossbridge_rdq20mf"
+      - file: "demo/crossbridge/crossbridge_comparison"
 
   - caption: Community
     chapters:

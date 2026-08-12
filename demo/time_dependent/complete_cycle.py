@@ -78,7 +78,8 @@ logger.addFilter(mpi_filter)
 # ## 2. Geometry Generation & Rotation
 # We generate the BiV geometry from the UK Biobank Atlas, rotate it to align the base normal with the x-axis,
 # and generate fiber fields using LDRB. The fibers are based on the fiber orientation angles from
-# https://doi.org/10.1002/cnm.3185. Additional data such as fibers in DG 1 space are also stored for post-processing.
+# {cite}`doste2019rule`. Additional data such as fibers in DG 1 space are also stored for
+# post-processing.
 # This is useful if we want to compute stress/strain at intermediate points later on.
 # The fibers used for the mechanics simulation are in a quadrature space to avoid interpolation errors.
 

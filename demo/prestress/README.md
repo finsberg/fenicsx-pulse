@@ -29,7 +29,7 @@ where $\mathbf{x} \in \Omega_t$. The deformation gradient $\mathbf{F}$ is comput
 
 * **Class:** `pulse.unloading.PrestressProblem`
 * **Demo:** [Pre-stressing a Bi-Ventricular Geometry](prestress_biv.py)
-* **Reference:** Barnafi et al., *Reconstructing relaxed configurations in elastic bodies: Mathematical formulations and numerical methods for cardiac modeling*, CMAME (2024).
+* **Reference:** {cite}`barnafi2024reconstructing`
 
 ## Method 2: Fixed-Point Iteration (Backward Displacement)
 
@@ -46,7 +46,7 @@ This method is intuitive as it reuses the standard forward solver, but it may re
 
 * **Class:** `pulse.unloading.FixedPointUnloader`
 * **Demo:** [Pre-stressing with Fixed-Point Iteration](prestress_fixedpoint_unloader.py)
-* **Reference:** Sellier, M. *An iterative method for the inverse elasto-static problem.* Journal of Fluids and Structures 27.8 (2011).
+* **Reference:** {cite}`SELLIER20111461`
 
 ## Summary of Differences
 

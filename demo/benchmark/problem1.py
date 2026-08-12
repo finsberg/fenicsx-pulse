@@ -1,6 +1,7 @@
 # # Problem 1: Deformation of a Beam
 #
-# This example implements Problem 1 from the cardiac mechanics benchmark suite [Land et al. 2015].
+# This example implements Problem 1 from the cardiac mechanics benchmark suite
+# {cite}`land2015verification`.
 #
 # ## Problem Description
 #

@@ -12,8 +12,10 @@
 # ## Models
 #
 # * **Mechanics**: 3D BiV model with Holzapfel-Ogden material, active stress, and cavity volume constraints.
-# * **Circulation**: [Regazzoni et al. 2022] lumped-parameter model. We replace both the 0D LV and RV chambers with our 3D model.
-# * **Cell Model**: TorOrd-Land model for active tension generation.
+# * **Circulation**: {cite}`regazzoni2022cardiac` lumped-parameter model. We replace both the
+#   0D LV and RV chambers with our 3D model.
+# * **Cell Model**: TorOrd {cite}`tomek2019development`-Land {cite}`land2017model` model for
+#   active tension generation.
 #
 # ---
 

@@ -75,7 +75,7 @@ geometry = pulse.Geometry.from_cardiac_geometries(geo, metadata={"quadrature_deg
 # ## Constitutive Model
 #
 # ### 1. Passive Material Properties
-# We use the **Holzapfel-Ogden** constitutive model [Holzapfel & Ogden 2009].
+# We use the **Holzapfel-Ogden** constitutive model {cite}`holzapfel2009constitutive`.
 # This model captures the exponential stiffening and orthotropic nature of myocardium.
 #
 # The strain energy density $\Psi_{pass}$ depends on the invariants $I_1, I_{4f}, I_{4s}, I_{8fs}$:
