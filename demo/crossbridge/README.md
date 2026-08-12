@@ -18,7 +18,7 @@ integration scheme is required.
 These replace the fitted multiplier with an actual sub-cellular
 force-generation model, driven by a realistic calcium transient and coupled
 through {class}`pulse.StabilizedActiveStress` (using the model's own active
-tension $T_a$ *and* active stiffness $K_a$, per Regazzoni & Quarteroni 2021).
+tension $T_a$ *and* active stiffness $K_a$, per {cite}`regazzoni2021oscillation`).
 Length-dependent activation and, for two of the four models, a genuine
 force-velocity relationship, fall out of the model's own kinetics rather than
 being imposed.

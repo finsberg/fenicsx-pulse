@@ -8,8 +8,7 @@
 # `beta0` (shifts peak tension with sarcomere length) and `beta1` (shifts
 # calcium sensitivity with sarcomere length) are switched off (`beta0 = beta1
 # = 0` in its default parameters) and replaced with an explicit mechanism --
-# myosin thick-filament OFF-state force feedback, after Lewalle et al.
-# (2024).
+# myosin thick-filament OFF-state force feedback {cite}`lewalle2024cardiac`.
 #
 # ## What "OFF-state feedback" means physically
 #

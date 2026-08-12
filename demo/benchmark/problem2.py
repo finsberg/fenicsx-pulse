@@ -1,6 +1,7 @@
 # # Problem 2: Passive Inflation of a Ventricle
 #
-# This example implements Problem 2 from the cardiac mechanics benchmark suite [Land et al. 2015].
+# This example implements Problem 2 from the cardiac mechanics benchmark suite
+# {cite}`land2015verification`.
 #
 # ## Problem Description
 #

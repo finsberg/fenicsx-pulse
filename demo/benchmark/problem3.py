@@ -1,6 +1,7 @@
 # # Problem 3: Inflation and Active Contraction of a Ventricle
 #
-# This example implements Problem 3 from the cardiac mechanics benchmark suite [Land et al. 2015].
+# This example implements Problem 3 from the cardiac mechanics benchmark suite
+# {cite}`land2015verification`.
 #
 # ## Problem Description
 #

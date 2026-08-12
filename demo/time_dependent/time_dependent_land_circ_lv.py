@@ -30,12 +30,12 @@
 #     * **Epicardium & Base**: Robin BCs (springs) to mimic pericardial constraint and prevent rigid body motion.
 #     * **Endocardium**: The pressure $P$ is a Lagrange multiplier enforcing the volume constraint $V(\mathbf{u}) = V_{target}$.
 #
-# ### 0D Circulation [Regazzoni et al. 2022]
+# ### 0D Circulation {cite}`regazzoni2022cardiac`
 # A closed-loop lumped-parameter network representing the systemic and pulmonary circulation.
 # It includes 4 chambers (LA, LV, RA, RV) and systemic/pulmonary arteries and veins.
 # In this example, we replace the 0D description of the LV with our 3D finite element model.
 #
-# ### 0D Cell Model [Tomek et al. 2019 + Land et al. 2017]
+# ### 0D Cell Model ({cite}`tomek2019development` + {cite}`land2017model`)
 # * **TorOrd**: Detailed human ventricular action potential model.
 # * **Land**: Mechanical model describing cross-bridge dynamics and calcium binding to Troponin-C.
 #

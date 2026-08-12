@@ -12,7 +12,8 @@
 #
 # **Microstructure (Fibers)**:
 # For BiV geometries, analytical fiber definitions are complex. We use the **Laplace-Dirichlet Rule-Based (LDRB)** algorithm
-# [Bayer et al. 2012] implemented in [`fenicsx-ldrb`](https://github.com/finsberg/fenicsx-ldrb) to generate
+# {cite}`bayer2012novel` implemented in
+# [`fenicsx-ldrb`](https://github.com/finsberg/fenicsx-ldrb) to generate
 # realistic fiber ($\mathbf{f}_0$), sheet ($\mathbf{s}_0$), and sheet-normal ($\mathbf{n}_0$) fields.
 #
 # **Physics**:

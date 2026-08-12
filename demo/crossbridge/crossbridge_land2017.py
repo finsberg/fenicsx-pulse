@@ -6,9 +6,7 @@
 # multiplier $g(\lambda)$ bolted onto the active stress. This demo replaces
 # that ad hoc multiplier with a genuine sub-cellular force-generation model:
 # [`crossbridge`](https://github.com/ComputationalPhysiology/crossbridge)'s
-# implementation of Land et al. (2017), *"A model of cardiac contraction
-# based on novel measurements of tension development in human
-# cardiomyocytes"* (J Mol Cell Cardiol 106:68-83).
+# implementation of the Land et al. model {cite}`land2017model`.
 #
 # ## Why a cross-bridge model instead of a fitted curve
 #
@@ -33,8 +31,9 @@
 # `get_active_stiffness()` ($K_a = \partial\dot T_a/\partial\dot\lambda$).
 # Using the stabilized formulation -- rather than plain
 # {class}`pulse.ActiveStress` -- is the documented way to consume such a
-# model; see its docstring for why a naive staggered coupling can be
-# unstable once active stiffness exceeds passive stiffness.
+# model; see its docstring, and {cite}`regazzoni2021oscillation`, for why a
+# naive staggered coupling can be unstable once active stiffness exceeds
+# passive stiffness.
 #
 # `crossbridge` works in sarcomere length (SL, in $\mu$m), while `pulse`
 # works in fiber stretch $\lambda$ (dimensionless, relative to the FEM

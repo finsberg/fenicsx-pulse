@@ -3,9 +3,8 @@
 #
 # This demo repeats the [RDQ18 twitch](crossbridge_rdq18.py) with
 # [`crossbridge`](https://github.com/ComputationalPhysiology/crossbridge)'s
-# `RDQ20MF` model, from Regazzoni, Dedè & Quarteroni (2020), *"Biophysically
-# detailed mathematical models of multiscale cardiac active mechanics"*
-# (PLOS Comput Biol 16(10):e1008294).
+# `RDQ20MF` model, from Regazzoni, Dedè & Quarteroni
+# {cite}`regazzoni2020biophysically`.
 #
 # ## RDQ18 plus explicit cross-bridge cycling
 #
@@ -21,13 +20,14 @@
 # K_a = a_{XB}\,\chi_{SO}(\mathrm{SL})\,[\mu_P^0 + \mu_N^0]
 # $$
 #
-# (Regazzoni & Quarteroni 2020, Eq. 52) -- the tissue-level stiffness
-# contributed by the population of attached cross-bridges, each acting as a
-# linear spring. Where `RDQ18` needed no stabilization because it has no
-# strain-rate feedback to destabilize a segregated coupling, `RDQ20MF` is
-# the model {class}`pulse.StabilizedActiveStress` was built for: this is the
-# regime -- active stiffness exceeding passive stiffness -- Regazzoni &
-# Quarteroni's stabilization term specifically targets.
+# (Eq. 52 of {cite}`regazzoni2020biophysically`) -- the tissue-level
+# stiffness contributed by the population of attached cross-bridges, each
+# acting as a linear spring. Where `RDQ18` needed no stabilization because it
+# has no strain-rate feedback to destabilize a segregated coupling, `RDQ20MF`
+# is the model {class}`pulse.StabilizedActiveStress` was built for: this is
+# the regime -- active stiffness exceeding passive stiffness -- the
+# stabilization term of {cite}`regazzoni2021oscillation` specifically
+# targets.
 #
 # ## A finer internal time step
 #

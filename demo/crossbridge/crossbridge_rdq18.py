@@ -3,9 +3,7 @@
 #
 # This demo repeats the [Land (2017) cross-bridge twitch](crossbridge_land2017.py)
 # with [`crossbridge`](https://github.com/ComputationalPhysiology/crossbridge)'s
-# `RDQ18` model, from Regazzoni, Dedè & Quarteroni (2018), *"Active
-# contraction of cardiac cells: a reduced model for sarcomere dynamics with
-# cooperative interactions"* (Biomech Model Mechanobiol 17(6):1663-1686).
+# `RDQ18` model, from Regazzoni, Dedè & Quarteroni {cite}`regazzoni2018active`.
 #
 # ## A different lineage: regulatory-unit cooperativity, not a fitted cycle
 #
@@ -33,8 +31,8 @@
 # relation, and the corollary is that a segregated (staggered) coupling to
 # tissue mechanics is unconditionally stable for this model without
 # {class}`pulse.StabilizedActiveStress`'s stabilization term -- the
-# instability that class exists to fix is driven entirely by
-# strain-rate feedback that `RDQ18` does not have. We still use
+# instability that class exists to fix ({cite}`regazzoni2021oscillation`) is
+# driven entirely by strain-rate feedback that `RDQ18` does not have. We still use
 # `StabilizedActiveStress` below, with $K_a \equiv 0$, purely so the same
 # coupling code works across all four `crossbridge` demos; it is
 # mathematically identical to plain {class}`pulse.ActiveStress` here.
