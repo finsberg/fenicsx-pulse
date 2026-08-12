@@ -31,6 +31,7 @@ cofnorm
 Comput
 cpus
 Cristobal
+crossbridge
 crossbridges
 Culloch
 Davide
@@ -88,6 +89,7 @@ Kluwer
 kwonlyargs
 Laszlo
 LDRB
+Lewalle
 levelname
 libgl
 libxrender

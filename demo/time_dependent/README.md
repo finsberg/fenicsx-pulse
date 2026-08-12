@@ -46,3 +46,5 @@ uses a quasi-static formulation (neglecting inertia), so no time integration sch
 
 * **[BiV Multiscale Coupling](time_dependent_land_circ_biv.py)**:
     Extends the multiscale framework to a Bi-Ventricular geometry. The coupling interface handles two separate cavities (LV and RV), exchanging volumes and pressures for both ventricles simultaneously with the circulation model.
+
+See also the [Isometric Twitch Experiments & the Frank-Starling Mechanism](../crossbridge/README) section, which uses the same quasi-static coupling style as above but focuses on cellular-scale active tension models rather than a full circulation loop.

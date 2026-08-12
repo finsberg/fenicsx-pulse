@@ -36,6 +36,7 @@ demo = [
     "io4dolfinx",
     "scipy",
     "ukb-atlas",
+    "crossbridge",
 ]
 docs = [
    "sphinx",
