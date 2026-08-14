@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 @dataclass(slots=True)
 class Usyk(HyperElasticMaterial):
     r"""
-    Orthotropic model by Holzapfel and Ogden
+    Orthotropic exponential model by Usyk et al.
 
     Parameters
     ----------
@@ -26,33 +26,40 @@ class Usyk(HyperElasticMaterial):
     n0: dolfinx.fem.Function | dolfinx.fem.Constant | None
         Function representing the direction of the sheet normal
     C: float | dolfinx.fem.Function | dolfinx.fem.Constant
-        Material parameter, by default 2.0
+        Material parameter, by default 0.88
     bf: float | dolfinx.fem.Function | dolfinx.fem.Constant
         Material parameter, by default 8.0
-    bt: float | dolfinx.fem.Function | dolfinx.fem.Constant
-        Material parameter, by default 2.0
+    bs: float | dolfinx.fem.Function | dolfinx.fem.Constant
+        Material parameter, by default 6.0
+    bn: float | dolfinx.fem.Function | dolfinx.fem.Constant
+        Material parameter, by default 3.0
     bfs: float | dolfinx.fem.Function | dolfinx.fem.Constant
-        Material parameter, by default 4.0
+        Material parameter, by default 12.0
+    bfn: float | dolfinx.fem.Function | dolfinx.fem.Constant
+        Material parameter, by default 3.0
+    bsn: float | dolfinx.fem.Function | dolfinx.fem.Constant
+        Material parameter, by default 3.0
 
     Notes
     -----
-    Original model from Usyk [2]_.
+    Original model from Usyk et al. :cite:`usyk2002computational`.
     The strain energy density function is given by
 
     .. math::
-        \Psi = \frac{C}{2} \left( \mathrm{exp}^{Q} - 1 \right)
+        \Psi = \frac{C}{2} \left( e^{Q} - 1 \right)
 
-    where
+    where, with :math:`E_{ij}` the components of the Green-Lagrange strain in
+    the local fiber-sheet-normal basis
+    (:math:`E_{ij} = \mathbf{e}_i \cdot \mathbf{E} \mathbf{e}_j` for
+    :math:`\mathbf{e}_1 = \mathbf{f}_0`, :math:`\mathbf{e}_2 = \mathbf{s}_0`,
+    :math:`\mathbf{e}_3 = \mathbf{n}_0`),
 
     .. math::
-        Q = b_f E_{11}^2 + b_t \left( E_{22}^2 + E_{33}^2 + E_{23}^2 + E_{32}^2 \right)
-            + b_{fs} \left( E_{12}^2 + E_{21}^2 + E_{13}^2 + E_{31}^2 \right)
+        Q = b_f E_{11}^2 + b_s E_{22}^2 + b_n E_{33}^2
+            + 2 b_{fs} E_{12}^2 + 2 b_{fn} E_{13}^2 + 2 b_{sn} E_{23}^2
 
-
-    .. [3] Usyk, Taras P., Ian J. LeGrice, and Andrew D. McCulloch.
-        "Computational model of three-dimensional cardiac electromechanics."
-        Computing and visualization in science 4.4 (2002): 249-257..
-
+    In the fully isotropic case (all :math:`b` equal to one) this reduces to
+    :math:`Q = \mathbf{E} : \mathbf{E}`.
 
     """
 

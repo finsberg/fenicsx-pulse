@@ -230,3 +230,10 @@ plt.show()
 # same $K_a$ is what keeps the coupling from oscillating. See the
 # [comparison demo](crossbridge_comparison.py) for how `RDQ20MF`'s twitch
 # compares to the other three models tested here.
+
+# %% [markdown]
+# ## References
+#
+# ```{bibliography}
+# :filter: docname in docnames
+# ```

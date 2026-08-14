@@ -72,7 +72,7 @@ geometry = pulse.Geometry.from_cardiac_geometries(geo, metadata={"quadrature_deg
 
 # ## 2. Constitutive Model
 #
-# **Isotropic Guccione Model**:
+# **Isotropic Guccione Model** {cite}`guccione1991passive`:
 # By setting $b_f = b_t = b_{fs} = 1.0$, the exponent $Q$ becomes $Q = (E_{11}^2 + E_{22}^2 + E_{33}^2 + 2E_{12}^2 + \dots) = \text{tr}(\mathbf{E}^2)$, making the model isotropic.
 # For an isotropic material, the fiber direction vectors don't affect the energy (as b parameters are equal),
 # but the class requires them. We can use dummy fields or the ones from the mesh.
@@ -206,3 +206,8 @@ epi_apex_coord = pulse.utils.evaluate_at_vertex_tag(U, geo.vfun, geo.markers["EP
 u_epi_apex = pulse.utils.evaluate_at_vertex_tag(problem.u, geo.vfun, geo.markers["EPIPT"][0])
 epi_apex_pos = pulse.utils.gather_broadcast_array(geo.mesh.comm, epi_apex_coord + u_epi_apex)
 print(f"\nGet longitudinal position of epicardial apex: {epi_apex_pos[0, 0]:4f} mm")
+
+# ## References
+# ```{bibliography}
+# :filter: docname in docnames
+# ```

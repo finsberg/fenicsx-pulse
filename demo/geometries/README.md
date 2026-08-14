@@ -26,7 +26,7 @@ This demo simulates a truncated ellipsoid representing an idealized Left Ventric
 Extending the LV model, this demo simulates a Bi-Ventricular (BiV) geometry containing both the Left and Right Ventricles. This setup allows for the study of interventricular interactions and septal mechanics.
 
 * **Geometry**: Two joined truncated ellipsoids.
-* **Fibers**: Generated using the **Laplace-Dirichlet Rule-Based (LDRB)** algorithm via [`fenicsx-ldrb`](https://github.com/finsberg/fenicsx-ldrb).
+* **Fibers**: Generated using the **Laplace-Dirichlet Rule-Based (LDRB)** algorithm {cite}`bayer2012novel` via [`fenicsx-ldrb`](https://github.com/finsberg/fenicsx-ldrb).
 * **Key Concepts**: Multi-chamber boundary conditions (distinct LV and RV pressures), pericardial constraints (Robin BCs), and complex fiber generation.
 
 ## D-shaped Cylinder
@@ -35,5 +35,11 @@ Extending the LV model, this demo simulates a Bi-Ventricular (BiV) geometry cont
 The D-shaped cylinder is a simplified representation of a ventricle that distinguishes between a curved "free wall" and a flat "septum". This geometry is particularly useful for studying regional mechanics and stress differences between septal and free wall regions in a controlled setting.
 
 * **Geometry**: Extruded D-shape with distinct markers for curved and flat inner/outer surfaces.
-* **Simulation**: A dynamic, time-dependent simulation coupled with a closed-loop circulation model (Bestel).
+* **Simulation**: A dynamic, time-dependent simulation coupled with a closed-loop circulation model (Bestel {cite}`bestel2001biomechanical`).
 * **Key Concepts**: Regional analysis (post-processing specific subdomains), dynamic solvers, and coupling with 0D circulation models.
+
+## References
+
+```{bibliography}
+:filter: docname in docnames
+```

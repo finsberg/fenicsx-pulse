@@ -7,20 +7,23 @@
 # [`crossbridge`](https://github.com/ComputationalPhysiology/crossbridge)
 # force-generation model in the loop:
 #
-# * [`Land2017`](crossbridge_land2017.py) -- three-state cross-bridge cycle,
-#   length-dependent activation via two curve-fitted gradients.
-# * [`Lewalle2024`](crossbridge_lewalle2024.py) -- the same cross-bridge
-#   cycle, but length dependence replaced by a mechanistic myosin OFF-state
-#   force-feedback loop.
-# * [`RDQ18`](crossbridge_rdq18.py) -- cooperative regulatory-unit (RU)
-#   kinetics with explicit filament overlap; no force-velocity effect
-#   ($K_a \equiv 0$).
-# * [`RDQ20MF`](crossbridge_rdq20mf.py) -- `RDQ18`'s RU kinetics plus an
-#   explicit, velocity-dependent cross-bridge (XB) cycle ($K_a \neq 0$).
+# * [`Land2017`](crossbridge_land2017.py) {cite}`land2017model` -- three-state
+#   cross-bridge cycle, length-dependent activation via two curve-fitted
+#   gradients.
+# * [`Lewalle2024`](crossbridge_lewalle2024.py) {cite}`lewalle2024cardiac` -- the
+#   same cross-bridge cycle, but length dependence replaced by a mechanistic
+#   myosin OFF-state force-feedback loop.
+# * [`RDQ18`](crossbridge_rdq18.py) {cite}`regazzoni2018active` -- cooperative
+#   regulatory-unit (RU) kinetics with explicit filament overlap; no
+#   force-velocity effect ($K_a \equiv 0$).
+# * [`RDQ20MF`](crossbridge_rdq20mf.py) {cite}`regazzoni2020biophysically` --
+#   `RDQ18`'s RU kinetics plus an explicit, velocity-dependent cross-bridge (XB)
+#   cycle ($K_a \neq 0$).
 #
 # All four expose the same interface
 # (`advance_step`/`get_active_tension`/`get_active_stiffness`), so all four
-# plug into {class}`pulse.StabilizedActiveStress` identically. This demo
+# plug into {class}`pulse.StabilizedActiveStress` {cite}`regazzoni2021oscillation`
+# identically. This demo
 # runs them side by side under matched conditions and compares what
 # actually differs: twitch **shape**, Frank-Starling **steepness**, and
 # absolute **tension scale**.
@@ -320,3 +323,10 @@ for name, cfg in MODELS.items():
 # instead when the question depends on calcium sensitivity, twitch
 # kinetics, or force-velocity behaviour that a single fitted multiplier
 # cannot represent.
+
+# %% [markdown]
+# ## References
+#
+# ```{bibliography}
+# :filter: docname in docnames
+# ```

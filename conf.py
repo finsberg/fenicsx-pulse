@@ -5,6 +5,11 @@
 ###############################################################################
 author = "Henrik Finsberg"
 bibtex_bibfiles = ["docs/refs.bib"]
+# Alphabetic labels ("[HO09]") rather than the default numeric ones. Each demo
+# carries its own `{bibliography}` (filtered on `docname in docnames`), so with
+# numeric labels the same reference would get a different number on every page,
+# and none of them would match docs/references.md.
+bibtex_default_style = "alpha"
 codeautolink_concat_default = True
 comments_config = {"hypothesis": False, "utterances": False}
 copyright = "2025"
@@ -100,7 +105,13 @@ nb_execution_timeout = 3000
 nb_output_stderr = "show"
 numfig = True
 pygments_style = "sphinx"
-suppress_warnings = ["mystnb.unknown_mime_type", "bibtex.duplicate_citation"]
+# Per-page bibliographies mean the same entry is emitted on several pages, and
+# docs/references.md emits all of them once more -- both are intentional.
+suppress_warnings = [
+    "mystnb.unknown_mime_type",
+    "bibtex.duplicate_citation",
+    "bibtex.duplicate_label",
+]
 use_jupyterbook_latex = True
 use_multitoc_numbering = True
 nitpick_ignore = [
@@ -110,3 +121,47 @@ nitpick_ignore = [
     ("py:class", "dolfinx.fem.function.Function"),
     ("py:class", "dolfinx.fem.petsc.NonlinearProblem"),
 ]
+
+
+def _resolve_toplevel_pulse_name(app, env, node, contnode):
+    """Make ``pulse.Foo`` cross-references link to where ``Foo`` is documented.
+
+    Everything a user touches is re-exported at the top level, so the demos
+    naturally write ``{py:class}`pulse.HolzapfelOgden```. But ``docs/api.rst``
+    runs ``automodule`` on the *submodules*, so the only target Sphinx knows is
+    the fully qualified ``pulse.material_models.holzapfelogden.HolzapfelOgden``.
+    Without this hook every such reference silently renders as dead text
+    instead of a link.
+
+    Only unambiguous names are rewritten -- a typo, or a name that several
+    submodules define, is left unresolved so it still shows up as a warning.
+    """
+    if node.get("refdomain") != "py":
+        return None
+
+    target = node.get("reftarget", "")
+    if not target.startswith("pulse.") or target.count(".") == 0:
+        return None
+
+    domain = env.get_domain("py")
+    if target in domain.objects:
+        return None
+
+    suffix = target[len("pulse.") :]
+    candidates = [name for name in domain.objects if name.endswith(f".{suffix}")]
+    if len(candidates) != 1:
+        return None
+
+    return domain.resolve_xref(
+        env,
+        node.get("refdoc"),
+        app.builder,
+        node.get("reftype", "obj"),
+        candidates[0],
+        node,
+        contnode,
+    )
+
+
+def setup(app):
+    app.connect("missing-reference", _resolve_toplevel_pulse_name)

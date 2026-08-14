@@ -2,7 +2,7 @@
 #
 # This demo shows how to assign spatially varying material properties.
 # Specifically, we create a left ventricular ellipsoid and assign different
-# material parameters to different AHA segments.
+# material parameters to different AHA segments {cite}`cerqueira2002standardized`.
 # We simulate an infarct in one segment by making the material 10 times stiffer
 # in that region. We then inflate the ventricle and visualize the resulting displacement.
 
@@ -154,3 +154,8 @@ else:
         p.show()
     else:
         p.screenshot(outdir / "lv_ellipsoid_pressure.png")
+
+# ## References
+# ```{bibliography}
+# :filter: docname in docnames
+# ```

@@ -59,7 +59,7 @@ geo = pulse.Geometry(
 
 # ## 2. Constitutive Model
 #
-# We use the **Guccione** model as specified in the benchmark.
+# We use the **Guccione** model {cite}`guccione1991passive` as specified in the benchmark.
 #
 # $$
 # \Psi = \frac{C}{2} (e^Q - 1), \quad Q = b_f E_{ff}^2 + b_t (E_{ss}^2 + E_{nn}^2 + E_{sn}^2 + E_{ns}^2) + b_{fs} (E_{fs}^2 + E_{sf}^2 + E_{fn}^2 + E_{nf}^2)
@@ -187,3 +187,8 @@ else:
         p.show()
     else:
         p.screenshot("deflection.png")
+
+# ## References
+# ```{bibliography}
+# :filter: docname in docnames
+# ```

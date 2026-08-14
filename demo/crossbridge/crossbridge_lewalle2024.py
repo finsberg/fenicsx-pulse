@@ -241,3 +241,10 @@ plt.show()
 # Whether this differs in shape (rise time, relaxation) from `Land2017` at
 # the stretch levels where both curves ascend is exactly what the
 # [comparison demo](crossbridge_comparison.py) checks.
+
+# %% [markdown]
+# ## References
+#
+# ```{bibliography}
+# :filter: docname in docnames
+# ```

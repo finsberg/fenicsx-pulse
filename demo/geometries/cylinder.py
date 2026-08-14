@@ -2,8 +2,8 @@
 # # A D-shaped Cylinder
 #
 # This demo simulates a D-shaped cylinder, representing an idealized ventricle, coupled to a
-# circulatory model (Bestel model). The active contraction is driven by an activation function
-# derived from the Bestel model.
+# circulatory model (Bestel model {cite}`bestel2001biomechanical`). The active contraction is
+# driven by an activation function derived from the Bestel model.
 #
 # ## Problem Formulation
 #
@@ -22,7 +22,7 @@
 # $$
 #
 # **Material Model**:
-# * **Passive**: Transversely isotropic Holzapfel-Ogden model.
+# * **Passive**: Transversely isotropic Holzapfel-Ogden model {cite}`holzapfel2009constitutive`.
 # * **Active**: Active stress model driven by an activation variable $T_a$.
 # * **Compressibility**: Compressible formulation (penalty method).
 #
@@ -614,3 +614,10 @@ if comm.rank == 0 and not os.getenv("CI"):
 #   <source src="../../_static/cylinder_d.mp4" type="video/mp4">
 #   <p>Video showing the motion of the Cylinder.</p>
 # </video>
+
+# %% [markdown]
+# ## References
+#
+# ```{bibliography}
+# :filter: docname in docnames
+# ```

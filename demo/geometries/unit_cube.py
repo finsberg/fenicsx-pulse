@@ -19,7 +19,7 @@
 #
 # **Material Model**:
 # The material is modeled as:
-# 1. **Passive**: Anisotropic Holzapfel-Ogden material (orthotropic myocardium).
+# 1. **Passive**: Anisotropic Holzapfel-Ogden material {cite}`holzapfel2009constitutive` (orthotropic myocardium).
 # 2. **Active**: Active stress generated along the fiber direction.
 # 3. **Incompressible**: Volume is conserved ($J = \det \mathbf{F} = 1$).
 #
@@ -196,3 +196,8 @@ else:
         p.show()
     else:
         figure_as_array = p.screenshot(outdir / "unit_cube_displacement.png")
+
+# ## References
+# ```{bibliography}
+# :filter: docname in docnames
+# ```

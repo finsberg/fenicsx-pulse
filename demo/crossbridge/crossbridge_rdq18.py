@@ -232,3 +232,10 @@ plt.show()
 # force-calcium steepness against `Land2017`, `Lewalle2024` and `RDQ20MF` in
 # the [comparison demo](crossbridge_comparison.py), and reach for `RDQ20MF`
 # (below) instead whenever shortening velocity needs to matter.
+
+# %% [markdown]
+# ## References
+#
+# ```{bibliography}
+# :filter: docname in docnames
+# ```

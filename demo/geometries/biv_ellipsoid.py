@@ -241,3 +241,8 @@ else:
         p.show()
     else:
         p.screenshot(outdir / "biv_ellipsoid_pressure.png")
+
+# ## References
+# ```{bibliography}
+# :filter: docname in docnames
+# ```

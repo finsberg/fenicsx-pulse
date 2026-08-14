@@ -6,7 +6,7 @@
 # Key features of this example:
 # 1.  **Geometry**: Loading a BiV mesh from the UK Biobank statistical atlas.
 # 2.  **Microstructure**: Generating fiber and sheet orientations using the **Laplace-Dirichlet Rule-Based (LDRB)**
-#     algorithm via the external library `fenicsx-ldrb`. This provides more flexibility than standard built-in methods,
+#     algorithm {cite}`bayer2012novel` via the external library `fenicsx-ldrb`. This provides more flexibility than standard built-in methods,
 #     allowing for distinct fiber angles in the LV and RV.
 # 3.  **Boundary Conditions**: Fixing the **outflow tracts** (Aortic, Pulmonary, Mitral, and Tricuspid valves)
 #     to prevent rigid body motion, instead of fixing the entire base.
@@ -327,3 +327,8 @@ else:
         p.show()
     else:
         p.screenshot(outdir / "active.png")
+
+# ## References
+# ```{bibliography}
+# :filter: docname in docnames
+# ```

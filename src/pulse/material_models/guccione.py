@@ -23,7 +23,7 @@ class GuccioneParameters(typing.TypedDict):
 @dataclass(slots=True)
 class Guccione(HyperElasticMaterial):
     r"""
-    Orthotropic model by Holzapfel and Ogden
+    Transversely isotropic exponential model by Guccione et al.
 
     Parameters
     ----------
@@ -44,7 +44,7 @@ class Guccione(HyperElasticMaterial):
 
     Notes
     -----
-    Original model from Guccione [2]_.
+    Original model from Guccione et al. :cite:`guccione1991passive`.
     The strain energy density function is given by
 
     .. math::
@@ -55,12 +55,6 @@ class Guccione(HyperElasticMaterial):
     .. math::
         Q = b_f E_{11}^2 + b_t \left( E_{22}^2 + E_{33}^2 + E_{23}^2 + E_{32}^2 \right)
             + b_{fs} \left( E_{12}^2 + E_{21}^2 + E_{13}^2 + E_{31}^2 \right)
-
-
-    .. [2] Guccione, Julius M., Andrew D. McCulloch, and L. K. Waldman.
-        "Passive material properties of intact ventricular myocardium determined
-        from a cylindrical model." (1991): 42-55.
-
 
     """
 
