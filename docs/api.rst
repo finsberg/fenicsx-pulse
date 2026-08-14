@@ -106,3 +106,10 @@ utils
 .. automodule:: pulse.utils
     :members:
     :inherited-members:
+
+
+References
+----------
+
+.. bibliography::
+    :filter: docname in docnames

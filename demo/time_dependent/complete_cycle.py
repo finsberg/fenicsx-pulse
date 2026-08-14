@@ -712,3 +712,8 @@ logger.info("Simulation complete.")
 #   <p>Video showing the motion.</p>
 # </video>
 #
+
+# ## References
+# ```{bibliography}
+# :filter: docname in docnames
+# ```

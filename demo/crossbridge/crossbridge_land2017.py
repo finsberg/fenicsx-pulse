@@ -256,3 +256,10 @@ plt.show()
 #
 # See the [comparison demo](crossbridge_comparison.py) for how this compares
 # to `Lewalle2024`, `RDQ18` and `RDQ20MF`.
+
+# %% [markdown]
+# ## References
+#
+# ```{bibliography}
+# :filter: docname in docnames
+# ```

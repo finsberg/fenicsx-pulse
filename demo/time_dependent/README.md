@@ -17,11 +17,11 @@ subject to appropriate boundary conditions (Dirichlet, Neumann, or Robin).
 * $\rho$: Mass density.
 
 ### Time Integration
-To solve this system numerically, we discretize in time using the **Generalized-$\alpha$ method**. This is an implicit, second-order accurate scheme that allows for control over high-frequency numerical dissipation. It solves for the displacement $\mathbf{u}_{n+1}$, velocity $\mathbf{v}_{n+1}$, and acceleration $\mathbf{a}_{n+1}$ at each time step.
+To solve this system numerically, we discretize in time using the **Generalized-$\alpha$ method** {cite}`erlicher2002analysis`. This is an implicit, second-order accurate scheme that allows for control over high-frequency numerical dissipation. It solves for the displacement $\mathbf{u}_{n+1}$, velocity $\mathbf{v}_{n+1}$, and acceleration $\mathbf{a}_{n+1}$ at each time step.
 
 ## Benchmark Problems (Bestel Model)
 
-These examples implement the cardiac elastodynamics benchmarks described in {cite}`arostica2025software`. They use a simplified analytical model (the **Bestel model**) to drive the cavity pressure and active tension, focusing on the verification of the mechanical solver and the time integration scheme.
+These examples implement the cardiac elastodynamics benchmarks described in {cite}`arostica2025software`. They use a simplified analytical model (the **Bestel model** {cite}`bestel2001biomechanical`) to drive the cavity pressure and active tension, focusing on the verification of the mechanical solver and the time integration scheme.
 
 * **[LV Benchmark](time_dependent_bestel_lv.py)**:
     Simulates a beating Left Ventricle (LV) ellipsoid. It verifies the implementation of orthotropic passive material properties, time-dependent active stress, viscoelasticity, and dynamic Robin boundary conditions.
@@ -35,8 +35,8 @@ These examples demonstrate a more physiological setup where the 3D mechanics mod
 uses a quasi-static formulation (neglecting inertia), so no time integration scheme is required.
 
 **Coupling Strategy:**
-* **Electrophysiology**: A 0D cell model (e.g., **TorOrd-Land**) computes the intracellular calcium transient and cross-bridge dynamics to determine the active tension $T_a(t)$.
-* **Circulation**: A closed-loop 0D circulation model (e.g., **Regazzoni**) computes the flow and volume changes in the cardiovascular system.
+* **Electrophysiology**: A 0D cell model (e.g., **TorOrd** {cite}`tomek2019development`-**Land** {cite}`land2017model`) computes the intracellular calcium transient and cross-bridge dynamics to determine the active tension $T_a(t)$.
+* **Circulation**: A closed-loop 0D circulation model (e.g., **Regazzoni** {cite}`regazzoni2022cardiac`) computes the flow and volume changes in the cardiovascular system.
 * **Mechanics**: The 3D finite element model replaces the 0D ventricular chamber in the circulation loop. It solves for the cavity pressure required to match the volume computed by the circulation model (or vice-versa).
 
 **Demos:**
@@ -47,4 +47,10 @@ uses a quasi-static formulation (neglecting inertia), so no time integration sch
 * **[BiV Multiscale Coupling](time_dependent_land_circ_biv.py)**:
     Extends the multiscale framework to a Bi-Ventricular geometry. The coupling interface handles two separate cavities (LV and RV), exchanging volumes and pressures for both ventricles simultaneously with the circulation model.
 
-See also the [Isometric Twitch Experiments & the Frank-Starling Mechanism](../crossbridge/README) section, which uses the same quasi-static coupling style as above but focuses on cellular-scale active tension models rather than a full circulation loop.
+See also the [Isometric Twitch Experiments & the Frank-Starling Mechanism](../crossbridge/README.md) section, which uses the same quasi-static coupling style as above but focuses on cellular-scale active tension models rather than a full circulation loop.
+
+## References
+
+```{bibliography}
+:filter: docname in docnames
+```

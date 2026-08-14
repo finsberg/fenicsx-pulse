@@ -69,7 +69,7 @@ class HolzapfelOgden(HyperElasticMaterial):
 
     Notes
     -----
-    Original model from Holzapfel and Ogden [1]_.
+    Original model from Holzapfel and Ogden :cite:`holzapfel2009constitutive`.
     The strain energy density function is given by
 
     .. math::
@@ -96,13 +96,6 @@ class HolzapfelOgden(HyperElasticMaterial):
         \end{cases}
 
     is the Heaviside function.
-
-    .. [1] Holzapfel, Gerhard A., and Ray W. Ogden.
-        "Constitutive modelling of passive myocardium:
-        a structurally based framework for material characterization.
-        "Philosophical Transactions of the Royal Society of London A:
-        Mathematical, Physical and Engineering Sciences 367.1902 (2009):
-        3445-3475.
 
     """
 

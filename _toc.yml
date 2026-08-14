@@ -51,3 +51,6 @@ parts:
   - caption: Python API
     chapters:
     - file: "docs/api"
+  - caption: Bibliography
+    chapters:
+    - file: "docs/references"

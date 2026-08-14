@@ -57,3 +57,9 @@ This method is intuitive as it reuses the standard forward solver, but it may re
 | **Computational Cost** | Generally lower (one system solve) | Higher (multiple forward solves) |
 | **Implementation** | Requires specific inverse forms | Wraps standard forward solver |
 | **Pulse Class** | `PrestressProblem` | `FixedPointUnloader` |
+
+## References
+
+```{bibliography}
+:filter: docname in docnames
+```

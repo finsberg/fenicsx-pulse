@@ -117,7 +117,8 @@ else:
 # %% [markdown]
 # ### A. Passive Material ($\Psi_{\text{passive}}$)
 #
-# We use the **Holzapfel-Ogden** model ({py:class}`pulse.HolzapfelOgden`), a standard for ventricular myocardium.
+# We use the **Holzapfel-Ogden** model ({py:class}`pulse.HolzapfelOgden`)
+# {cite}`holzapfel2009constitutive`, a standard for ventricular myocardium.
 #
 # $$
 # \Psi_{HO} = \frac{a}{2b} (e^{b(I_1-3)} - 1)
@@ -141,18 +142,163 @@ material = pulse.HolzapfelOgden(f0=f0, s0=s0, **material_params)
 # %% [markdown]
 # ### B. Active Contraction ($\Psi_{\text{active}}$)
 #
-# We model contraction using the **Active Stress** approach ({py:class}`pulse.ActiveStress`).
-# An active component is added to the energy:
+# Contraction is a *change of the constitutive response*, not an external load: the
+# myocardium generates stress from within. Two families of models exist for writing that
+# down {cite}`ambrosi2012active`:
+#
+# * **Active strain**: decompose the deformation gradient multiplicatively,
+#   $\mathbf{F} = \mathbf{F}_e \mathbf{F}_a$, and evaluate the passive law on the elastic
+#   part $\mathbf{F}_e$ only. In `fenicsx-pulse` this is what the
+#   {py:meth}`pulse.ActiveModel.Fe` hook exists for.
+# * **Active stress**: add an extra stress (equivalently, an extra strain energy) on top
+#   of the passive response. This is what all the active models shipped with
+#   `fenicsx-pulse` do, so `Fe` is the identity for each of them.
+#
+# All active models therefore expose the same interface as a material --
+# `strain_energy(C)`, `S(C)`, `P(F)` -- and the total energy is just a sum. Passing
+# {py:class}`pulse.Passive` gives a purely passive simulation.
+#
+# #### The two active-stress conventions
+#
+# Given a scalar active tension $T_a$ and the fiber direction $\mathbf{f}_0$, there is more
+# than one way to turn $T_a$ into a stress, and the choice matters numerically. Let
+#
+# $$
+# \lambda = \sqrt{I_{4f}} = \sqrt{\mathbf{f}_0 \cdot (\mathbf{C} \mathbf{f}_0)}
+# = \| \mathbf{F} \mathbf{f}_0 \|
+# $$
+#
+# be the fiber stretch. {py:class}`pulse.ActiveStress` takes a `formulation` argument
+# ({py:class}`pulse.ActiveStressFormulation`) selecting between the two conventions:
+#
+# **1. `invariant` (the default)** -- the energy is linear in $I_{4f}$:
 #
 # $$
 # \Psi_{\text{active}} = \frac{1}{2} T_a (I_{4f} - 1)
+# \quad \Longrightarrow \quad
+# \mathbf{S}_{\text{active}} = T_a \, \mathbf{f}_0 \otimes \mathbf{f}_0,
+# \quad
+# \mathbf{P}_{\text{active}} = T_a \, \mathbf{F} \mathbf{f}_0 \otimes \mathbf{f}_0
 # $$
 #
-# Differentiating this yields the active stress contribution $\mathbf{S}_{\text{active}} = T_a \mathbf{f}_0 \otimes \mathbf{f}_0$.
-
+# Adding $T_a \mathbf{f}_0 \otimes \mathbf{f}_0$ to the second Piola-Kirchhoff stress is by
+# far the most widespread form of the active stress approach in cardiac mechanics, which is
+# why it is the default here. Note that the fiber traction it actually delivers scales with
+# the stretch, $\| \mathbf{P}_{\text{active}} \mathbf{f}_0 \| = T_a \lambda$, so $T_a$ is
+# only equal to the generated tension in the reference configuration.
+#
+# **2. `stretch`** -- the energy is linear in $\lambda$ instead:
+#
+# $$
+# \Psi_{\text{active}} = T_a (\lambda - 1)
+# \quad \Longrightarrow \quad
+# \mathbf{S}_{\text{active}} = \frac{T_a}{\lambda} \, \mathbf{f}_0 \otimes \mathbf{f}_0,
+# \quad
+# \mathbf{P}_{\text{active}} = T_a \,
+# \frac{\mathbf{F} \mathbf{f}_0 \otimes \mathbf{f}_0}{\| \mathbf{F} \mathbf{f}_0 \|}
+# $$
+#
+# Here $T_a$ *is* the first Piola-Kirchhoff fiber traction, independent of $\lambda$. This
+# is the convention used by Regazzoni and Quarteroni {cite}`regazzoni2021oscillation`.
+#
+# The two differ by exactly a factor of $\lambda$, so switching between them changes the
+# answer -- it is a modelling decision, not a refactoring. Pick `stretch` when $T_a$ comes
+# from a force-generation model whose tension and stiffness are defined against $\lambda$
+# (as in {cite}`regazzoni2020biophysically` or {cite}`land2017model`); keep `invariant`
+# otherwise.
+#
+# #### Transverse activation
+#
+# Experimentally, contraction also generates some stress across the fibers. The `invariant`
+# formulation accepts a parameter $\eta \in [0, 1]$ that blends the fiber-directed energy
+# towards an isotropic one:
+#
+# $$
+# \Psi_{\text{active}} = \frac{1}{2} T_a
+# \left[ (I_{4f} - 1) + \eta \left( (I_1 - 3) - (I_{4f} - 1) \right) \right]
+# $$
+#
+# so $\eta = 0$ (the default) puts all active stress along $\mathbf{f}_0$ and $\eta = 1$ puts
+# it all in the transverse plane. There is no accepted way to write the same blend for an
+# energy expressed in $\lambda$, so the `stretch` formulation requires $\eta = 0$ and raises
+# `NotImplementedError` otherwise.
+#
 # %%
 Ta = pulse.Variable(dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(0.0)), "kPa")
 active_model = pulse.ActiveStress(f0, activation=Ta)
+
+# %% [markdown]
+# The same model in the stretch convention would be constructed as
+#
+# ```python
+# active_model = pulse.ActiveStress(
+#     f0,
+#     activation=Ta,
+#     formulation=pulse.ActiveStressFormulation.stretch,
+# )
+# ```
+#
+# #### Length-dependent activation (Frank-Starling)
+#
+# In real myocardium the tension a sarcomere develops depends on how far it has been
+# stretched. {py:class}`pulse.FrankStarlingActiveStress` captures this cheaply, by scaling
+# the supplied activation with a piecewise-linear ascending limb $g(\lambda)$:
+#
+# $$
+# T_a \mapsto g(\lambda) \, T_a, \qquad
+# g(\lambda) =
+# \begin{cases}
+# a_{\min} & \lambda \le \lambda_{\text{thresh}} \\
+# a_{\min} + m (\lambda - \lambda_{\text{thresh}}) &
+#   \lambda_{\text{thresh}} < \lambda \le \lambda_{\text{opt}} \\
+# a_{\max} & \lambda > \lambda_{\text{opt}}
+# \end{cases}
+# $$
+#
+# with slope $m = (a_{\max} - a_{\min}) / (\lambda_{\text{opt}} - \lambda_{\text{thresh}})$.
+# Because $g$ depends on the unknown displacement, the model must be told which field to
+# read via `register(u)`; the `Problem` classes do this for you. This is a curve fit, not a
+# mechanism -- biophysical cross-bridge models such as {cite}`land2017model` or
+# {cite}`lewalle2024cardiac` produce length-dependent activation from their own kinetics
+# instead. See the
+# [isometric twitch demos](crossbridge/README.md) for a comparison.
+#
+# #### Stabilized active stress
+#
+# When $T_a$ is computed by an *external* force-generation solver -- a cell model advanced
+# once per time step, with mechanics then solved at fixed $T_a$ -- the resulting staggered
+# scheme has a failure mode that is easy to hit. Regazzoni and Quarteroni
+# {cite}`regazzoni2021oscillation` showed that whenever the active stiffness $K_a$ exceeds
+# the passive stiffness $K_p$ (routine in contracting myocardium) the scheme is not merely
+# inaccurate but *non-convergent*: its amplification factor tends to $-K_a/K_p < -1$ as
+# $\Delta t \to 0$, so refining the time step makes the oscillations worse rather than
+# better.
+#
+# The cure is to stop treating the active tension as a dead load over the mechanics solve
+# and restore the fact that the cross-bridges behave as springs.
+# {py:class}`pulse.StabilizedActiveStress` implements the resulting consistent stabilization,
+#
+# $$
+# \Psi_{\text{active}} = T_a \Delta\lambda + \frac{1}{2} K_a \Delta\lambda^2,
+# \qquad \Delta\lambda = \lambda - \lambda_{\text{prev}}
+# $$
+#
+# $$
+# \mathbf{P}_{\text{active}} = \left[ T_a + K_a \Delta\lambda \right]
+# \frac{\mathbf{F} \mathbf{f}_0 \otimes \mathbf{f}_0}{\| \mathbf{F} \mathbf{f}_0 \|}
+# $$
+#
+# where $\lambda_{\text{prev}}$ is the fiber stretch at the previous time step. The added
+# term is $\mathcal{O}(\Delta t)$ and vanishes in the limit, so the scheme remains consistent
+# with the same continuous problem -- it is a numerical device, not a change of model --
+# while becoming unconditionally stable. Note that it is built on the `stretch` convention
+# above, so $T_a$ and $K_a = \partial \dot{T_a} / \partial \dot{\lambda}$ must refer to the
+# same kinematic variable.
+#
+# Using it requires one extra call per time step, in this order: advance the
+# force-generation model using $\lambda_{\text{prev}}$, assign $T_a$ and $K_a$, solve
+# mechanics, then call `update_prev(u)` so that $\lambda_{\text{prev}}$ tracks the same
+# stretch that drove the cell model.
 
 # %% [markdown]
 # ### C. Compressibility ($\Psi_{\text{vol}}$)

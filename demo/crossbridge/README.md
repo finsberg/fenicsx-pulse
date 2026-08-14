@@ -35,3 +35,9 @@ being imposed.
 * **[Model Comparison](crossbridge_comparison.py)**: runs all four side by
   side under matched conditions and compares twitch shape,
   Frank-Starling steepness, and computational cost.
+
+## References
+
+```{bibliography}
+:filter: docname in docnames
+```

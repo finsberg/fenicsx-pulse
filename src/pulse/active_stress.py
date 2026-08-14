@@ -50,7 +50,8 @@ class ActiveStressFormulation(str, Enum):
         :math:`\mathbf{S}_a = \frac{T_a}{\lambda} f_0 \otimes f_0` and
         :math:`\mathbf{P}_a = T_a \frac{\mathbf{F} f_0 \otimes f_0}
         {|\mathbf{F} f_0|}`.
-        This is the convention used by Regazzoni & Quarteroni, and the one
+        This is the convention used by Regazzoni & Quarteroni
+        :cite:`regazzoni2021oscillation`, and the one
         :class:`StabilizedActiveStress` is derived in. Choose it when
         :math:`T_a` comes from a force-generation model whose active
         stiffness is defined as :math:`\partial \dot{T_a}/\partial
@@ -219,7 +220,8 @@ class StabilizedActiveStress(ActiveModel):
     diagnose: whenever the *active* stiffness of the tissue exceeds its
     passive stiffness -- routine in contracting myocardium -- the scheme
     develops non-physical oscillations in :math:`T_a` and :math:`\lambda`.
-    Regazzoni & Quarteroni [1]_ show it is then not merely inaccurate but not
+    Regazzoni & Quarteroni :cite:`regazzoni2021oscillation` show it is then not
+    merely inaccurate but not
     convergent, its amplification factor tending to :math:`-K_a/K_p < -1` as
     :math:`\Delta t \to 0`. **Reducing the time step makes it worse**, so the
     problem cannot be tuned away.
@@ -282,12 +284,6 @@ class StabilizedActiveStress(ActiveModel):
     silently break the consistency of the stabilization, and there is no
     accepted transverse generalization of an energy written in
     :math:`\lambda`. Scale both quantities before assigning them instead.
-
-    References
-    ----------
-    .. [1] F. Regazzoni and A. Quarteroni, "An oscillation-free fully
-       partitioned scheme for the numerical modeling of cardiac active
-       mechanics", Comput. Methods Appl. Mech. Engrg. 373 (2021) 113506.
     """
 
     f0: dolfinx.fem.Function | dolfinx.fem.Constant
@@ -603,7 +599,8 @@ def stretch_active_stress_strain_energy(Ta, C, f0):
     whose second Piola-Kirchhoff stress is :math:`T_a f_0 \otimes f_0 /
     \lambda` and whose first Piola-Kirchhoff stress is therefore
     :math:`T_a \mathbf{F} f_0 \otimes f_0 / |\mathbf{F} f_0|` -- the
-    normalization used by Regazzoni & Quarteroni.
+    normalization used by Regazzoni & Quarteroni
+    :cite:`regazzoni2021oscillation`.
 
     Compare :func:`transversely_active_stress_strain_energy`, which is linear
     in :math:`I_{4f} = \lambda^2` instead and hence differs by a factor of

@@ -3,6 +3,7 @@ Alexandre
 Alfio
 allclose
 allreduce
+Ambrosi
 Appl
 Arens
 argsort
@@ -32,7 +33,9 @@ caplog
 cardiomyocytes
 Cdev
 cellname
+Cerqueira
 Chiara
+Chichester
 CMAME
 cnm
 cntl
@@ -47,6 +50,7 @@ Culloch
 Davide
 destabilize
 deviatoric
+Dilsizian
 dirichletbc
 dlmbda
 dofmap
@@ -101,8 +105,10 @@ jfluidstructs
 Jilberto
 Karabelas
 Kasra
+Kaul
 Kluwer
 kwonlyargs
+Laskey
 Laszlo
 LDRB
 levelname
@@ -112,6 +118,7 @@ libxrender
 linalg
 linesearch
 linspace
+Lippincott
 lmbda
 Luca
 Lukas
@@ -149,7 +156,9 @@ Paraview
 Passini
 pcbi
 pendo
+Pennell
 petsc
+Pezzuto
 Piersanti
 Piola
 PLOS
@@ -168,6 +177,8 @@ Roisin
 rspa
 rsta
 rtol
+Rumberger
+Sanjiv
 sarcomere
 scifem
 SELLIER
@@ -193,7 +204,9 @@ unstabilized
 ureg
 Usyk
 varepsilon
+Vasken
 Venant
+Verani
 Verlag
 Viatcheslav
 vinewtonrsls
@@ -201,6 +214,8 @@ Virag
 viscoelastic
 viscoelasticity
 Waldman
+Weissman
+Wilkins
 XDMF
 xvfb
 yjmcc

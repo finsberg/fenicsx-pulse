@@ -236,3 +236,8 @@ else:
         p.show()
     else:
         p.screenshot(outdir / "lv_ellipsoid_active.png")
+
+# ## References
+# ```{bibliography}
+# :filter: docname in docnames
+# ```
