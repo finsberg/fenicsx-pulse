@@ -115,10 +115,13 @@ class ActiveStress(ActiveModel):
         if Ta is None:
             Ta = 0.0
 
+        domain = ufl.domain.extract_unique_domain(self.f0)
+        assert isinstance(domain, ufl.Mesh)
+
         if isinstance(Ta, (float, int)) or np.isscalar(Ta):
             self.activation = Variable(
                 dolfinx.fem.Constant(
-                    ufl.domain.extract_unique_domain(self.f0),
+                    domain,
                     dolfinx.default_scalar_type(cast(Any, Ta)),
                 ),
                 self.activation.unit,
@@ -126,11 +129,11 @@ class ActiveStress(ActiveModel):
 
         if not isinstance(self.T_ref, dolfinx.fem.Constant):
             self.T_ref = dolfinx.fem.Constant(
-                ufl.domain.extract_unique_domain(self.f0),
+                domain,
                 self.T_ref,
             )
         if not isinstance(self.eta, dolfinx.fem.Constant):
-            self.eta = dolfinx.fem.Constant(ufl.domain.extract_unique_domain(self.f0), self.eta)
+            self.eta = dolfinx.fem.Constant(domain, self.eta)
         logger.debug(f"Created ActiveStress model with Isotropy: {self.isotropy}")
 
     @property
@@ -293,6 +296,7 @@ class StabilizedActiveStress(ActiveModel):
 
     def __post_init__(self) -> None:
         mesh = ufl.domain.extract_unique_domain(self.f0)
+        assert isinstance(mesh, ufl.Mesh)
 
         self.activation = _as_constant_variable(self.activation, mesh, "activation")
         self.active_stiffness = _as_constant_variable(

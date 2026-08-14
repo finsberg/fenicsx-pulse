@@ -27,6 +27,8 @@ dev = [
     "bump-my-version",
     "pre-commit",
     "mypy",
+    "fenicsx-pulse[test]",
+    "fenicsx-pulse[docs]",
 ]
 demo = [
     "cardiac-geometriesx",

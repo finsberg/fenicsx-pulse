@@ -158,7 +158,7 @@ class Geometry:
         return ufl.SpatialCoordinate(self.mesh)
 
     @property
-    def comm(self) -> MPI.Intracomm:
+    def comm(self) -> MPI.Comm:
         return self.mesh.comm
 
 
