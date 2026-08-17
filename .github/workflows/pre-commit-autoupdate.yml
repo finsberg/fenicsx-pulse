@@ -23,7 +23,7 @@ jobs:
         run: pre-commit autoupdate
 
       - name: Open a pull request with any updates
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@v8
         with:
           commit-message: "chore: pre-commit autoupdate"
           title: "chore: pre-commit autoupdate"
