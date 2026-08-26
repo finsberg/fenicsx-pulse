@@ -28,6 +28,10 @@ jobs:
         run: |
           python3 -m pip install -r https://raw.githubusercontent.com/scientificcomputing/scifem/refs/heads/main/build-requirements.txt
 
+      - name: Install adios
+        if: ${{ matrix.container == 'ghcr.io/fenics/dolfinx/dolfinx:nightly' }}
+        run: apt-get update && apt-get install -y libadios2-mpi-c++-dev
+
       - name: Install development versions of dependencies
         if: ${{ matrix.container == 'ghcr.io/fenics/dolfinx/dolfinx:nightly' }}
         run: |
