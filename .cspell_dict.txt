@@ -39,6 +39,7 @@ Chichester
 CMAME
 cnm
 cntl
+codegen
 cofac
 cofnorm
 Comput
@@ -80,6 +81,9 @@ geodir
 Gernot
 Giffard
 gmsh
+gotran
+gotranx
+Gotranx
 gradu
 Grice
 Guccione

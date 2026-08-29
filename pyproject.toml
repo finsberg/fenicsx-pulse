@@ -94,7 +94,16 @@ exclude = [
 ]
 
 [[tool.mypy.overrides]]
-module = ["scifem", "scifem.*", "cardiac_geometries", "cardiac_geometries.*"]
+module = [
+    "scifem",
+    "scifem.*",
+    "cardiac_geometries",
+    "cardiac_geometries.*",
+    "gotranx",
+    "gotranx.*",
+    "circulation",
+    "circulation.*",
+]
 ignore_missing_imports = true
 
 
