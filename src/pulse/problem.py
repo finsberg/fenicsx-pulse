@@ -7,7 +7,6 @@ from enum import Enum
 import basix
 import dolfinx
 import dolfinx.fem.petsc
-import dolfinx.nls.petsc
 import numpy as np
 import scifem
 import ufl
@@ -693,7 +692,6 @@ class DynamicProblem(StaticProblem):
     def _material_form(self, u, v, p):
         F = ufl.grad(u) + ufl.Identity(3)
         C = ufl.variable(F.T * F)
-        J = ufl.det(F)
 
         F_dot = ufl.grad(v)
         C_dot = ufl.variable(F_dot.T * F + F.T * F_dot)
@@ -704,7 +702,15 @@ class DynamicProblem(StaticProblem):
         forms[0] += ufl.inner(self.model.S(C, C_dot=C_dot), 0.5 * var_C) * self.geometry.dx
 
         if self.is_incompressible:
-            forms[-1] += (J - 1.0) * self.p_test * self.geometry.dx
+            # Incompressibility is an algebraic constraint (like the
+            # cavity-volume Lagrange multiplier in _cavity_pressure_form):
+            # enforce it against the true current self.u, not the
+            # alpha_f-interpolated u, or self.u's actual volume is left
+            # under-constrained and p picks up spurious high-frequency
+            # oscillation even under smooth forcing.
+            F_true = ufl.grad(self.u) + ufl.Identity(3)
+            J_true = ufl.det(F_true)
+            forms[-1] += (J_true - 1.0) * self.p_test * self.geometry.dx
 
         return forms
 
@@ -745,7 +751,13 @@ class DynamicProblem(StaticProblem):
 
         R = self._empty_form()
         R_material = self._material_form(u=u, v=v, p=self.p)
-        R_cavity = self._cavity_pressure_form(u, self.cavity_pressures)
+        # The cavity-volume constraint is algebraic (a Lagrange multiplier),
+        # not part of the generalized-alpha differential dynamics: enforcing
+        # it against the alpha_f-interpolated u instead of the true current
+        # self.u leaves self.u's actual volume unconstrained and excites a
+        # spurious high-frequency oscillation in the multiplier (cavity
+        # pressure) even under smooth volume forcing.
+        R_cavity = self._cavity_pressure_form(self.u, self.cavity_pressures)
         R_robin = self._robin_form(u=u, v=v)
         R_neumann = self._neumann_form(u)
         R_rigid = self._rigid_body_form(u)

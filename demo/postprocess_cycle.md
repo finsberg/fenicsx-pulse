@@ -152,7 +152,11 @@ def create_gif(screenshot_files: list[str], output_file: str, delay: int = 5):
     """Create an animated GIF/MP4."""
     cmd = magick_cmd()
     if cmd:
-        sp.run([cmd, "-delay", str(delay), "-loop", "0"] + list(map(str, screenshot_files)) + [str(output_file)])
+        sp.run(
+            [cmd, "-delay", str(delay), "-loop", "0"]
+            + list(map(str, screenshot_files))
+            + [str(output_file)]
+        )
 ```
 
 ## 5. Visualize Displacement
@@ -191,7 +195,7 @@ outdir_u.mkdir(exist_ok=True, parents=True)
 plotter.camera_position = [
     (-0.013579771455618183, -0.17527467868587382, -0.0160491475687889),
     (-0.013977611437439919, -0.001986214891076088, -0.002878248691558838),
-    (0.9998162418488605, 0.0037246515399841644, -0.018804507601279535)
+    (0.9998162418488605, 0.0037246515399841644, -0.018804507601279535),
 ]
 ```
 
@@ -224,7 +228,7 @@ plotter.add_mesh(warped, color="white", show_edges=True)
 plotter.camera_position = [
     (0.20028045308219225, -0.037228043080557334, -0.003401786822110152),
     (-0.013977611199999481, -6.356105320067668e-06, -0.002878247674289465),
-    (0.16197623979674286, 0.9367431745355433, -0.3102836165548876)
+    (0.16197623979674286, 0.9367431745355433, -0.3102836165548876),
 ]
 for i, t in enumerate(timestamps[::N]):
     io4dolfinx.read_function(checkpoint_filename, u, time=t, name="displacement")
@@ -240,7 +244,9 @@ Create Animation
 
 ```python
 if magick_cmd():
-    side_screenshots = [outdir_u / f"side_u_sim_warped_{i}.png" for i in range(len(timestamps[::N]))]
+    side_screenshots = [
+        outdir_u / f"side_u_sim_warped_{i}.png" for i in range(len(timestamps[::N]))
+    ]
     top_screenshots = [outdir_u / f"top_u_sim_warped_{i}.png" for i in range(len(timestamps[::N]))]
     combined_screenshots = []
     for i, (side, top) in enumerate(zip(side_screenshots, top_screenshots)):
@@ -327,7 +333,7 @@ widget.SetEnabled(not widget.GetEnabled())
 plotter.camera_position = [
     (-0.013579771455618183, -0.17527467868587382, -0.0160491475687889),
     (-0.013977611437439919, -0.001986214891076088, -0.002878248691558838),
-    (0.9998162418488605, 0.0037246515399841644, -0.018804507601279535)
+    (0.9998162418488605, 0.0037246515399841644, -0.018804507601279535),
 ]
 plotter.screenshot(screenshot_dir / "aha_slice.png")
 ```
@@ -338,7 +344,7 @@ plotter.add_mesh(grid, cmap="tab20", n_colors=num_segments, show_edges=True)
 plotter.camera_position = [
     (0.20028045308219225, -0.037228043080557334, -0.003401786822110152),
     (-0.013977611199999481, -6.356105320067668e-06, -0.002878247674289465),
-    (0.16197623979674286, 0.9367431745355433, -0.3102836165548876)
+    (0.16197623979674286, 0.9367431745355433, -0.3102836165548876),
 ]
 plotter.screenshot(screenshot_dir / "aha_top.png")
 ```
@@ -362,16 +368,20 @@ fiber_strain_regions = {i: [] for i in range(num_segments)}
 Compute the forms for each AHA segment in advance
 
 ```python
-forms_regions = {i : dolfinx.fem.form(f * dx_aha(i)) for i in range(num_segments)}
-volumes_regions = {i : dolfinx.fem.assemble_scalar(dolfinx.fem.form(dolfinx.fem.Constant(mesh, 1.0) * dx_aha(i))) for i in range(num_segments)}
+forms_regions = {i: dolfinx.fem.form(f * dx_aha(i)) for i in range(num_segments)}
+volumes_regions = {
+    i: dolfinx.fem.assemble_scalar(dolfinx.fem.form(dolfinx.fem.Constant(mesh, 1.0) * dx_aha(i)))
+    for i in range(num_segments)
+}
 ```
 
 Now we loop over stress and strain, generate plots, and compute regional averages. We store the regional averages in the dictionaries defined above for later plotting.
 
 ```python
-for fname, clim, region_dict in [("fiber_stress", (0, 60), fiber_stress_regions),
-                    ("fiber_strain", (-0.3, 0.1), fiber_strain_regions)]:
-
+for fname, clim, region_dict in [
+    ("fiber_stress", (0, 60), fiber_stress_regions),
+    ("fiber_strain", (-0.3, 0.1), fiber_strain_regions),
+]:
     print(f"Processing {fname}...")
     cmap = plt.get_cmap("viridis")
     plotter = pv.Plotter(off_screen=True)
@@ -396,7 +406,7 @@ for fname, clim, region_dict in [("fiber_stress", (0, 60), fiber_stress_regions)
     plotter.camera_position = [
         (-0.013579771455618183, -0.17527467868587382, -0.0160491475687889),
         (-0.013977611437439919, -0.001986214891076088, -0.002878248691558838),
-        (0.9998162418488605, 0.0037246515399841644, -0.018804507601279535)
+        (0.9998162418488605, 0.0037246515399841644, -0.018804507601279535),
     ]
 
     for i, t in enumerate(timestamps[::N]):
@@ -421,7 +431,7 @@ for fname, clim, region_dict in [("fiber_stress", (0, 60), fiber_stress_regions)
     plotter.camera_position = [
         (0.20028045308219225, -0.037228043080557334, -0.003401786822110152),
         (-0.013977611199999481, -6.356105320067668e-06, -0.002878247674289465),
-        (0.16197623979674286, 0.9367431745355433, -0.3102836165548876)
+        (0.16197623979674286, 0.9367431745355433, -0.3102836165548876),
     ]
     for i, t in enumerate(timestamps[::N]):
         io4dolfinx.read_function(checkpoint_filename, f, time=t, name=fname)
@@ -444,7 +454,9 @@ for fname, clim, region_dict in [("fiber_stress", (0, 60), fiber_stress_regions)
 ## 8. Plot Regional Fiber Stress/Strain
 
 ```python
-fiber_strain_regions = np.load(screenshot_dir / "fiber_strain_regions.npy", allow_pickle=True).item()
+fiber_strain_regions = np.load(
+    screenshot_dir / "fiber_strain_regions.npy", allow_pickle=True
+).item()
 ```
 
 ```python
@@ -460,7 +472,9 @@ fig.savefig(screenshot_dir / "fiber_strain_regions.png")
 ```
 
 ```python
-fiber_stress_regions = np.load(screenshot_dir / "fiber_stress_regions.npy", allow_pickle=True).item()
+fiber_stress_regions = np.load(
+    screenshot_dir / "fiber_stress_regions.npy", allow_pickle=True
+).item()
 fig, ax = plt.subplots(figsize=(10, 6))
 for region in range(num_segments):
     ax.plot(np.array(timestamps[::N]), fiber_stress_regions[region], label=f"Segment {region}")
@@ -496,12 +510,12 @@ if comm.rank == 0 and volumes_regions:
 
         # Plot each segment
         for region, values in data_history[fname].items():
-            ax.plot(time_array[:len(values)], values, label=f"Seg {region}")
+            ax.plot(time_array[: len(values)], values, label=f"Seg {region}")
 
         ax.set_title(f"Average {fname.replace('_', ' ').title()} by AHA Segment")
         ax.set_xlabel("Time [s]")
         ax.set_ylabel(f"{fname} {'[kPa]' if 'stress' in fname else '[-]'}")
-        ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', ncol=2)
+        ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left", ncol=2)
         ax.grid(True)
 
         plt.tight_layout()
