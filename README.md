@@ -99,7 +99,9 @@ robin_base = pulse.RobinBC(
     marker=geometry.markers["BASE"][0],
 )
 
-bcs = pulse.BoundaryConditions(neumann=(neumann,), dirichlet=(dirichlet_bc,), robin=(robin_base, robin_epi))
+bcs = pulse.BoundaryConditions(
+    neumann=(neumann,), dirichlet=(dirichlet_bc,), robin=(robin_base, robin_epi)
+)
 
 # Create a mechanics problem
 problem = pulse.StaticProblem(
