@@ -4,6 +4,8 @@ import typing
 from dataclasses import dataclass, field
 from enum import Enum
 
+from mpi4py import MPI
+
 import basix
 import dolfinx
 import dolfinx.fem.petsc
@@ -14,6 +16,7 @@ from packaging.version import Version
 
 from .boundary_conditions import BoundaryConditions
 from .cardiac_model import CardiacModel
+from .circulation import ChamberCoupling, CirculationModel, mL, mmHg
 from .geometry import HeartGeometry
 from .units import Variable, mesh_factor
 
@@ -60,8 +63,17 @@ class Geometry(typing.Protocol):
 
 
 class Cavity(typing.NamedTuple):
+    """A chamber whose volume is constrained to a prescribed value.
+
+    `volume` is usually a `Constant` you set each step. It may instead be a
+    `Function` on the real space, in which case the volume is itself an unknown
+    of the problem and the constraint couples the two: this is how a chamber of
+    a 0D circulation model is tied to the deformed cavity. See
+    :mod:`pulse.circulation`.
+    """
+
     marker: str
-    volume: dolfinx.fem.Constant
+    volume: dolfinx.fem.Constant | dolfinx.fem.Function
 
 
 class BaseBC(str, Enum):
@@ -78,6 +90,9 @@ class StaticProblem:
     parameters: dict[str, typing.Any] = field(default_factory=dict)
     bcs: BoundaryConditions = field(default_factory=BoundaryConditions)
     cavities: list[Cavity] = field(default_factory=list)
+    circulation: CirculationModel | None = None
+    chambers: list[ChamberCoupling] = field(default_factory=list)
+    circulation_missing: dict[str, typing.Any] = field(default_factory=dict)
     NonlinearProblem: typing.Type[dolfinx.fem.petsc.NonlinearProblem] = (
         dolfinx.fem.petsc.NonlinearProblem
     )
@@ -93,6 +108,10 @@ class StaticProblem:
         for key, value in self.parameters.items():
             logger.debug(f"  {key}: {value}")
         logger.debug(f"Number of cavities: {len(self.cavities)}")
+        if self.circulation is not None:
+            logger.debug(
+                f"Circulation states: {list(self.circulation.state_names)}",
+            )
         logger.debug(f"Boundary conditions: {self.bcs}")
 
     def _init_spaces(self):
@@ -102,6 +121,7 @@ class StaticProblem:
         self._init_p_space()
 
         self._init_cavity_pressure_spaces()
+        self._init_circulation_spaces()
         self._init_rigid_body()
         self.update_fields()
 
@@ -164,12 +184,21 @@ class StaticProblem:
             "rigid_body_constraint": False,
             "mesh_unit": "m",
             "base_marker": "BASE",
+            # Whether `solve` raises on non-convergence instead of returning
+            # False. False keeps the documented contract; set it True to get
+            # the older behaviour back everywhere at once, or pass
+            # `raise_on_failure` to a single `solve` call.
+            "raise_on_failure": False,
             "petsc_options": {
                 "ksp_type": "preonly",
                 "pc_type": "lu",
                 "pc_factor_mat_solver_type": "mumps",
-                "snes_error_if_not_converged": True,
-                "ksp_error_if_not_converged": True,
+                # Set to match `raise_on_failure` above, but not read from
+                # here: `solve` sets both on the solver itself every call, so
+                # these two are the value the solver is built with and nothing
+                # more. Change `raise_on_failure`, not these.
+                "snes_error_if_not_converged": False,
+                "ksp_error_if_not_converged": False,
                 # "snes_monitor": None,
                 # "ksp_monitor": None,
                 # "snes_linesearch_monitor": None,
@@ -195,6 +224,167 @@ class StaticProblem:
     @property
     def num_cavity_pressure_states(self):
         return len(self.cavities)
+
+    @property
+    def incompressibility_index(self) -> int:
+        """Index of the incompressibility row in the block system.
+
+        The order is (u, cavity pressures, rigid body, p, circulation states),
+        so `p` is only the last row when there is no circulation model. Naming
+        the row rather than counting back from the end keeps the constraint
+        where it belongs when unknowns are added after it.
+        """
+        return 1 + self.num_cavity_pressure_states + int(self.parameters["rigid_body_constraint"])
+
+    @property
+    def num_circulation_states(self):
+        if self.circulation is None:
+            return 0
+        return len(self.circulation.state_names)
+
+    def _init_circulation_spaces(self):
+        """Give every circulation state its own unknown, and tie the chambers.
+
+        Each state gets one degree of freedom on the real space, the same space
+        the cavity pressures already use, since a circuit state is a single
+        global number rather than a field.
+
+        Coupling a chamber then needs no new machinery. The cavity constraint
+        row already reads ``pendo * (volume / area - V(u)) * ds``, which fixes
+        the deformed cavity volume to whatever ``volume`` says; pointing it at
+        the chamber's volume state instead of a prescribed constant turns that
+        row into the coupling, and `ufl.derivative` picks up the cross term.
+        """
+        self.circulation_states: list[dolfinx.fem.Function] = []
+        self.circulation_states_old: list[dolfinx.fem.Function] = []
+        self.circulation_states_test: list[ufl.Argument] = []
+        self.circulation_states_trial: list[ufl.Argument] = []
+
+        if self.circulation is None:
+            return
+
+        logger.debug(f"Number of circulation states: {self.num_circulation_states}")
+        if getattr(self, "real_space", None) is None:
+            self.real_space = scifem.create_real_functionspace(self.geometry.mesh)
+
+        initial = np.asarray(self.circulation.initial_states, dtype=np.float64)
+        for name, value in zip(self.circulation.state_names, initial):
+            state = self.Function(self.real_space, name=name)
+            state_old = self.Function(self.real_space, name=f"{name}_old")
+            state.x.array[:] = value
+            state_old.x.array[:] = value
+            self.circulation_states.append(state)
+            self.circulation_states_old.append(state_old)
+            self.circulation_states_test.append(ufl.TestFunction(self.real_space))
+            self.circulation_states_trial.append(ufl.TrialFunction(self.real_space))
+
+        # The circuit carries its own time, since it is the only part of a
+        # static problem with a time derivative in it.
+        self.circulation_time = dolfinx.fem.Constant(self.geometry.mesh, 0.0)
+        self.circulation_dt = dolfinx.fem.Constant(self.geometry.mesh, 1.0)
+
+        # A real-space test function is constant, so integrating a residual
+        # against it over the mesh multiplies it by the mesh volume. Divide that
+        # back out, so each row is the ODE residual itself and can be compared
+        # against a reference implementation without carrying a stray factor.
+        one = dolfinx.fem.form(
+            dolfinx.fem.Constant(self.geometry.mesh, 1.0) * ufl.dx(domain=self.geometry.mesh),
+        )
+        volume = self.geometry.mesh.comm.allreduce(
+            dolfinx.fem.assemble_scalar(one),
+            op=MPI.SUM,
+        )
+        self._circulation_scale = dolfinx.fem.Constant(self.geometry.mesh, 1.0 / volume)
+
+        # Point each coupled cavity at its chamber's volume state. The circuit
+        # works in milliliters and the mechanics in cubic metres, so this is one
+        # of the two places a unit conversion belongs.
+        index = {name: i for i, name in enumerate(self.circulation.state_names)}
+        by_marker = {chamber.marker: chamber for chamber in self.chambers}
+        for i, cavity in enumerate(self.cavities):
+            chamber = by_marker.get(cavity.marker)
+            if chamber is None:
+                continue
+            if chamber.volume_state not in index:
+                raise KeyError(
+                    f"Chamber {chamber.marker!r} refers to volume state "
+                    f"{chamber.volume_state!r}, which the circulation model does not "
+                    f"have. Known states: {list(self.circulation.state_names)}",
+                )
+            volume_state = self.circulation_states[index[chamber.volume_state]]
+            self.cavities[i] = Cavity(marker=cavity.marker, volume=volume_state * mL)
+            logger.debug(
+                f"Coupled cavity {cavity.marker!r} to circulation state {chamber.volume_state!r}",
+            )
+
+    def _circulation_missing_values(self):
+        """Assemble the values the circuit expects to be supplied.
+
+        Chamber pressures come from the cavity-pressure unknowns the mechanics
+        problem already carries, converted from pascals to the millimeters of
+        mercury the circuit is written in. Anything else, such as an activation
+        phase, has to be provided by the caller through `circulation_missing`.
+        """
+        assert self.circulation is not None
+
+        supplied = dict(self.circulation_missing)
+        cavity_of = {cavity.marker: i for i, cavity in enumerate(self.cavities)}
+        for chamber in self.chambers:
+            if chamber.marker not in cavity_of:
+                raise KeyError(
+                    f"Chamber {chamber.marker!r} has no matching cavity. "
+                    f"Known cavities: {sorted(cavity_of)}",
+                )
+            pressure = self.cavity_pressures[cavity_of[chamber.marker]]
+            supplied[chamber.pressure_missing] = pressure / mmHg
+
+        missing = []
+        for name in self.circulation.missing_names:
+            if name not in supplied:
+                raise KeyError(
+                    f"The circulation model needs {name!r}, which is neither a coupled "
+                    f"chamber pressure nor given in `circulation_missing`. It needs "
+                    f"{list(self.circulation.missing_names)}.",
+                )
+            missing.append(supplied[name])
+        return missing
+
+    def _circulation_form(self):
+        """Backward Euler on the circuit states, one residual row each.
+
+        The model supplies only ``f`` in ``dy/dt = f(t, y, m)``; how it is
+        stepped is decided here, so the same circuit can be advanced by a
+        different scheme without touching the model.
+        """
+        if self.circulation is None:
+            return self._empty_form()
+
+        rhs = self.circulation.rhs(
+            self.circulation_time,
+            self.circulation_states,
+            self._circulation_missing_values(),
+        )
+        if len(rhs) != self.num_circulation_states:
+            raise ValueError(
+                f"Circulation model returned {len(rhs)} equations for "
+                f"{self.num_circulation_states} states",
+            )
+
+        form = self._empty_form()
+        offset = self.num_states - self.num_circulation_states
+        for i, (state, state_old, test, f) in enumerate(
+            zip(
+                self.circulation_states,
+                self.circulation_states_old,
+                self.circulation_states_test,
+                rhs,
+            ),
+        ):
+            residual = (state - state_old) / self.circulation_dt - f
+            form[offset + i] = (
+                self._circulation_scale * residual * test * ufl.dx(domain=self.geometry.mesh)
+            )
+        return form
 
     def _init_cavity_pressure_spaces(self):
         logger.debug("Initializing cavity pressure function spaces...")
@@ -297,7 +487,7 @@ class StaticProblem:
         forms[0] += ufl.inner(self.model.S(C), 0.5 * var_C) * self.geometry.dx
 
         if self.is_incompressible:
-            forms[-1] += (J - 1.0) * self.p_test * self.geometry.dx
+            forms[self.incompressibility_index] += (J - 1.0) * self.p_test * self.geometry.dx
 
         return forms
 
@@ -393,7 +583,21 @@ class StaticProblem:
             marker_id = self.geometry.markers[marker][0]
             form += pendo * (cavity_volume / area - V_u) * self.geometry.ds(marker_id)
 
-        return self._create_residual_form(form)
+        residual = self._create_residual_form(form)
+
+        # `_create_residual_form` differentiates this term against every state,
+        # which is what produces both the pressure traction on the displacement
+        # row and the constraint on the cavity pressure row. When the cavity
+        # volume is a circulation state rather than a prescribed constant, it
+        # also produces a `pendo` term on that state's row -- and that row is
+        # the chamber's own differential equation, not something derived from
+        # this Lagrangian, so the term does not belong there. It is small enough
+        # to look like discretization error (`pendo` times a milliliter) while
+        # quietly changing what is being solved.
+        for i in range(self.num_states - self.num_circulation_states, self.num_states):
+            residual[i] = ufl.as_ufl(0.0)
+
+        return residual
 
     @property
     def base_dirichlet(self):
@@ -423,6 +627,7 @@ class StaticProblem:
             + self.num_cavity_pressure_states
             + int(self.parameters["rigid_body_constraint"])
             + int(self.is_incompressible)
+            + self.num_circulation_states
         )
 
     @property
@@ -436,6 +641,7 @@ class StaticProblem:
         R_neumann = self._neumann_form(self.u)
         R_rigid = self._rigid_body_form(self.u)
         R_body_force = self._body_force_form(self.u)
+        R_circulation = self._circulation_form()
 
         for i in range(self.num_states):
             R[i] += R_material[i]
@@ -444,6 +650,7 @@ class StaticProblem:
             R[i] += R_neumann[i]
             R[i] += R_rigid[i]
             R[i] += R_body_force[i]
+            R[i] += R_circulation[i]
 
         return R
 
@@ -456,6 +663,7 @@ class StaticProblem:
             u.append(self.r)
         if self.is_incompressible:
             u.append(self.p)
+        u += self.circulation_states
         return u
 
     @property
@@ -467,6 +675,7 @@ class StaticProblem:
             u.append(self.r_old)
         if self.is_incompressible:
             u.append(self.p_old)
+        u += self.circulation_states_old
         return u
 
     def update_old_states(self):
@@ -487,6 +696,8 @@ class StaticProblem:
             assert self.p_old is not None
             logger.debug("Updating old pressure state to current value...")
             self.p_old.x.array[:] = self.p.x.array.copy()
+        for state, state_old in zip(self.circulation_states, self.circulation_states_old):
+            state_old.x.array[:] = state.x.array.copy()
 
     def reset_states(self):
         """Reset states to old values"""
@@ -506,6 +717,8 @@ class StaticProblem:
             assert self.p_old is not None
             logger.debug("Resetting pressure state to old value...")
             self.p.x.array[:] = self.p_old.x.array.copy()
+        for state, state_old in zip(self.circulation_states, self.circulation_states_old):
+            state.x.array[:] = state_old.x.array.copy()
 
     @property
     def test_functions(self):
@@ -516,6 +729,7 @@ class StaticProblem:
             u.append(self.q)
         if self.is_incompressible:
             u.append(self.p_test)
+        u += self.circulation_states_test
         return u
 
     @property
@@ -527,6 +741,7 @@ class StaticProblem:
             u.append(self.dr)
         if self.is_incompressible:
             u.append(self.dp)
+        u += self.circulation_states_trial
         return u
 
     def K(self, R):
@@ -632,31 +847,75 @@ class StaticProblem:
         self.reset_states()
         self._init_forms()
 
-    def solve(self, update_old_states: bool = True) -> bool:
+    def solve(self, update_old_states: bool = True, raise_on_failure: bool | None = None) -> bool:
         """Solve nonlinear problem with Newton solver
 
         Parameters
         ----------
         update_old_states : bool, optional
             Whether to update old states before solving, by default True
+        raise_on_failure : bool | None, optional
+            Whether a Newton solve that does not converge should raise rather
+            than return ``False``. ``None``, the default, defers to
+            ``parameters["raise_on_failure"]``, which is itself ``False``.
 
         Returns
         -------
         bool
-            True if converged, False otherwise
+            True if converged, False otherwise. When this is ``False`` the
+            state is whatever the failed solve left behind and should not be
+            used; :meth:`reset_states` puts it back.
+
+        Notes
+        -----
+        This overrides ``snes_error_if_not_converged`` (and the corresponding
+        KSP option) on every call, so setting them through ``petsc_options`` has
+        no effect -- ``raise_on_failure`` is the single control.
+
+        Non-convergence is logged at warning level whichever way it is
+        reported, because a caller that ignores the return value would
+        otherwise carry on against a failed solve in silence.
         """
         logger.debug("Solving the system...")
+        if raise_on_failure is None:
+            raise_on_failure = bool(self.parameters["raise_on_failure"])
         if update_old_states:
             self.update_old_states()
-        if _dolfinx_version >= Version("0.10"):
-            self.problem.solve()
-            converged = typing.cast(int, self.problem.solver.getConvergedReason()) > 0
-            iters = self.problem.solver.getIterationNumber()
-            logger.debug(f"Solved in {iters} iterations, converged: {converged}")
-        else:
-            converged = self._solver.solve(rtol=1e-10, atol=1e-6)
 
-        self.update_fields()
+        if _dolfinx_version >= Version("0.10"):
+            solver = self.problem.solver
+            solver.setErrorIfNotConverged(raise_on_failure)
+            solver.getKSP().setErrorIfNotConverged(raise_on_failure)
+            self.problem.solve()
+            reason = typing.cast(int, solver.getConvergedReason())
+            converged = reason > 0
+            iters = solver.getIterationNumber()
+            logger.debug(f"Solved in {iters} iterations, converged: {converged}")
+            if not converged:
+                logger.warning(
+                    f"Newton did not converge after {iters} iterations "
+                    f"(SNES converged reason {reason})",
+                )
+        else:
+            # scifem's Newton solver returns the iteration count, not a flag,
+            # and raises when it gives up -- so the old code here assigned an
+            # int to `converged` and could only ever report success.
+            try:
+                self._solver.solve(rtol=1e-10, atol=1e-6)
+            except RuntimeError:
+                if raise_on_failure:
+                    raise
+                logger.warning("Newton did not converge")
+                converged = False
+            else:
+                converged = True
+
+        # Derived fields are only meaningful for a solution that exists. A
+        # `DynamicProblem` in particular reconstructs velocity and acceleration
+        # from the displacement, so updating them from a failed iterate would
+        # write the failure into the history and outlast the rollback.
+        if converged:
+            self.update_fields()
 
         return converged
 
@@ -710,7 +969,7 @@ class DynamicProblem(StaticProblem):
             # oscillation even under smooth forcing.
             F_true = ufl.grad(self.u) + ufl.Identity(3)
             J_true = ufl.det(F_true)
-            forms[-1] += (J_true - 1.0) * self.p_test * self.geometry.dx
+            forms[self.incompressibility_index] += (J_true - 1.0) * self.p_test * self.geometry.dx
 
         return forms
 

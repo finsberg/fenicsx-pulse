@@ -162,7 +162,16 @@ class FixedPointUnloader:
                     else:
                         msg = f"Ramping traction to {value:.4f}"
                     logger.debug(msg)
-                problem.solve()
+                if not problem.solve():
+                    # Everything downstream reads `problem.u`, so carrying on
+                    # from a failed ramp step would feed a meaningless
+                    # displacement into the fixed-point iteration and produce a
+                    # reference configuration that looks like an answer.
+                    raise RuntimeError(
+                        f"Unloading failed: the mechanics did not converge while ramping "
+                        f"the load to {ramp:.3f} of target on iteration {i}. Try more "
+                        "`ramp_steps`, or a smaller target pressure.",
+                    )
             u = problem.u
 
             # 2. Evaluate displacement u at the mesh nodes
