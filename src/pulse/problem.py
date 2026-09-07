@@ -9,7 +9,6 @@ from mpi4py import MPI
 import basix
 import dolfinx
 import dolfinx.fem.petsc
-import dolfinx.nls.petsc
 import numpy as np
 import scifem
 import ufl

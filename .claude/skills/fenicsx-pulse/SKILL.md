@@ -35,7 +35,9 @@ import cardiac_geometries
 import pulse
 
 geo = cardiac_geometries.mesh.lv_ellipsoid(
-    outdir="geometry", create_fibers=True, fiber_space="Quadrature_6",
+    outdir="geometry",
+    create_fibers=True,
+    fiber_space="Quadrature_6",
 )
 geometry = pulse.HeartGeometry.from_cardiac_geometries(geo, metadata={"quadrature_degree": 6})
 
@@ -49,13 +51,17 @@ comp_model = pulse.Incompressible()
 
 model = pulse.CardiacModel(material=material, active=active_model, compressibility=comp_model)
 
-traction = pulse.Variable(dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0)), "kPa")
+traction = pulse.Variable(
+    dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0)), "kPa"
+)
 neumann = pulse.NeumannBC(traction=traction, marker=geometry.markers["ENDO"][0])
+
 
 def dirichlet_bc(V: dolfinx.fem.FunctionSpace):
     facets = geo.ffun.find(geo.markers["BASE"][0])
     dofs = dolfinx.fem.locate_dofs_topological(V.sub(0), geo.mesh.topology.dim - 1, facets)
     return [dolfinx.fem.dirichletbc(0.0, dofs, V.sub(0))]
+
 
 bcs = pulse.BoundaryConditions(neumann=(neumann,), dirichlet=(dirichlet_bc,))
 
@@ -63,8 +69,8 @@ problem = pulse.StaticProblem(model=model, geometry=geometry, bcs=bcs)
 problem.solve()
 
 for pressure, activation in zip(np.linspace(0, 5.0, 5), np.linspace(0, 5.0, 5)):
-    traction.assign(pressure)   # kPa
-    Ta.assign(activation)       # kPa
+    traction.assign(pressure)  # kPa
+    Ta.assign(activation)  # kPa
     problem.solve()
 ```
 
