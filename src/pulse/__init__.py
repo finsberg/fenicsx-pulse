@@ -14,6 +14,7 @@ from . import (
     active_stress,
     boundary_conditions,
     cardiac_model,
+    circulation,
     cli,
     compressibility,
     exceptions,
@@ -37,6 +38,7 @@ from .active_stress import (
 )
 from .boundary_conditions import BoundaryConditions, NeumannBC, RobinBC
 from .cardiac_model import CardiacModel
+from .circulation import ChamberCoupling, CirculationModel, GotranxCirculation
 from .compressibility import (
     Compressibility,
     Compressible,
@@ -59,6 +61,10 @@ from .unloading import FixedPointUnloader, PrestressProblem, TargetPressure
 from .viscoelasticity import NoneViscoElasticity, ViscoElasticity, Viscous
 
 __all__ = [
+    "circulation",
+    "CirculationModel",
+    "ChamberCoupling",
+    "GotranxCirculation",
     "kinematics",
     "invariants",
     "material_model",

@@ -48,6 +48,11 @@ docs = [
    "vtk>=9.5.0",
    "trame-vuetify",
    "ipywidgets",
+   # Only needed to regenerate the videos in `_static/` with
+   # `demo/time_dependent/make_animations.py`; the build itself reads the
+   # finished files. It brings its own ffmpeg, so nothing has to be installed
+   # outside Python.
+   "imageio-ffmpeg",
    "fenicsx-pulse[demo]",
    "sphinx-codeautolink",
    "sphinxcontrib-bibtex",
@@ -94,7 +99,16 @@ exclude = [
 ]
 
 [[tool.mypy.overrides]]
-module = ["scifem", "scifem.*", "cardiac_geometries", "cardiac_geometries.*"]
+module = [
+    "scifem",
+    "scifem.*",
+    "cardiac_geometries",
+    "cardiac_geometries.*",
+    "gotranx",
+    "gotranx.*",
+    "circulation",
+    "circulation.*",
+]
 ignore_missing_imports = true
 
 
