@@ -53,9 +53,16 @@
 #
 # So before anything is stepped, the cavity pressure is measured over a grid of
 # volumes and activations, and the loading is tuned in pure 0D against that
-# measurement. Because the mechanics is quasi-static, that measurement is not an
-# approximation of the ventricle -- it is the ventricle, sampled. See
-# `calibration.py`; `PULSE_CALIBRATE=0` skips it.
+# measurement. In the quasi-static arm that measurement is not an approximation
+# of the ventricle -- it is the ventricle, sampled. See `calibration.py`;
+# `PULSE_CALIBRATE=0` skips it.
+#
+# ## With or without inertia
+#
+# `DYNAMIC` below switches the mechanics between quasi-static and
+# elastodynamics. The operating point is found the same way for both: the grid
+# above is sampled statically, and the dynamic arm starts from that same
+# inflated configuration at rest.
 
 import logging
 import os
@@ -63,7 +70,8 @@ from pathlib import Path
 
 from mpi4py import MPI
 
-# A sibling module in this directory, not a package -- see `calibration.py`.
+# Sibling modules in this directory, not a package -- see `calibration.py`.
+import animation
 import calibration as calib
 import circulation
 import dolfinx
@@ -115,6 +123,31 @@ if IN_CI:
 # keyed on this, so the two do not overwrite each other.
 FORMULATION = pulse.ActiveStressFormulation.stretch
 
+# Whether the mechanics carries inertia. Quasi-static is the default and costs
+# little here: its loop is within about 5 mmHg of the dynamic one at peak, some
+# 5% of peak pressure.
+#
+# Switching it on changes two things beyond the mass term:
+#
+# * Dissipation is no longer optional. The cavity pressure is a Lagrange
+#   multiplier on a position constraint, and an undamped wall rings against it.
+#   Without the viscous term and the damping Robin conditions this flag also
+#   enables, the pressure departs from the quasi-static loop by 94 mmHg at worst
+#   and peaks at 175 mmHg rather than 99; with them, 33 mmHg. Most of that
+#   remainder is viscous stress rather than mass: sweeping the density over
+#   three decades moves it by about 5 mmHg.
+# * The step size is set by the wall, not the circuit. Elastic wave modes scale
+#   as 1/sqrt(rho), so the density cannot be turned down to recover the
+#   quasi-static answer: at a tenth of it the run stops converging partway
+#   through the beat at DT, and at a hundredth within a few steps.
+#
+# Both arms step the circuit identically. `PULSE_DYNAMIC=1` flips the flag
+# without editing the file, so the two can be run back to back off one
+# calibration.
+DYNAMIC = os.getenv("PULSE_DYNAMIC", "0").strip().lower() in ("1", "true", "yes", "on")
+
+ARM = "dynamic" if DYNAMIC else "quasistatic"
+
 BEAT_LENGTH = 1.0  # s
 DT = 0.002  # s
 NUM_BEATS = 1 if IN_CI else 2
@@ -163,30 +196,37 @@ def build_model(f0, s0, Ta, incompressible=False):
     material_params = pulse.HolzapfelOgden.transversely_isotropic_parameters()
     material = pulse.HolzapfelOgden(f0=f0, s0=s0, **material_params)  # type: ignore[arg-type]
     comp = pulse.Incompressible() if incompressible else pulse.Compressible()
+    # A viscous stress needs a strain rate, which only the dynamic problem
+    # supplies, so this term is inert in the prestress and inflation solves
+    # below. They stay static in either arm and measure the same chamber.
+    viscoelasticity = (
+        pulse.viscoelasticity.Viscous() if DYNAMIC else pulse.viscoelasticity.NoneViscoElasticity()
+    )
     return pulse.CardiacModel(
         material=material,
         active=pulse.ActiveStress(f0, activation=Ta, formulation=FORMULATION),
         compressibility=comp,
+        viscoelasticity=viscoelasticity,
     )
 
 
 def robin_bcs():
-    return (
-        pulse.RobinBC(
+    def spring(marker, value, damping=False):
+        return pulse.RobinBC(
             value=pulse.Variable(
-                dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(1.0e5)),
-                "Pa / m",
+                dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(value)),
+                "Pa s/ m" if damping else "Pa / m",
             ),
-            marker=geometry.markers["EPI"][0],
-        ),
-        pulse.RobinBC(
-            value=pulse.Variable(
-                dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(1.0e5)),
-                "Pa / m",
-            ),
-            marker=geometry.markers["BASE"][0],
-        ),
-    )
+            marker=geometry.markers[marker][0],
+            damping=damping,
+        )
+
+    bcs = [spring("EPI", 1.0e5), spring("BASE", 1.0e5)]
+    if DYNAMIC:
+        # Velocity-proportional, and ignored by a static problem, so the same
+        # sequence works for every problem in this file.
+        bcs += [spring("EPI", 5.0e3, damping=True), spring("BASE", 5.0e3, damping=True)]
+    return tuple(bcs)
 
 
 # ## Activation
@@ -407,7 +447,24 @@ circulation_model = GotranxCirculation(
 )
 beat_phase = dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0))
 
-problem = pulse.problem.StaticProblem(
+coupled_parameters = {
+    "mesh_unit": "m",
+    # How the circuit's states are stepped. `bdf2` is the other option: second
+    # order for the same single evaluation of the right-hand side, and about
+    # seven times more accurate than backward Euler at this step size. Both
+    # evaluate the circuit at the end of the step, where the cavity constraint
+    # ties the chamber volume to the deformed cavity; a midpoint rule couples it
+    # half a step away and does worse than either.
+    "circulation_scheme": "backward_euler",
+}
+if DYNAMIC:
+    coupled_parameters |= {
+        "rho": pulse.Variable(1e3, "kg/m^3"),
+        "dt": pulse.Variable(DT, "s"),
+    }
+
+Problem = pulse.problem.DynamicProblem if DYNAMIC else pulse.problem.StaticProblem
+problem = Problem(
     model=model,
     geometry=geometry,
     bcs=bcs,
@@ -415,7 +472,7 @@ problem = pulse.problem.StaticProblem(
     circulation=circulation_model,
     chambers=[ChamberCoupling(marker="ENDO", volume_state="V_LV", pressure_missing="p_LV")],
     circulation_missing={"beat_phase": beat_phase},
-    parameters={"mesh_unit": "m"},
+    parameters=coupled_parameters,
 )
 
 # Start from the inflated state, and from the circuit state it was inflated to.
@@ -426,6 +483,13 @@ if problem.is_incompressible:
     problem.p_old.x.array[:] = inflation.p.x.array
 problem.cavity_pressures[0].x.array[:] = p_inflated
 problem.cavity_pressures_old[0].x.array[:] = p_inflated
+
+if DYNAMIC:
+    # The inflation handed over a configuration, not a motion: start at rest.
+    # Otherwise the beat opens with an impulsive load and the wall rings
+    # through it.
+    problem.v_old.x.array[:] = 0.0
+    problem.a_old.x.array[:] = 0.0
 
 names = list(circulation_model.state_names)
 for name, state, state_old in zip(
@@ -454,6 +518,16 @@ history = {
     "constraint": [0.0],
 }
 
+# The moving geometry, kept every few steps for `make_animations.py`. Records
+# nothing under CI, where the run is two steps rather than a beat; the video on
+# the page is a saved one.
+recorder = animation.FrameRecorder(
+    geometry.mesh,
+    every=5,
+    enabled=not IN_CI,
+    up=animation.base_normal(geometry, "BASE"),
+)
+
 max_steps = 2 if IN_CI else int(NUM_BEATS * BEAT_LENGTH / DT)
 t = 0.0
 for step in range(max_steps):
@@ -477,6 +551,7 @@ for step in range(max_steps):
     # partitioned scheme this is set by the exchange budget; here it should stay
     # at solver tolerance.
     history["constraint"].append(abs(volume - V_LV) / V_LV)
+    recorder.record(problem.u, t, step)
 
     if step % 50 == 0:
         logger.info(
@@ -487,16 +562,26 @@ for step in range(max_steps):
 
 logger.info(f"Worst constraint violation over the run: {max(history['constraint']):.3e}")
 
+saved = recorder.save(outdir / f"frames-{ARM}-{FORMULATION.value}.npz")
+if saved is not None:
+    logger.info(f"Saved {len(recorder.times)} frames of the moving geometry to {saved}")
+
 # ## Does the coupled run agree with the surrogate it was calibrated against?
 #
-# The mechanics problem is quasi-static, so its cavity pressure is a function
-# of volume and activation and nothing else. The loop this run traced out
-# therefore has to lie on the sampled surface, and how far off it lies is
-# interpolation error. Anything larger means the calibration and the coupled
-# run are not solving the same mechanics problem, which would invalidate the
-# operating point rather than merely blur it.
+# In the quasi-static arm the cavity pressure is a function of volume and
+# activation and nothing else. The loop this run traced out therefore has to
+# lie on the sampled surface, and how far off it lies is interpolation error.
+# Anything larger means the calibration and the coupled run are not solving the
+# same mechanics problem, which would invalidate the operating point rather
+# than merely blur it.
+#
+# The dynamic arm has no such obligation: its pressure depends on the rate as
+# well, through the viscous and damping terms, and on the acceleration through
+# the mass. It is expected to sit off the surface -- by about 33 mmHg at worst
+# here -- so the check is not a check there and is skipped rather than reported
+# as a discrepancy.
 
-if calibration is not None:
+if calibration is not None and not DYNAMIC:
     agreement = calibration.check_against(history["V_LV"], history["Ta"], history["p_LV"])
     logger.info(
         f"Surrogate vs coupled run: {agreement['max_mmHg']:.2f} mmHg worst, "
@@ -506,7 +591,7 @@ if calibration is not None:
 
 if comm.rank == 0:
     np.savez(
-        outdir / f"traces_monolithic-{FORMULATION.value}.npz",
+        outdir / f"traces_monolithic-{ARM}-{FORMULATION.value}.npz",
         **{k: np.asarray(v) for k, v in history.items()},
     )
 
@@ -530,7 +615,7 @@ if comm.rank == 0:
     ax4.set_ylabel("constraint violation")
     ax4.set_xlabel("Time [s]")
 
-    fig.savefig(outdir / f"monolithic_3d0d-{FORMULATION.value}.png", dpi=140)
+    fig.savefig(outdir / f"monolithic_3d0d-{ARM}-{FORMULATION.value}.png", dpi=140)
     plt.close(fig)
 
 # ## What the calibration was up against
@@ -584,7 +669,38 @@ if comm.rank == 0 and calibration is not None:
     axR.set_title("Chamber stiffness")
     axR.legend(fontsize="x-small", ncols=2)
 
-    fig.savefig(outdir / f"calibration_surface-{FORMULATION.value}.png", dpi=140)
+    fig.savefig(outdir / f"calibration_surface-{ARM}-{FORMULATION.value}.png", dpi=140)
     plt.close(fig)
 
 logger.info("Done.")
+
+# ## A whole beat
+#
+# The figure and video below come from a full run of the dynamic arm (two beats
+# at `DT`, `PULSE_DYNAMIC=1`), rendered into `_static/` by
+# `make_animations.py`. This page is built with `CI=1`, which takes two steps,
+# so it shows that saved run rather than the one above. To regenerate:
+#
+# ```bash
+# PULSE_DYNAMIC=1 python3 monolithic_3d0d.py
+# python3 make_animations.py monolithic_3d0d_lv
+# ```
+#
+# ```{figure} ../../_static/pv_loop_monolithic_3d0d_lv.png
+# ---
+# name: pv_loop_monolithic_3d0d_lv
+# ---
+# Two beats of the coupled left ventricle: ejection fraction 67%, peak pressure
+# 125 mmHg, stroke work 1.2 J. End-diastolic and end-systolic volumes move by
+# under a percent between the two beats.
+# ```
+#
+# The video puts the moving wall beside the loop it traces. The isovolumic
+# phases are the vertical limbs, where the volume is held while the pressure
+# runs up or down.
+#
+# <video controls loop autoplay muted>
+#   <source src="../../_static/monolithic_3d0d_lv.mp4" type="video/mp4">
+#   <p>The left ventricle contracting through two beats, coloured by
+#   displacement, with its pressure-volume loop alongside.</p>
+# </video>

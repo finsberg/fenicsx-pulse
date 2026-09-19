@@ -361,6 +361,258 @@ def test_monolithic_step_converges_and_holds_the_constraint(problem):
         )
 
 
+@pytest.fixture(scope="module")
+def dynamic_problem(geo, ode_file, flat_parameters):
+    """The same coupling, but with inertia in the mechanics."""
+    geometry = pulse.HeartGeometry.from_cardiac_geometries(
+        geo,
+        metadata={"quadrature_degree": 4},
+    )
+    material_params = pulse.HolzapfelOgden.transversely_isotropic_parameters()
+    Ta = pulse.Variable(dolfinx.fem.Constant(geo.mesh, dolfinx.default_scalar_type(0.0)), "kPa")
+    model = pulse.CardiacModel(
+        material=pulse.HolzapfelOgden(f0=geo.f0, s0=geo.s0, **material_params),  # type: ignore[arg-type]
+        active=pulse.ActiveStress(geo.f0, activation=Ta),
+        compressibility=pulse.Compressible(),
+    )
+
+    return pulse.problem.DynamicProblem(
+        model=model,
+        geometry=geometry,
+        cavities=[pulse.problem.Cavity(marker="ENDO", volume=None)],
+        circulation=GotranxCirculation(
+            ode_file=ode_file,
+            parameters=flat_parameters,
+            drop_components=DROP,
+        ),
+        chambers=[
+            ChamberCoupling(marker="ENDO", volume_state="V_LV", pressure_missing="p_LV"),
+        ],
+        circulation_missing={
+            "beat_phase": dolfinx.fem.Constant(geo.mesh, dolfinx.default_scalar_type(0.0)),
+        },
+        parameters={
+            "base_bc": pulse.problem.BaseBC.fixed,
+            "mesh_unit": "m",
+            "rho": pulse.Variable(1e3, "kg/m^3"),
+            "dt": pulse.Variable(1e-3, "s"),
+        },
+    )
+
+
+def test_dynamic_problem_assembles_its_circuit_rows(dynamic_problem, numpy_reference):
+    """A circuit handed to a DynamicProblem must contribute equations.
+
+    `DynamicProblem.R` rebuilds the residual from scratch rather than adding to
+    `StaticProblem.R`, and used to leave out `_circulation_form`. Every circuit
+    row was then identically zero, which does not compile into a form, so the
+    problem could not be constructed at all. The rows are checked against the
+    same numpy model the static test uses, which also catches them being
+    present but mistranslated.
+    """
+    problem = dynamic_problem
+    names = list(problem.circulation.state_names)
+    offset = problem.num_states - len(names)
+
+    rng = np.random.default_rng(1)
+    y0 = np.asarray(problem.circulation.initial_states, dtype=float)
+    y = y0 * rng.uniform(0.85, 1.15, size=y0.size)
+
+    dt, t, phase, p_cav_pa = 0.002, 0.23, 0.07, 1200.0
+    for state, value in zip(problem.circulation_states, y):
+        state.x.array[:] = value
+    for state, value in zip(problem.circulation_states_old, y0):
+        state.x.array[:] = value
+    problem.circulation_dt.value = dt
+    problem.circulation_time.value = t
+    problem.circulation_missing["beat_phase"].value = phase
+    problem.cavity_pressures[0].x.array[:] = p_cav_pa
+
+    missing = np.zeros(2)
+    missing[numpy_reference["missing_index"]("beat_phase")] = phase
+    missing[numpy_reference["missing_index"]("p_LV")] = p_cav_pa / mmHg
+    f = np.asarray(numpy_reference["rhs"](t, y, numpy_reference["_parameters"], missing))
+    expected = (y - y0) / dt - f
+
+    R = problem.R
+    for i, name in enumerate(names):
+        got = problem.geometry.mesh.comm.allreduce(
+            dolfinx.fem.assemble_scalar(dolfinx.fem.form(R[offset + i])),
+            op=MPI.SUM,
+        )
+        scale = max(abs(expected[i]), 1.0)
+        assert abs(got - expected[i]) / scale < 1e-9, (
+            f"row for {name}: assembled {got:.6g}, expected {expected[i]:.6g}"
+        )
+
+    # And Newton has to see the coupling, same as in the static case.
+    K = problem.K(R)
+    i_V_LV = offset + names.index("V_LV")
+    i_p_cav = 1
+    for row, col in ((i_p_cav, i_V_LV), (i_V_LV, i_p_cav)):
+        block = problem.geometry.mesh.comm.allreduce(
+            dolfinx.fem.assemble_scalar(dolfinx.fem.form(K[row][col])),
+            op=MPI.SUM,
+        )
+        assert abs(block) > 0.0, f"Jacobian block ({row}, {col}) is empty"
+
+
+def test_dynamic_coupled_step_holds_the_constraint(dynamic_problem):
+    """A few coupled dynamic steps must solve and keep cavity and chamber equal."""
+    problem = dynamic_problem
+    comm = problem.geometry.mesh.comm
+    names = list(problem.circulation.state_names)
+    i_V_LV = names.index("V_LV")
+
+    problem.u.x.array[:] = 0.0
+    problem.u_old.x.array[:] = 0.0
+    problem.v_old.x.array[:] = 0.0
+    problem.a_old.x.array[:] = 0.0
+    problem.cavity_pressures[0].x.array[:] = 0.0
+    problem.cavity_pressures_old[0].x.array[:] = 0.0
+
+    y = np.asarray(problem.circulation.initial_states, dtype=float)
+    y[i_V_LV] = comm.allreduce(problem.geometry.volume("ENDO"), op=MPI.SUM) / mL
+    for state, value in zip(problem.circulation_states, y):
+        state.x.array[:] = value
+    for state, value in zip(problem.circulation_states_old, y):
+        state.x.array[:] = value
+
+    dt = 0.001
+    problem.circulation_dt.value = dt
+    for step in range(3):
+        t = (step + 1) * dt
+        problem.circulation_time.value = t
+        problem.circulation_missing["beat_phase"].value = t % 0.8
+        assert problem.solve(), f"dynamic monolithic solve failed at step {step}"
+
+        volume = comm.allreduce(problem.geometry.volume("ENDO", u=problem.u), op=MPI.SUM)
+        V_LV = float(problem.circulation_states[i_V_LV].x.array[0]) * mL
+        assert abs(volume - V_LV) / V_LV < 1e-8
+
+
+def test_bdf2_takes_its_first_step_as_backward_euler(
+    geo,
+    ode_file,
+    flat_parameters,
+    numpy_reference,
+):
+    """BDF2 needs two past levels, and the first step has one.
+
+    The derivative stencil is carried by constants so the first step can be
+    backward Euler without rebuilding the form. Switch a step early and the
+    opening step differences against `y_prev = y_old`, taking a step of the
+    wrong length; a step late and the scheme never reaches second order.
+    """
+    geometry = pulse.HeartGeometry.from_cardiac_geometries(geo, metadata={"quadrature_degree": 4})
+    material_params = pulse.HolzapfelOgden.transversely_isotropic_parameters()
+    Ta = pulse.Variable(dolfinx.fem.Constant(geo.mesh, dolfinx.default_scalar_type(0.0)), "kPa")
+    problem = pulse.problem.StaticProblem(
+        model=pulse.CardiacModel(
+            material=pulse.HolzapfelOgden(f0=geo.f0, s0=geo.s0, **material_params),  # type: ignore[arg-type]
+            active=pulse.ActiveStress(geo.f0, activation=Ta),
+            compressibility=pulse.Compressible(),
+        ),
+        geometry=geometry,
+        cavities=[pulse.problem.Cavity(marker="ENDO", volume=None)],
+        circulation=GotranxCirculation(
+            ode_file=ode_file,
+            parameters=flat_parameters,
+            drop_components=DROP,
+        ),
+        chambers=[
+            ChamberCoupling(marker="ENDO", volume_state="V_LV", pressure_missing="p_LV"),
+        ],
+        circulation_missing={
+            "beat_phase": dolfinx.fem.Constant(geo.mesh, dolfinx.default_scalar_type(0.0)),
+        },
+        parameters={
+            "base_bc": pulse.problem.BaseBC.fixed,
+            "mesh_unit": "m",
+            "circulation_scheme": "bdf2",
+        },
+    )
+
+    def stencil():
+        return tuple(float(c.value) for c in problem._circulation_stencil)
+
+    assert stencil() == pulse.problem.BACKWARD_EULER_STENCIL
+
+    problem.circulation_dt.value = 1e-3
+    problem.circulation_time.value = 1e-3
+    assert problem.solve()
+    assert stencil() == pulse.problem.BDF2_STENCIL
+
+    # With the stencil switched, the rows must be the BDF2 residual built from
+    # all three levels. Three distinct vectors distinguish the right
+    # coefficients from a second copy of `y_old`.
+    names = list(problem.circulation.state_names)
+    offset = problem.num_states - len(names)
+    rng = np.random.default_rng(3)
+    base = np.asarray(problem.circulation.initial_states, dtype=float)
+    y = base * rng.uniform(0.9, 1.1, base.size)
+    y_old = base * rng.uniform(0.9, 1.1, base.size)
+    y_prev = base * rng.uniform(0.9, 1.1, base.size)
+
+    dt, t, phase, p_cav_pa = 0.002, 0.17, 0.05, 900.0
+    for level, values in (
+        (problem.circulation_states, y),
+        (problem.circulation_states_old, y_old),
+        (problem.circulation_states_prev, y_prev),
+    ):
+        for state, value in zip(level, values):
+            state.x.array[:] = value
+    problem.circulation_dt.value = dt
+    problem.circulation_time.value = t
+    problem.circulation_missing["beat_phase"].value = phase
+    problem.cavity_pressures[0].x.array[:] = p_cav_pa
+
+    missing = np.zeros(2)
+    missing[numpy_reference["missing_index"]("beat_phase")] = phase
+    missing[numpy_reference["missing_index"]("p_LV")] = p_cav_pa / mmHg
+    f = np.asarray(numpy_reference["rhs"](t, y, numpy_reference["_parameters"], missing))
+    expected = (1.5 * y - 2.0 * y_old + 0.5 * y_prev) / dt - f
+
+    R = problem.R
+    for i, name in enumerate(names):
+        got = problem.geometry.mesh.comm.allreduce(
+            dolfinx.fem.assemble_scalar(dolfinx.fem.form(R[offset + i])),
+            op=MPI.SUM,
+        )
+        scale = max(abs(expected[i]), 1.0)
+        assert abs(got - expected[i]) / scale < 1e-9, (
+            f"BDF2 row for {name}: assembled {got:.6g}, expected {expected[i]:.6g}"
+        )
+
+
+def test_unknown_circulation_scheme_is_rejected(geo, ode_file, flat_parameters):
+    geometry = pulse.HeartGeometry.from_cardiac_geometries(geo, metadata={"quadrature_degree": 4})
+    material_params = pulse.HolzapfelOgden.transversely_isotropic_parameters()
+    Ta = pulse.Variable(dolfinx.fem.Constant(geo.mesh, dolfinx.default_scalar_type(0.0)), "kPa")
+    with pytest.raises(ValueError, match="circulation_scheme"):
+        pulse.problem.StaticProblem(
+            model=pulse.CardiacModel(
+                material=pulse.HolzapfelOgden(f0=geo.f0, s0=geo.s0, **material_params),  # type: ignore[arg-type]
+                active=pulse.ActiveStress(geo.f0, activation=Ta),
+                compressibility=pulse.Compressible(),
+            ),
+            geometry=geometry,
+            cavities=[pulse.problem.Cavity(marker="ENDO", volume=None)],
+            circulation=GotranxCirculation(
+                ode_file=ode_file,
+                parameters=flat_parameters,
+                drop_components=DROP,
+            ),
+            chambers=[
+                ChamberCoupling(marker="ENDO", volume_state="V_LV", pressure_missing="p_LV"),
+            ],
+            circulation_missing={
+                "beat_phase": dolfinx.fem.Constant(geo.mesh, dolfinx.default_scalar_type(0.0)),
+            },
+            parameters={"mesh_unit": "m", "circulation_scheme": "crank_nicolson"},
+        )
+
+
 def test_incompressible_constraint_stays_on_its_own_row(geo, ode_file, flat_parameters):
     """The incompressibility row must not move when circuit states are added.
 

@@ -25,6 +25,12 @@ _dolfinx_version = Version(dolfinx.__version__)
 
 logger = logging.getLogger(__name__)
 
+#: Coefficients of (y, y_old, y_prev) in ``dt * dy/dt``; see
+#: :meth:`StaticProblem._circulation_form`.
+BACKWARD_EULER_STENCIL = (1.0, -1.0, 0.0)
+BDF2_STENCIL = (1.5, -2.0, 0.5)
+CIRCULATION_SCHEMES = {"backward_euler", "bdf2"}
+
 
 def interpolate(x0: T, x1: T, alpha: float):
     r"""Interpolate between :math:`x_0` and :math:`x_1`
@@ -184,6 +190,8 @@ class StaticProblem:
             "rigid_body_constraint": False,
             "mesh_unit": "m",
             "base_marker": "BASE",
+            # How the circulation states are stepped; see `_circulation_form`.
+            "circulation_scheme": "backward_euler",
             # Whether `solve` raises on non-convergence instead of returning
             # False. False keeps the documented contract; set it True to get
             # the older behaviour back everywhere at once, or pass
@@ -257,11 +265,19 @@ class StaticProblem:
         """
         self.circulation_states: list[dolfinx.fem.Function] = []
         self.circulation_states_old: list[dolfinx.fem.Function] = []
+        self.circulation_states_prev: list[dolfinx.fem.Function] = []
         self.circulation_states_test: list[ufl.Argument] = []
         self.circulation_states_trial: list[ufl.Argument] = []
 
         if self.circulation is None:
             return
+
+        scheme = self.parameters["circulation_scheme"]
+        if scheme not in CIRCULATION_SCHEMES:
+            raise ValueError(
+                f"Unknown circulation_scheme {scheme!r}, expected one of "
+                f"{sorted(CIRCULATION_SCHEMES)}",
+            )
 
         logger.debug(f"Number of circulation states: {self.num_circulation_states}")
         if getattr(self, "real_space", None) is None:
@@ -271,12 +287,24 @@ class StaticProblem:
         for name, value in zip(self.circulation.state_names, initial):
             state = self.Function(self.real_space, name=name)
             state_old = self.Function(self.real_space, name=f"{name}_old")
+            state_prev = self.Function(self.real_space, name=f"{name}_prev")
             state.x.array[:] = value
             state_old.x.array[:] = value
+            state_prev.x.array[:] = value
             self.circulation_states.append(state)
             self.circulation_states_old.append(state_old)
+            self.circulation_states_prev.append(state_prev)
             self.circulation_states_test.append(ufl.TestFunction(self.real_space))
             self.circulation_states_trial.append(ufl.TrialFunction(self.real_space))
+
+        # Coefficients of (y, y_old, y_prev) in dt * dy/dt. Constants rather
+        # than literals so BDF2 can take its first step as backward Euler
+        # without rebuilding the form.
+        self._circulation_stencil = tuple(
+            dolfinx.fem.Constant(self.geometry.mesh, dolfinx.default_scalar_type(value))
+            for value in BACKWARD_EULER_STENCIL
+        )
+        self._circulation_steps = -1
 
         # The circuit carries its own time, since it is the only part of a
         # static problem with a time derivative in it.
@@ -350,11 +378,25 @@ class StaticProblem:
         return missing
 
     def _circulation_form(self):
-        """Backward Euler on the circuit states, one residual row each.
+        """One residual row per circuit state.
 
-        The model supplies only ``f`` in ``dy/dt = f(t, y, m)``; how it is
-        stepped is decided here, so the same circuit can be advanced by a
-        different scheme without touching the model.
+        The model supplies only ``f`` in ``dy/dt = f(t, y, m)``; the scheme is
+        chosen here, so the same circuit can be advanced differently without
+        touching the model. Both schemes evaluate ``f`` at the end of the step:
+
+        ``backward_euler``
+            ``(y - y_old)/dt = f(t, y, m)``. First order, L-stable.
+        ``bdf2``
+            ``(3y - 4y_old + y_prev)/(2dt) = f(t, y, m)``. Second order and
+            still L-stable, at the same cost. The first step falls back to
+            backward Euler, since only one past level exists then.
+
+        Midpoint and trapezoidal rules are not offered. They are second order
+        on the circuit alone, but the cavity constraint ties the chamber volume
+        to the deformed cavity at the end of the step, so a circuit evaluated
+        at the midpoint is coupled half a step away from it. On an LV coupled
+        to Regazzoni's circuit, midpoint came out five times less accurate than
+        backward Euler at the same step size.
         """
         if self.circulation is None:
             return self._empty_form()
@@ -370,17 +412,22 @@ class StaticProblem:
                 f"{self.num_circulation_states} states",
             )
 
+        c_new, c_old, c_prev = self._circulation_stencil
         form = self._empty_form()
         offset = self.num_states - self.num_circulation_states
-        for i, (state, state_old, test, f) in enumerate(
+        for i, (state, state_old, state_prev, test, f) in enumerate(
             zip(
                 self.circulation_states,
                 self.circulation_states_old,
+                self.circulation_states_prev,
                 self.circulation_states_test,
                 rhs,
             ),
         ):
-            residual = (state - state_old) / self.circulation_dt - f
+            derivative = (
+                c_new * state + c_old * state_old + c_prev * state_prev
+            ) / self.circulation_dt
+            residual = derivative - f
             form[offset + i] = (
                 self._circulation_scale * residual * test * ufl.dx(domain=self.geometry.mesh)
             )
@@ -840,7 +887,31 @@ class StaticProblem:
             )
 
     def update_fields(self):
-        pass
+        """Shift the circuit's second history level, for BDF2.
+
+        Called only after a converged solve. `update_old_states` runs before
+        Newton and again on every retry, so shifting there would consume a
+        history level per attempt instead of per step.
+
+        `circulation_states_old` still holds the level `update_old_states` is
+        about to overwrite, so copying it into `_prev` here lines up
+        (y_{n+1}, y_n, y_{n-1}) for the next step.
+        """
+        if self.circulation is None:
+            return
+        for prev, old in zip(self.circulation_states_prev, self.circulation_states_old):
+            prev.x.array[:] = old.x.array
+
+        # `_init_spaces` calls this once before the first solve, hence the
+        # count starting below zero: the first step has only one past level and
+        # must be backward Euler whichever scheme is chosen.
+        self._circulation_steps += 1
+        if self.parameters["circulation_scheme"] == "bdf2" and self._circulation_steps >= 1:
+            self._set_circulation_stencil(BDF2_STENCIL)
+
+    def _set_circulation_stencil(self, stencil):
+        for constant, value in zip(self._circulation_stencil, stencil):
+            constant.value = value
 
     def reset(self):
         logger.debug("Resetting problem...")
@@ -1020,7 +1091,12 @@ class DynamicProblem(StaticProblem):
         R_robin = self._robin_form(u=u, v=v)
         R_neumann = self._neumann_form(u)
         R_rigid = self._rigid_body_form(u)
+        R_body_force = self._body_force_form(u)
         R_acceleration = self._acceleration_form(a)
+        # Evaluated at the end of the step, like the cavity constraint, rather
+        # than at the alpha_f point. Without these rows every circuit state
+        # gets a zero row, which does not compile into a form.
+        R_circulation = self._circulation_form()
 
         for i in range(self.num_states):
             R[i] += R_material[i]
@@ -1028,7 +1104,9 @@ class DynamicProblem(StaticProblem):
             R[i] += R_robin[i]
             R[i] += R_neumann[i]
             R[i] += R_rigid[i]
+            R[i] += R_body_force[i]
             R[i] += R_acceleration[i]
+            R[i] += R_circulation[i]
 
         return R
 
