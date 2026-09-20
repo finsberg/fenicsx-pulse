@@ -137,7 +137,8 @@ A more realistic example is visualized here:
 
 
 
-https://github.com/user-attachments/assets/8e2f5d85-3fbf-4e30-9574-22e7f718230c
+<img width="1024" height="475" alt="monolithic_3d0d_biv" src="https://github.com/user-attachments/assets/4716ec7c-f2ae-4a75-9b88-c178729e9959" />
+
 
 
 
