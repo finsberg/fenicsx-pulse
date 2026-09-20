@@ -35,6 +35,9 @@ parts:
       - file: "demo/time_dependent/time_dependent_land_circ_lv"
       - file: "demo/time_dependent/time_dependent_land_circ_biv"
       - file: "demo/time_dependent/complete_cycle"
+      - file: "demo/time_dependent/monolithic_3d0d.py"
+      - file: "demo/time_dependent/monolithic_3d0d_biv.py"
+
     - file: "demo/postprocess_cycle"
     - file: "demo/crossbridge/README"
       sections:
