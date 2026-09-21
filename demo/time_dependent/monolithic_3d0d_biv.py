@@ -1,40 +1,43 @@
 # # Monolithic 3D-0D coupling: a UK Biobank biventricular mesh in a closed circulation
 #
-# The biventricular counterpart of [](monolithic_3d0d.py). Both ventricles of a
-# clipped UK Biobank atlas mesh are coupled to the closed-loop circulation model
-# of Regazzoni et al., with the displacement, both cavity pressures and all
-# twelve circuit states solved together in one Newton system. As there, the
-# constraint tying each cavity to its chamber is a row of that system, so the
-# two cannot disagree by more than the solver tolerance.
+# This is the biventricular counterpart of [](monolithic_3d0d.py). We couple
+# both ventricles of a clipped UK Biobank atlas mesh to the closed-loop
+# circulation model of Regazzoni et al., solving the displacement, both cavity
+# pressures and all twelve circuit states together in one Newton system. As in
+# the LV demo, the constraint tying each cavity to its chamber is a row of that
+# system, so the two cannot disagree by more than the solver tolerance.
 #
-# ## What the second ventricle costs
+# ## Adding the second ventricle
 #
-# Structurally, almost nothing. The coupling machinery takes a list of
-# cavities: dropping the `RV` component from the `.ode` alongside `LV` leaves a
-# circuit expecting both `p_LV` and `p_RV`, and each is supplied by the Lagrange
-# multiplier its own cavity already carries. Two `Cavity` entries, two
-# `ChamberCoupling` entries, and one more row in the block system.
+# Structurally this costs us almost nothing, since the coupling machinery
+# already takes a list of cavities. Dropping the `RV` component from the `.ode`
+# alongside `LV` leaves a circuit that expects both `p_LV` and `p_RV`, and each
+# of those is supplied by the Lagrange multiplier its own cavity already
+# carries. In practice we need two `Cavity` entries, two `ChamberCoupling`
+# entries, and one extra row in the block system.
 #
 # ## Why there is no calibration here
 #
 # The LV demo spends most of its length measuring the mesh and tuning the
-# circuit's loading against that measurement, because an idealized ellipsoid is
-# not a ventricle: its unloaded cavity holds far more than a person's, and
-# coupled to the published circuit it fills to nearly 200 mL.
+# circuit's loading against that measurement. It has to, because an idealized
+# ellipsoid does not behave like a real ventricle: its unloaded cavity holds
+# far more than a person's, and coupled to the published circuit it fills to
+# nearly 200 mL.
 #
-# This mesh is a real heart at a real end-diastolic configuration, so the
-# operating point is available directly. The circuit is seeded with the mesh's own
-# end-diastolic volumes and run alone to a limit cycle, and the mesh is then
-# prestressed to the pressures it settles at. The two therefore agree at end
-# diastole by construction, leaving contractility -- `TA_SCALE` below -- as the
-# only free parameter.
+# This mesh is a real heart in a real end-diastolic configuration, so we can
+# get the operating point directly. We seed the circuit with the mesh's own
+# end-diastolic volumes, run it alone until it reaches a limit cycle, and then
+# prestress the mesh to the pressures it settles at. The two then agree at end
+# diastole by construction, which leaves contractility -- `TA_SCALE` below --
+# as the only free parameter.
 #
 # ## Units
 #
-# The UKB mesh comes in millimetres and is scaled to metres on load, as the
+# The UKB mesh comes in millimetres, and we scale it to metres on load, as the
 # other demos built on it do. The chamber coupling converts between the
-# circuit's millilitres and the mesh's cubic metres and assumes metres, so a
-# mesh left in millimetres is coupled to a circuit a billion times its size.
+# circuit's millilitres and the mesh's cubic metres, and it assumes metres, so
+# leaving the mesh in millimetres would couple the circuit to a cavity a
+# billion times the intended size.
 
 import logging
 import os
@@ -69,26 +72,27 @@ comm = MPI.COMM_WORLD
 _ci = os.getenv("CI", "").strip().lower()
 IN_CI = _ci not in ("", "0", "false", "no", "off")
 
-# Inertia, as in the LV demo: quasi-static by default, and switching it on also
-# enables the viscous term and the damping Robin conditions, without which the
-# cavity pressures ring against their own constraints. `PULSE_DYNAMIC=1` flips
-# it without editing the file.
+# Inertia works the same way here as in the LV demo. Quasi-static is the
+# default, and switching it on also enables the viscous term and the damping
+# Robin conditions, without which the cavity pressures ring against their own
+# constraints. As there, `PULSE_DYNAMIC=1` sets the flag without editing the
+# file.
 DYNAMIC = os.getenv("PULSE_DYNAMIC", "0").strip().lower() in ("1", "true", "yes", "on")
 ARM = "dynamic" if DYNAMIC else "quasistatic"
 
-# Contractility. The Bestel trace sets the shape of the twitch and this its
-# size; with end diastole pinned by the prestressing, it decides the ejection
-# fraction. Chosen by running the quasi-static arm and reading the ejection
-# fraction off the loop.
+# This is the contractility: the Bestel trace sets the shape of the twitch and
+# this sets its size. With end diastole pinned by the prestressing, it is what
+# ends up deciding the ejection fraction, and we picked the value by running
+# the quasi-static arm and reading that ejection fraction off the loop.
 TA_SCALE = 1.0
 
 BEAT_LENGTH = 1.0  # s
 DT = 0.002  # s
-# Two beats settle the left ventricle: its end-diastolic and end-systolic
-# volumes move by half a percent between the first and the second. The right
-# ventricle is still drifting by about seven percent, since the pulmonary
-# compartment it fills through is more compliant and takes longer to settle.
-# Raise this when the right side matters.
+# Two beats are enough to settle the left ventricle: its end-diastolic and
+# end-systolic volumes move by half a percent between the first and the second.
+# The right ventricle is still drifting by about seven percent, since the
+# pulmonary compartment it fills through is more compliant and takes longer to
+# settle. Increase this if the right side matters for what you are doing.
 NUM_BEATS = 1 if IN_CI else 2
 
 CHAR_LENGTH = 10.0  # mm; the atlas is smooth, so a coarse mesh suffices
@@ -99,10 +103,11 @@ outdir.mkdir(exist_ok=True)
 
 # ## Geometry
 #
-# The mean shape of the atlas (`mode=-1, std=0`) at end diastole, clipped at the
-# valve plane so the mesh has one `BASE` surface rather than four valve annuli,
-# and rotated so the base normal points along x. Fibres come from LDRB, with
-# separate angles for the two ventricles.
+# We use the mean shape of the atlas (`mode=-1, std=0`) at end diastole,
+# clipped at the valve plane so that the mesh has a single `BASE` surface
+# rather than four valve annuli, and rotated so that the base normal points
+# along x. The fibres come from LDRB, with separate angles for the two
+# ventricles.
 
 if not (geodir / "geometry.bp").exists():
     logger.info("Generating the UKB mesh...")
@@ -148,13 +153,14 @@ comm.barrier()
 
 geo = cardiac_geometries.geometry.Geometry.from_folder(comm=comm, folder=geodir)
 
-# Rotate on the way in, not on the way out. The generation step above rotates
-# the mesh, but the folder also holds the `.msh` it was built from, and that --
-# unrotated -- is what `from_folder` returns. Rotating here makes the
-# orientation a property of what is actually solved. It matters because the
-# sliding-base condition below constrains a single displacement component:
-# unrotated, it holds the base in a plane cutting through the ventricle at an
-# angle rather than in its own plane.
+# We rotate here, after loading, rather than relying on the rotation in the
+# generation step above. That step does rotate the mesh, but the folder also
+# holds the `.msh` it was built from, and that unrotated mesh is what
+# `from_folder` gives back. Rotating at this point makes the orientation a
+# property of what we actually solve on. It matters because the sliding-base
+# condition below constrains a single displacement component: on an unrotated
+# mesh it would hold the base in a plane that cuts through the ventricle at an
+# angle instead of in the base plane itself.
 geo = geo.rotate(target_normal=[1.0, 0.0, 0.0], base_marker="BASE")
 geo.mesh.geometry.x[:] *= 1e-3  # mm -> m
 geometry = pulse.HeartGeometry.from_cardiac_geometries(geo, metadata={"quadrature_degree": 6})
@@ -175,7 +181,8 @@ logger.info(f"Mesh end-diastolic volumes: LV {EDV['LV'] / mL:.1f} mL, RV {EDV['R
 def build_model(f0, s0, Ta):
     material_params = pulse.HolzapfelOgden.transversely_isotropic_parameters()
     material = pulse.HolzapfelOgden(f0=f0, s0=s0, **material_params)  # type: ignore[arg-type]
-    # Inert without a strain rate, so the static solves below are unaffected.
+    # This does nothing without a strain rate, so the static solves below are
+    # unaffected.
     viscoelasticity = (
         pulse.viscoelasticity.Viscous() if DYNAMIC else pulse.viscoelasticity.NoneViscoElasticity()
     )
@@ -217,8 +224,8 @@ def sliding_base(V: dolfinx.fem.FunctionSpace):
 
 # ## Activation
 #
-# The Bestel twitch, solved once up front: it depends on time alone, so
-# prescribing it introduces no coupling error.
+# We solve the Bestel twitch once up front, since it depends on time alone and
+# prescribing it therefore introduces no coupling error.
 
 times = np.arange(0.0, BEAT_LENGTH, DT)
 activation = solve_ivp(
@@ -237,11 +244,12 @@ def activation_at(t: float) -> float:
 
 # ## The operating point
 #
-# The circuit is seeded with this mesh's own end-diastolic volumes and run by
-# itself to a limit cycle. The mesh is then prestressed to the end-diastolic
-# pressures it reaches, so afterwards the two agree on both volumes and both
-# pressures at end diastole. This replaces the calibration the LV demo needs a
-# separate module for, and works only because the geometry is a real one.
+# We seed the circuit with this mesh's own end-diastolic volumes and run it by
+# itself until it reaches a limit cycle. Then we prestress the mesh to the
+# end-diastolic pressures it arrives at, so that afterwards the two agree on
+# both volumes and both pressures at end diastole. This takes the place of the
+# calibration that the LV demo needs a separate module for, and it only works
+# because the geometry is a real one.
 
 state_file = outdir / "circ_state.npy"
 if comm.rank == 0 and not state_file.exists():
@@ -270,7 +278,7 @@ logger.info(f"End-diastolic pressures from the circuit: "
 
 # ## Prestressing
 #
-# Recover the unloaded configuration by unloading both cavities together.
+# We recover the unloaded configuration by unloading both cavities together.
 
 Ta = pulse.Variable(dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0)), "Pa")
 traction = {
@@ -316,9 +324,9 @@ logger.info(f"Unloaded volumes: LV {unloaded['LV'] / mL:.1f} mL, RV {unloaded['R
 
 # ## Inflation to end diastole
 #
-# From the unloaded configuration back to the volumes the circuit was seeded
-# with. Volume-controlled rather than coupled, since this is a ramp rather than
-# a timestep.
+# Here we go from the unloaded configuration back to the volumes the circuit
+# was seeded with. We prescribe those volumes rather than coupling them, since
+# this is a ramp and not part of the time stepping.
 
 model = build_model(f0, s0, Ta)
 bcs = pulse.BoundaryConditions(robin=robin_bcs(), dirichlet=(sliding_base,))
@@ -354,8 +362,8 @@ logger.info(
 
 # ## The coupled problem
 #
-# Both chamber closures leave the circuit; both cavity pressures take their
-# place.
+# Both chamber closures come out of the circuit, and the two cavity pressures
+# take their place.
 
 circulation_model = GotranxCirculation(
     ode_file=regazzoni2020.ODE_FILE,
@@ -389,14 +397,16 @@ problem = Problem(
     parameters=coupled_parameters,
 )
 
-# Start from the inflated configuration and the circuit state it matches.
+# We start from the inflated configuration and from the circuit state that
+# matches it.
 problem.u.x.array[:] = inflation.u.x.array
 problem.u_old.x.array[:] = inflation.u.x.array
 for i, pressure in enumerate(p_inflated):
     problem.cavity_pressures[i].x.array[:] = pressure
     problem.cavity_pressures_old[i].x.array[:] = pressure
 if DYNAMIC:
-    # The inflation handed over a configuration, not a motion.
+    # The inflation gives us a configuration but no motion, so we start from
+    # rest here as well.
     problem.v_old.x.array[:] = 0.0
     problem.a_old.x.array[:] = 0.0
 
@@ -406,7 +416,7 @@ for name, state, state_old in zip(
     problem.circulation_states,
     problem.circulation_states_old,
 ):
-    # The two chamber volumes come from the mesh, not the circuit.
+    # We take the two chamber volumes from the mesh rather than the circuit.
     value = EDV[name[2:]] / mL if name in ("V_LV", "V_RV") else float(circ_state[name])
     state.x.array[:] = value
     state_old.x.array[:] = value
@@ -424,9 +434,10 @@ history: dict[str, list[float]] = {
     )
 }
 
-# The moving geometry, kept every few steps for `make_animations.py`. Records
-# nothing under CI, where the run is two steps rather than a beat; the video on
-# the page is a saved one.
+# We keep the moving geometry every few steps so that `make_animations.py` can
+# render it afterwards. Nothing is recorded under CI, where the run is two
+# steps rather than a whole beat, so the video on the page comes from a saved
+# run instead.
 recorder = animation.FrameRecorder(geometry.mesh, every=5, enabled=not IN_CI, up=up)
 
 max_steps = 2 if IN_CI else int(NUM_BEATS * BEAT_LENGTH / DT)
@@ -517,7 +528,7 @@ logger.info("Done.")
 # ## A whole beat
 #
 # As in the LV demo, the figure and video come from a full run kept in
-# `_static/`, not from the two steps this page takes under CI:
+# `_static/` rather than from the two steps this page takes under CI:
 #
 # ```bash
 # python3 monolithic_3d0d_biv.py
@@ -529,12 +540,12 @@ logger.info("Done.")
 # name: pv_loop_monolithic_3d0d_biv
 # ---
 # Both ventricles over two beats. The left ejects 70 mL against a peak of about
-# 100 mmHg, the right nearly as much against a quarter of that. The left loop
-# closes on itself; the right is still drifting, for the reason given at
-# `NUM_BEATS`.
+# 100 mmHg, and the right nearly as much against a quarter of that. The left
+# loop closes on itself, while the right is still drifting, for the reason
+# given at `NUM_BEATS`.
 # ```
 #
-# <video controls loop autoplay muted>
+# <video width="720" controls loop autoplay muted>
 #   <source src="../../_static/monolithic_3d0d_biv.mp4" type="video/mp4">
 #   <p>The biventricular mesh contracting through two beats, coloured by
 #   displacement, with both pressure-volume loops drawn alongside.</p>
