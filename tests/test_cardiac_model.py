@@ -1,6 +1,7 @@
 import math
 
 import dolfinx
+import numpy as np
 import pytest
 import ufl
 
@@ -129,3 +130,97 @@ def test_CardiacModel_Guccione(comp_model_cls, isotropy, mesh, u):
         assert math.isclose(value, 141.78170311802802)
     else:
         assert math.isclose(value, 49573.54795866912)
+
+
+def _active_models(mesh, u):
+    """One instance of every shipped active model, each with a nonzero tension."""
+    f0 = dolfinx.fem.Constant(mesh, (1.0, 0.0, 0.0))
+    Ta = pulse.Variable(dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(50.0)), "kPa")
+    Ka = pulse.Variable(dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(500.0)), "kPa")
+
+    frank_starling = pulse.active_stress.FrankStarlingActiveStress(f0, activation=Ta)
+    frank_starling.register(u)
+
+    return {
+        "passive": pulse.active_model.Passive(),
+        "invariant": pulse.ActiveStress(
+            f0,
+            activation=Ta,
+            formulation=pulse.active_stress.ActiveStressFormulation.invariant,
+        ),
+        "stretch": pulse.ActiveStress(
+            f0,
+            activation=Ta,
+            formulation=pulse.active_stress.ActiveStressFormulation.stretch,
+        ),
+        "stabilized": pulse.active_stress.StabilizedActiveStress(
+            f0=f0,
+            activation=Ta,
+            active_stiffness=Ka,
+            lmbda_prev=dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(1.05)),
+        ),
+        "frank_starling": frank_starling,
+    }
+
+
+@pytest.mark.parametrize(
+    "active_name",
+    ("invariant", "stretch", "stabilized", "frank_starling"),
+)
+@pytest.mark.parametrize(
+    "comp_model_cls",
+    (pulse.compressibility.Incompressible, pulse.compressibility.Compressible),
+)
+def test_active_stress_is_consistent_between_S_P_and_strain_energy(
+    comp_model_cls,
+    active_name,
+    mesh,
+    u,
+):
+    """The active contribution to S, to P and to the total energy must agree.
+
+    Evaluated at a deformation with J != 1, so that the isochoric split is
+    actually doing something, and taken as the difference against the same
+    model with a `Passive` active component so that only the active term is
+    under test.
+
+    An active model evaluated on Cdev in one of the three routes and on C in
+    another disagrees by an isotropic term of order Ta/3. That does not vanish
+    as J -> 1, and no amount of Newton convergence reveals it, since only S
+    enters the residual.
+    """
+    f0 = dolfinx.fem.Constant(mesh, (1.0, 0.0, 0.0))
+    s0 = dolfinx.fem.Constant(mesh, (0.0, 1.0, 0.0))
+    material = pulse.HolzapfelOgden(f0=f0, s0=s0, **pulse.HolzapfelOgden.orthotropic_parameters())
+    comp_model = comp_model_cls()
+    comp_model.register(p=dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(1000.0)))
+
+    def cardiac_model(active):
+        return pulse.CardiacModel(material=material, active=active, compressibility=comp_model)
+
+    active_model = _active_models(mesh, u)[active_name]
+    model = cardiac_model(active_model)
+    passive = cardiac_model(pulse.active_model.Passive())
+
+    # A non-isochoric, non-symmetric deformation: J = 1.1 * 0.95 * 1.02 != 1
+    u.interpolate(lambda x: np.vstack([0.1 * x[0], -0.05 * x[1], 0.02 * x[2]]))
+    F = ufl.variable(pulse.kinematics.DeformationGradient(u))
+    C = ufl.variable(F.T * F)
+
+    tensor_space = dolfinx.fem.functionspace(mesh, ("DG", 0, (3, 3)))
+
+    def values(expr):
+        f = dolfinx.fem.Function(tensor_space)
+        f.interpolate(dolfinx.fem.Expression(expr, tensor_space.element.interpolation_points))
+        return f.x.array.copy()
+
+    S = values(model.S(C) - passive.S(C))
+    S_from_P = values(ufl.inv(F) * (model.P(F) - passive.P(F)))
+    S_from_psi = values(
+        2.0 * ufl.diff(model.strain_energy(C) - passive.strain_energy(C), C),
+    )
+
+    scale = np.abs(S).max()
+    assert scale > 0.0
+    assert np.abs(S - S_from_P).max() < 1e-10 * scale
+    assert np.abs(S - S_from_psi).max() < 1e-10 * scale

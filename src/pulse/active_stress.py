@@ -177,20 +177,18 @@ class ActiveStress(ActiveModel):
             eta=self.eta,
         )
 
-    def S(self, C: ufl.core.expr.Expr, dev: bool = False) -> ufl.core.expr.Expr:
-        """Cauchy stress tensor for the active stress model.
+    def S(self, C: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
+        """Second Piola-Kirchhoff stress tensor for the active stress model.
 
         Parameters
         ----------
         C : ufl.core.expr.Expr
             The right Cauchy-Green deformation tensor
-        dev : bool
-            Whether to compute the stress for the deviatoric part only
 
         Returns
         -------
         ufl.core.expr.Expr
-            The Cauchy stress tensor
+            The second Piola-Kirchhoff stress tensor
         """
 
         if self.isotropy != ActiveStressModels.transversely:
@@ -332,7 +330,7 @@ class StabilizedActiveStress(ActiveModel):
         dl = self.dlmbda(C)
         return self.Ta * dl + 0.5 * self.Ka * dl**2
 
-    def S(self, C: ufl.core.expr.Expr, dev: bool = False) -> ufl.core.expr.Expr:
+    def S(self, C: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
         r"""Second Piola-Kirchhoff stress,
 
         .. math::
