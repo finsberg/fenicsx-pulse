@@ -118,6 +118,7 @@ LDRB
 levelname
 Lewalle
 libgl
+libosmesa
 libxrender
 linalg
 linesearch
