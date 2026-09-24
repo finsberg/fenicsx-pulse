@@ -70,7 +70,7 @@ StaticProblem / DynamicProblem(model, geometry, bcs, parameters)
 - **`exceptions.py`** — package-specific exceptions (e.g. `MarkerNotFoundError`, `MeshTagNotFoundError`) raised by `Geometry`/`HeartGeometry` lookups.
 - **`cli.py`** — `pulse` console-script entry point (argparse + rich). Subcommands `run`/`validate-config`/`post` are currently stubs (`return NotImplemented`); `version` is implemented.
 
-When adding a new material, active, compressibility, or viscoelasticity model: match the existing `strain_energy(C)` / `S(C, dev)` / `P(F, dev)` protocol shape in `cardiac_model.py` rather than inheriting a base class, and export it from `material_models/__init__.py` (or the relevant module) plus `pulse/__init__.py`'s `__all__` so it's reachable as `pulse.X`.
+When adding a new material, active, compressibility, or viscoelasticity model: match the existing protocol shape in `cardiac_model.py` — `strain_energy(C)` / `S(C, dev)` / `P(F, dev)` for materials, and `strain_energy(C)` / `S(C)` / `P(F)` for active models, which see the full `C` rather than its isochoric part rather than inheriting a base class, and export it from `material_models/__init__.py` (or the relevant module) plus `pulse/__init__.py`'s `__all__` so it's reachable as `pulse.X`.
 
 ## Style notes specific to this repo
 

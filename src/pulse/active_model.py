@@ -47,8 +47,6 @@ import logging
 import dolfinx
 import ufl
 
-from . import kinematics
-
 logger = logging.getLogger(__name__)
 
 
@@ -111,48 +109,39 @@ class ActiveModel(abc.ABC):
             The active strain energy density function
         """
 
-    def S(self, C: ufl.core.expr.Expr, dev: bool = False) -> ufl.core.expr.Expr:
-        """Cauchy stress tensor for the active model.
+    def S(self, C: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
+        """Second Piola-Kirchhoff stress tensor for the active model.
+
+        The active model is evaluated on the full right Cauchy-Green tensor,
+        never on its isochoric part: see the note in
+        :meth:`pulse.cardiac_model.CardiacModel.strain_energy`.
 
         Parameters
         ----------
         C : ufl.core.expr.Expr
             The right Cauchy-Green deformation tensor
-        dev : bool
-            Whether to compute the stress for the deviatoric part only
 
         Returns
         -------
         ufl.core.expr.Expr
-            The Cauchy stress tensor
+            The second Piola-Kirchhoff stress tensor
         """
-        if dev:
-            Cdev = kinematics.Cdev(C)
-        else:
-            Cdev = C
-        return 2.0 * ufl.diff(self.strain_energy(Cdev), C)
+        return 2.0 * ufl.diff(self.strain_energy(C), C)
 
-    def P(self, F: ufl.core.expr.Expr, dev: bool = False) -> ufl.core.expr.Expr:
+    def P(self, F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
         """First Piola-Kirchhoff stress tensor for the active model.
 
         Parameters
         ----------
         F : ufl.core.expr.Expr
             The deformation gradient
-        dev : bool
-            Whether to compute the stress for the deviatoric part only
 
         Returns
         -------
         ufl.core.expr.Expr
             The first Piola-Kirchhoff stress tensor
         """
-        C = F.T * F
-        if dev:
-            Cdev = kinematics.Cdev(C)
-        else:
-            Cdev = C
-        return ufl.diff(self.strain_energy(Cdev), F)
+        return ufl.diff(self.strain_energy(F.T * F), F)
 
     def register(self, u: dolfinx.fem.Function) -> None:
         pass
