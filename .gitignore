@@ -131,3 +131,6 @@ dmypy.json
 .pyre/
 
 _build/
+
+# Separate experiment repo, kept here for persistence but not part of this project
+cardiac-work-pulmonary-banding/
