@@ -51,9 +51,9 @@ jobs:
         with:
           node-version: "24"
 
-      - name: Install build dependencies
+      - name: Install build requirements
         run: |
-          python3 -m pip install -r https://raw.githubusercontent.com/scientificcomputing/scifem/refs/heads/main/build-requirements.txt
+          python3 -m pip install --group build
 
       - name: Install development versions of dependencies
         if: ${{ matrix.container == 'ghcr.io/fenics/dolfinx/dolfinx:nightly' }}
