@@ -72,7 +72,9 @@ class Incompressible(Compressibility):
     def __str__(self) -> str:
         return "p (J - 1)"
 
-    def register(self, p: dolfinx.fem.Function) -> None:
+    def register(self, p: dolfinx.fem.Function | None) -> None:
+        # Accepts None to match the Compressibility protocol, which the problem calls
+        # with p=None for compressible models; strain_energy raises if p is still None.
         self.p = p
 
     def strain_energy(self, C: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
