@@ -25,8 +25,12 @@ class Marker(NamedTuple):
 
 class CardiacGeometriesObject(typing.Protocol):
     mesh: dolfinx.mesh.Mesh
-    ffun: dolfinx.mesh.MeshTags
     markers: dict[str, tuple[int, int]]
+
+    # Read-only, so that both `ffun: MeshTags` and the `ffun: MeshTags | None` of
+    # `cardiac_geometries.geometry.Geometry` satisfy it; it becomes the optional `facet_tags`.
+    @property
+    def ffun(self) -> dolfinx.mesh.MeshTags | None: ...
 
 
 @dataclass(slots=True, kw_only=True)
