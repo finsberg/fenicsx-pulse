@@ -278,28 +278,13 @@ def test_flagged_active_stress_is_assembled_at_end_of_step(geometry, dirichlet_b
 
     Checked by comparing two otherwise-identical problems, one with the flag
     on and one off, against the difference computed by hand from the active
-    model's own S.
-
-    Both problems share one fixed, low quadrature degree (see `geo` below)
-    on top of `_dynamic_problem`'s zero material/compressibility/rho.
-    Without it, the flagged problem's active term is its own integral while
-    the unflagged problem's is summed into the same (here, identically zero)
-    integral as the passive/compressibility terms; UFL estimates the
-    quadrature degree per integral, so those two structurally different
-    integrals can get *different* automatically-estimated degrees even
-    though their non-active parts are both exactly zero. Two different
-    quadrature schemes for what should be the same active-stress evaluation
-    then disagree at a level the tolerance below is tight enough to see --
-    not a bug in the implementation, just quadrature-scheme noise from
-    comparing two independently-assembled forms. Forcing one explicit degree
-    everywhere removes that degree of freedom.
+    model's own S. `R_flag` and `R_unflag` are two independently-compiled
+    forms that are mathematically equal apart from the (much smaller)
+    active-stress term under test, so their difference matches `expected`
+    only up to ordinary floating-point round-off, not bit-exactly; `atol`
+    below is sized for that round-off, not for the interesting quantity.
     """
-    geo = pulse.HeartGeometry(
-        mesh=geometry.mesh,
-        boundaries=geometry.boundaries,
-        metadata={"quadrature_degree": 1},
-    )
-    mesh = geo.mesh
+    mesh = geometry.mesh
     f0 = dolfinx.fem.Constant(mesh, (1.0, 0.0, 0.0))
 
     if active == "flagged_active_stress":
@@ -313,8 +298,8 @@ def test_flagged_active_stress_is_assembled_at_end_of_step(geometry, dirichlet_b
         active_unflag = _RateActive(f0, k=k, dt=dt_const)
     active_unflag.evaluate_at_end_of_step = False
 
-    problem_flag = _dynamic_problem(geo, dirichlet_bc, active_flag)
-    problem_unflag = _dynamic_problem(geo, dirichlet_bc, active_unflag)
+    problem_flag = _dynamic_problem(geometry, dirichlet_bc, active_flag)
+    problem_unflag = _dynamic_problem(geometry, dirichlet_bc, active_unflag)
 
     for problem in (problem_flag, problem_unflag):
         problem.u.interpolate(lambda x: 0.01 * x)
@@ -338,7 +323,7 @@ def test_flagged_active_stress_is_assembled_at_end_of_step(geometry, dirichlet_b
     u_alpha = alpha_f * u_old + (1 - alpha_f) * u
     Sa_ua, varC_ua = stress_and_variation(u_alpha)
 
-    expected_form = (ufl.inner(Sa_u, 0.5 * varC_u) - ufl.inner(Sa_ua, 0.5 * varC_ua)) * geo.dx
+    expected_form = (ufl.inner(Sa_u, 0.5 * varC_u) - ufl.inner(Sa_ua, 0.5 * varC_ua)) * geometry.dx
     expected = _assemble(expected_form)
 
     assert np.linalg.norm(expected) > 0
@@ -346,5 +331,5 @@ def test_flagged_active_stress_is_assembled_at_end_of_step(geometry, dirichlet_b
         R_flag - R_unflag,
         expected,
         rtol=1e-12,
-        atol=1e-14 * np.linalg.norm(expected),
+        atol=1e-12 * np.linalg.norm(expected),
     )

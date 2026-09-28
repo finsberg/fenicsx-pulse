@@ -126,7 +126,7 @@ class CardiacModel:
         *,
         active: bool = True,
     ) -> ufl.core.expr.Expr:
-        """Cauchy stress for the cardiac model.
+        """Second Piola-Kirchhoff stress for the cardiac model.
 
         Parameters
         ----------
