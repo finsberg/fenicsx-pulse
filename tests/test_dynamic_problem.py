@@ -196,3 +196,155 @@ def test_dynamic_incompressibility_constraint_matches_static_reference(
         "ramp -- the incompressibility constraint may be enforced against "
         "the wrong (alpha_f-filtered) configuration."
     )
+
+
+class _FlaggedActiveStress(pulse.ActiveStress):
+    """`ActiveStress`, but opted into end-of-step evaluation."""
+
+    evaluate_at_end_of_step = True
+
+
+class _RateActive(pulse.active_model.ActiveModel):
+    r"""A minimal active model whose stress depends on the stretch rate,
+
+    .. math::
+        \mathbf{S}_a = \frac{k}{dt} (\lambda(\mathbf{C}) - 1)\, f_0 \otimes f_0
+
+    used only to check that ``evaluate_at_end_of_step`` also moves a model
+    that (unlike ``ActiveStress``) is genuinely rate-dependent, not just
+    flagged. ``k`` and ``dt`` are plain Constants; nothing here is a real
+    contraction model.
+    """
+
+    evaluate_at_end_of_step = True
+
+    def __init__(self, f0, k, dt):
+        self.f0 = f0
+        self.k = k
+        self.dt = dt
+
+    def Fe(self, F):
+        return F
+
+    def strain_energy(self, C):
+        raise NotImplementedError
+
+    def S(self, C):
+        lmbda = ufl.sqrt(ufl.inner(C * self.f0, self.f0))
+        return (self.k * (lmbda - 1.0) / self.dt) * ufl.outer(self.f0, self.f0)
+
+
+def _dynamic_problem(geometry, dirichlet_bc, active_model):
+    """A `DynamicProblem` with material and compressibility switched off
+    (zero stiffness) and no inertia (rho=0), so the active model is the
+    *only* source of stress.
+
+    Used only by the end-of-step gate below: it isolates the active-stress
+    term so that comparing two independently-assembled residual vectors
+    doesn't have to subtract away large, physically-identical quantities
+    (passive elasticity, inertia) first -- see that test's docstring for why
+    that subtraction alone would not be precise enough.
+    """
+    material = pulse.NeoHookean(mu=pulse.Variable(0.0, "kPa"))
+    comp_model = pulse.compressibility.Compressible2(kappa=pulse.Variable(0.0, "Pa"))
+    model = pulse.CardiacModel(material=material, active=active_model, compressibility=comp_model)
+    bcs = pulse.BoundaryConditions(dirichlet=(dirichlet_bc,))
+    parameters = {
+        "dt": pulse.Variable(1e-3, "s"),
+        "rho": pulse.Variable(0.0, "kg/m^3"),
+        "mesh_unit": "m",
+        "alpha_m": 0.2,
+        "alpha_f": 0.4,
+    }
+    return pulse.problem.DynamicProblem(
+        model=model,
+        geometry=geometry,
+        bcs=bcs,
+        parameters=parameters,
+    )
+
+
+def _assemble(form) -> np.ndarray:
+    vec = dolfinx.fem.assemble_vector(dolfinx.fem.form(form))
+    return vec.array.copy()
+
+
+@pytest.mark.parametrize("active", ["flagged_active_stress", "rate"])
+def test_flagged_active_stress_is_assembled_at_end_of_step(geometry, dirichlet_bc, active):
+    """`DynamicProblem` must assemble a flagged active model's stress at the
+    true end-of-step `self.u`, not at the alpha_f-interpolated configuration
+    it uses for the rest of the material form -- the same treatment already
+    given to the cavity constraint and J - 1.
+
+    Checked by comparing two otherwise-identical problems, one with the flag
+    on and one off, against the difference computed by hand from the active
+    model's own S.
+
+    Both problems share one fixed, low quadrature degree (see `geo` below)
+    on top of `_dynamic_problem`'s zero material/compressibility/rho.
+    Without it, the flagged problem's active term is its own integral while
+    the unflagged problem's is summed into the same (here, identically zero)
+    integral as the passive/compressibility terms; UFL estimates the
+    quadrature degree per integral, so those two structurally different
+    integrals can get *different* automatically-estimated degrees even
+    though their non-active parts are both exactly zero. Two different
+    quadrature schemes for what should be the same active-stress evaluation
+    then disagree at a level the tolerance below is tight enough to see --
+    not a bug in the implementation, just quadrature-scheme noise from
+    comparing two independently-assembled forms. Forcing one explicit degree
+    everywhere removes that degree of freedom.
+    """
+    geo = pulse.HeartGeometry(
+        mesh=geometry.mesh,
+        boundaries=geometry.boundaries,
+        metadata={"quadrature_degree": 1},
+    )
+    mesh = geo.mesh
+    f0 = dolfinx.fem.Constant(mesh, (1.0, 0.0, 0.0))
+
+    if active == "flagged_active_stress":
+        Ta = pulse.Variable(dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(5.0)), "kPa")
+        active_flag = _FlaggedActiveStress(f0, activation=Ta)
+        active_unflag = _FlaggedActiveStress(f0, activation=Ta)
+    else:
+        k = dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(500.0))
+        dt_const = dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(1e-3))
+        active_flag = _RateActive(f0, k=k, dt=dt_const)
+        active_unflag = _RateActive(f0, k=k, dt=dt_const)
+    active_unflag.evaluate_at_end_of_step = False
+
+    problem_flag = _dynamic_problem(geo, dirichlet_bc, active_flag)
+    problem_unflag = _dynamic_problem(geo, dirichlet_bc, active_unflag)
+
+    for problem in (problem_flag, problem_unflag):
+        problem.u.interpolate(lambda x: 0.01 * x)
+
+    R_flag = _assemble(problem_flag.R[0])
+    R_unflag = _assemble(problem_unflag.R[0])
+
+    alpha_f = problem_flag.parameters["alpha_f"]
+    u = problem_flag.u
+    u_old = problem_flag.u_old  # zero
+    u_test = problem_flag.u_test
+    I = ufl.Identity(3)
+
+    def stress_and_variation(u_expr):
+        F = I + ufl.grad(u_expr)
+        C = ufl.variable(F.T * F)
+        var_C = ufl.grad(u_test).T * F + F.T * ufl.grad(u_test)
+        return active_flag.S(C), var_C
+
+    Sa_u, varC_u = stress_and_variation(u)
+    u_alpha = alpha_f * u_old + (1 - alpha_f) * u
+    Sa_ua, varC_ua = stress_and_variation(u_alpha)
+
+    expected_form = (ufl.inner(Sa_u, 0.5 * varC_u) - ufl.inner(Sa_ua, 0.5 * varC_ua)) * geo.dx
+    expected = _assemble(expected_form)
+
+    assert np.linalg.norm(expected) > 0
+    assert np.allclose(
+        R_flag - R_unflag,
+        expected,
+        rtol=1e-12,
+        atol=1e-14 * np.linalg.norm(expected),
+    )

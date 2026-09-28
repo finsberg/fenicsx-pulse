@@ -51,6 +51,23 @@ logger = logging.getLogger(__name__)
 
 
 class ActiveModel(abc.ABC):
+    #: Evaluate this model's stress at the end of the time step rather than
+    #: at the generalized-alpha :math:`\alpha_f` point.
+    #:
+    #: Set this (as a class attribute on a subclass, or as an instance
+    #: attribute, which overrides it) when the stress depends on state
+    #: advanced *over* the step -- a stretch rate, or ODE states integrated
+    #: using it -- rather than on the instantaneous deformation alone.
+    #: Assembling such a model at the alpha_f-interpolated configuration
+    #: would feed it a blended stretch and a rate scaled by
+    #: :math:`1 - \alpha_f`, not the ones it actually advanced with.
+    #: :class:`pulse.problem.DynamicProblem` reads this flag and, when it is
+    #: set, assembles the active stress at the true end-of-step displacement
+    #: instead -- the same treatment it already gives the cavity constraint
+    #: and :math:`J - 1`. A :class:`pulse.problem.StaticProblem` has no
+    #: alpha_f point to differ from, so the flag has no effect there.
+    evaluate_at_end_of_step: bool = False
+
     @abc.abstractmethod
     def Fe(self, F: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
         r"""Method to transforming the deformation

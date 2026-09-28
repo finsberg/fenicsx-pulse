@@ -224,3 +224,39 @@ def test_active_stress_is_consistent_between_S_P_and_strain_energy(
     assert scale > 0.0
     assert np.abs(S - S_from_P).max() < 1e-10 * scale
     assert np.abs(S - S_from_psi).max() < 1e-10 * scale
+
+
+def test_S_without_active_leaves_out_only_the_active_term(mesh, u):
+    """``active=False`` must remove exactly the active model's own
+    contribution, nothing more and nothing less -- this is what lets
+    :class:`~pulse.problem.DynamicProblem` assemble the passive/compressible
+    part of the stress at one configuration and the active part at another
+    (see ``ActiveModel.evaluate_at_end_of_step``)."""
+    f0 = dolfinx.fem.Constant(mesh, (1.0, 0.0, 0.0))
+    s0 = dolfinx.fem.Constant(mesh, (0.0, 1.0, 0.0))
+    material = pulse.HolzapfelOgden(f0=f0, s0=s0, **pulse.HolzapfelOgden.orthotropic_parameters())
+    comp_model = pulse.compressibility.Compressible()
+    comp_model.register(p=dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(1000.0)))
+    Ta = pulse.Variable(dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(5.0)), "kPa")
+    active_model = pulse.ActiveStress(f0, activation=Ta)
+    model = pulse.CardiacModel(material=material, active=active_model, compressibility=comp_model)
+
+    # A homogeneous stretch of 1.1 along f0: F = diag(1.1, 1, 1).
+    u.interpolate(lambda x: np.vstack([0.1 * x[0], 0.0 * x[1], 0.0 * x[2]]))
+    F = ufl.variable(pulse.kinematics.DeformationGradient(u))
+    C = ufl.variable(F.T * F)
+
+    tensor_space = dolfinx.fem.functionspace(mesh, ("DG", 0, (3, 3)))
+
+    def values(expr):
+        f = dolfinx.fem.Function(tensor_space)
+        f.interpolate(dolfinx.fem.Expression(expr, tensor_space.element.interpolation_points))
+        return f.x.array.copy()
+
+    S_without_active = values(model.S(C, active=False))
+    S_full = values(model.S(C))
+    S_active = values(model.active.S(C))
+
+    scale = np.abs(S_full).max()
+    assert scale > 0.0
+    assert np.allclose(S_without_active, S_full - S_active)
