@@ -73,6 +73,7 @@ fenics
 fenicsx
 fenicsx_pulse
 ffun
+finfo
 finsberg
 Francesco
 functionspace
@@ -179,6 +180,7 @@ resid
 Riccobelli
 rique
 Roisin
+roundoff
 rspa
 rsta
 rtol

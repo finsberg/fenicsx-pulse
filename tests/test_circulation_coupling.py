@@ -276,8 +276,11 @@ def test_coupling_block_matches_finite_differences(problem, numpy_reference):
         minus = assemble(R[row])
         numeric = (plus - minus) / (2 * h)
 
-        scale = max(abs(numeric), 1e-8)
-        assert abs(analytic - numeric) / scale < 1e-6, (
+        # The central difference carries a rounding error of order eps * |R| / h,
+        # which dominates for rows whose pressure sensitivity is tiny compared to
+        # the residual itself (e.g. p_AR_SYS, where |R| ~ 50 but dR/dp ~ 1e-7).
+        roundoff = 100 * np.finfo(float).eps * max(abs(plus), abs(minus)) / h
+        assert abs(analytic - numeric) <= 1e-6 * abs(numeric) + roundoff, (
             f"coupling block for {name}: analytic {analytic:.6g}, finite difference {numeric:.6g}"
         )
 
