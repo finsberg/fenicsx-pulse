@@ -179,7 +179,14 @@ class CavityCycle:
 
 @dataclass
 class CavityRecord:
-    """A snapshot of one cavity, written by `CycleController.step` after each converged step."""
+    """A snapshot of one cavity, written by `CycleController.step` after each converged step.
+
+    ``V``, ``P``, ``P_c`` and ``Q`` are the step just solved. ``phase`` is not
+    the phase they were solved under: it is the phase *after* that step's
+    transition, i.e. the one in force for the *next* step. The two differ on
+    exactly the step at which the phase switches; the phase a step was solved
+    under is the ``phase`` of the record before it.
+    """
 
     phase: Phase
     V: float
@@ -277,8 +284,12 @@ def _set_preconditioner_lag(problem: StaticProblem, lag: int) -> None:
     key = f"{snes.getOptionsPrefix() or ''}snes_lag_preconditioner"
     opts = PETSc.Options()
     opts.setValue(key, lag)
-    snes.setFromOptions()
-    opts.delValue(key)
+    try:
+        snes.setFromOptions()
+    finally:
+        # `PETSc.Options()` is process-global: a key left behind would reach
+        # every other SNES with this prefix.
+        opts.delValue(key)
 
 
 class CycleController:
@@ -290,10 +301,16 @@ class CycleController:
     `step` does not rebuild it every call.
 
     `preconditioner_lag`, when given, is the steady-state
-    ``snes_lag_preconditioner``: after a failed step's retry, or after any
-    phase change, the next solve instead runs with the preconditioner
-    refreshed every iteration (lag 1), then this value is restored. `None`
-    (the default) leaves the solver's own preconditioner-lag setting alone.
+    ``snes_lag_preconditioner``. A solve is instead run with the
+    preconditioner rebuilt every iteration (lag 1), then this value is
+    restored, when it is: the first solve; the solve after any phase change;
+    the retry of a failed solve; and the first solve of the step after a
+    failed `step`. `None` (the default) leaves the solver's own
+    preconditioner-lag setting alone.
+
+    `records` maps each cavity to its `CavityRecord` from the last converged
+    step: that step's ``V``/``P``/``P_c``/``Q``, with the ``phase`` for the
+    *next* step (see `CavityRecord`).
     """
 
     def __init__(
@@ -333,7 +350,10 @@ class CycleController:
         self.cycles: dict[str, CavityCycle] = {name: CavityCycle() for name in self.params}
         self.records: dict[str, CavityRecord] = {}
         self._initialized = False
-        self._refresh_pending = False
+        # True, as physcardems' `_refactor`: the first solve runs at lag 1, so
+        # `preconditioner_lag` is in force from the second solve on rather
+        # than only after the first refresh.
+        self._refresh_pending = True
 
     def _volume(self, name: str) -> float:
         comm: MPI.Comm = self.problem.geometry.mesh.comm
@@ -374,14 +394,23 @@ class CycleController:
         }
 
     def _solve_once(self) -> bool:
+        """One Newton solve, refreshing the preconditioner first if one is pending.
+
+        Never raises on non-convergence, whatever ``parameters["raise_on_failure"]``
+        says: `step` has to see the failure to roll back. A pending refresh is
+        cleared only by a converged solve.
+        """
         lag = self.preconditioner_lag
-        refresh = self._refresh_pending and lag is not None
-        if refresh and lag is not None:
+        if self._refresh_pending and lag is not None:
             _set_preconditioner_lag(self.problem, 1)
-        ok = self.problem.solve()
-        if refresh and lag is not None:
-            _set_preconditioner_lag(self.problem, lag)
-        self._refresh_pending = False
+            try:
+                ok = self.problem.solve(raise_on_failure=False)
+            finally:
+                _set_preconditioner_lag(self.problem, lag)
+        else:
+            ok = self.problem.solve(raise_on_failure=False)
+        if ok:
+            self._refresh_pending = False
         return ok
 
     def step(self, t: float, dt: float) -> bool:
@@ -390,7 +419,9 @@ class CycleController:
         On success, every `CavityCycle` in `self.cycles` and `self.records` is
         updated. On failure `problem.reset_states()` has put the mechanics
         state back exactly as it was before this call, and nothing in
-        `self.cycles`/`self.records` has been touched.
+        `self.cycles`/`self.records` has been touched; a preconditioner
+        refresh stays pending, so a retry (with a smaller `dt`, say) starts
+        from a fresh one.
         """
         if not self._initialized:
             raise RuntimeError("CycleController.step() called before initialize()")

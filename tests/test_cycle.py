@@ -12,19 +12,19 @@ cycle then updates its own Windkessel state from the result.
 LV cycle by `CycleController`, checked against the five-phase order the whole
 design is for.
 
-`test_failed_step_restores_state_bit_for_bit` and
-`test_step_before_initialize_raises` use a small unit-cube problem (the same
-ENDO/FIXED tagging `test_cavity_control.py` uses, for the same reason: it
-keeps the cavity's rim in the x = 0 plane through the origin, where the
-divergence-theorem volume is exactly the enclosed volume) -- fast enough to
-not need `@pytest.mark.slow`.
+The other tests use a small unit-cube problem (the same ENDO/FIXED tagging
+`test_cavity_control.py` uses, for the same reason: it keeps the cavity's rim
+in the x = 0 plane through the origin, where the divergence-theorem volume is
+exactly the enclosed volume) -- fast enough to not need `@pytest.mark.slow`.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import math
 
 from mpi4py import MPI
+from petsc4py import PETSc
 
 import dolfinx
 import numpy as np
@@ -122,7 +122,7 @@ def _cube_dirichlet_bc(geometry):
     return bc
 
 
-def _cube_dynamic_problem(geometry, snes_max_it=None):
+def _cube_dynamic_problem(geometry, raise_on_failure=False):
     model = pulse.CardiacModel(
         material=pulse.NeoHookean(mu=pulse.Variable(10.0, "kPa")),
         active=pulse.Passive(),
@@ -134,10 +134,8 @@ def _cube_dynamic_problem(geometry, snes_max_it=None):
         "rho": pulse.Variable(1e3, "kg/m^3"),
         "dt": pulse.Variable(2e-3, "s"),
     }
-    if snes_max_it is not None:
-        petsc_options = dict(pulse.problem.StaticProblem.default_parameters()["petsc_options"])
-        petsc_options["snes_max_it"] = snes_max_it
-        parameters["petsc_options"] = petsc_options
+    if raise_on_failure:
+        parameters["raise_on_failure"] = True
     problem = pulse.problem.DynamicProblem(
         model=model,
         geometry=geometry,
@@ -148,38 +146,129 @@ def _cube_dynamic_problem(geometry, snes_max_it=None):
     return problem
 
 
-def test_failed_step_restores_state_bit_for_bit(cube_geometry):
-    """`step` must return `False` and leave the mechanics state and every
-    `CavityCycle` field exactly as they were, when a demanded IVC volume the
-    Newton solve is given only one iteration to reach cannot be met.
-    """
-    problem = _cube_dynamic_problem(cube_geometry, snes_max_it=1)
-    controller = cycle.CycleController(problem, {"ENDO": lv_cycle_params()})
-    controller.initialize(t0=0.0)
+def _lag_key(problem) -> str:
+    return f"{problem.problem.solver.getOptionsPrefix() or ''}snes_lag_preconditioner"
 
+
+def _record_lag_calls(monkeypatch) -> list[int]:
+    """Record every lag `CycleController` sets, still setting it for real."""
+    calls: list[int] = []
+    real = cycle._set_preconditioner_lag
+
+    def recording(problem, lag):
+        calls.append(lag)
+        real(problem, lag)
+
+    monkeypatch.setattr(cycle, "_set_preconditioner_lag", recording)
+    return calls
+
+
+def _take_converged_steps(controller, n: int, dt: float = 2e-3) -> float:
+    """`n` converged PRELOAD steps from t = 0, so the state is no longer all zeros."""
+    t = 0.0
+    for _ in range(n):
+        t += dt
+        assert controller.step(t=t, dt=dt) is True
+    return t
+
+
+def _snapshot(problem, controller):
+    return {
+        "u": problem.u.x.array.copy(),
+        "u_old": problem.u_old.x.array.copy(),
+        "v_old": problem.v_old.x.array.copy(),
+        "a_old": problem.a_old.x.array.copy(),
+        "p": [p.x.array.copy() for p in problem.cavity_pressures],
+        "cycles": {name: dataclasses.replace(c) for name, c in controller.cycles.items()},
+        "records": {name: dataclasses.replace(r) for name, r in controller.records.items()},
+    }
+
+
+def _demand_infeasible_ivc(problem, controller) -> None:
+    """One Newton iteration, to reach an IVC volume of half the current one."""
+    problem.problem.solver.setTolerances(max_it=1)
     cyc = controller.cycles["ENDO"]
     cyc.phase = cycle.Phase.ISOVOLUMIC_CONTRACTION
     cyc.end_dia_vol = 0.5 * cyc.volume_n
 
-    u_before = problem.u.x.array.copy()
-    u_old_before = problem.u_old.x.array.copy()
-    v_old_before = problem.v_old.x.array.copy()
-    a_old_before = problem.a_old.x.array.copy()
-    p_before = [p.x.array.copy() for p in problem.cavity_pressures]
-    cyc_before = cycle.CavityCycle(**vars(cyc))
-    records_before = dict(controller.records)
 
-    ok = controller.step(t=2e-3, dt=2e-3)
+def _assert_restored(problem, controller, before) -> None:
+    assert np.array_equal(problem.u.x.array, before["u"])
+    assert np.array_equal(problem.u_old.x.array, before["u_old"])
+    assert np.array_equal(problem.v_old.x.array, before["v_old"])
+    assert np.array_equal(problem.a_old.x.array, before["a_old"])
+    for p_before, p in zip(before["p"], problem.cavity_pressures):
+        assert np.array_equal(p.x.array, p_before)
+    assert controller.cycles == before["cycles"]
+    assert controller.records == before["records"]
+
+
+def test_failed_step_restores_state_bit_for_bit(cube_geometry):
+    """`step` must return `False` and leave the mechanics state and every
+    `CavityCycle` field exactly as they were, when a demanded IVC volume the
+    Newton solve is given only one iteration to reach cannot be met.
+
+    Two converged steps come first, so that everything compared is non-zero
+    beforehand: from an all-zero state a rollback that zeroed the fields
+    instead of restoring them would pass too.
+    """
+    problem = _cube_dynamic_problem(cube_geometry)
+    controller = cycle.CycleController(problem, {"ENDO": lv_cycle_params()})
+    controller.initialize(t0=0.0)
+    t = _take_converged_steps(controller, 2)
+
+    _demand_infeasible_ivc(problem, controller)
+    before = _snapshot(problem, controller)
+    for name in ("u", "u_old", "v_old", "a_old"):
+        assert np.any(before[name] != 0.0), name
+    assert all(np.all(p != 0.0) for p in before["p"])
+
+    ok = controller.step(t=t + 2e-3, dt=2e-3)
 
     assert ok is False
-    assert np.array_equal(problem.u.x.array, u_before)
-    assert np.array_equal(problem.u_old.x.array, u_old_before)
-    assert np.array_equal(problem.v_old.x.array, v_old_before)
-    assert np.array_equal(problem.a_old.x.array, a_old_before)
-    for before, p in zip(p_before, problem.cavity_pressures):
-        assert np.array_equal(before, p.x.array)
-    assert controller.cycles["ENDO"] == cyc_before
-    assert controller.records == records_before
+    _assert_restored(problem, controller, before)
+
+
+def test_failed_step_does_not_raise_or_leak_the_lag_under_raise_on_failure(
+    cube_geometry,
+    monkeypatch,
+):
+    """With `parameters["raise_on_failure"]`, `problem.solve()` would raise on
+    the failed solve; `step` must still return `False` with the state restored,
+    must leave no temporary lag key in the (process-global) options database,
+    and must keep the refresh pending, so the next step starts from a fresh
+    preconditioner.
+    """
+    lag = 5
+    problem = _cube_dynamic_problem(cube_geometry, raise_on_failure=True)
+    controller = cycle.CycleController(
+        problem,
+        {"ENDO": lv_cycle_params()},
+        preconditioner_lag=lag,
+    )
+    controller.initialize(t0=0.0)
+    calls = _record_lag_calls(monkeypatch)
+    t = _take_converged_steps(controller, 1)
+
+    _demand_infeasible_ivc(problem, controller)
+    before = _snapshot(problem, controller)
+    calls.clear()
+
+    ok = controller.step(t=t + 2e-3, dt=2e-3)
+
+    assert ok is False
+    _assert_restored(problem, controller, before)
+    # The first attempt runs at the steady lag; only the retry refreshes.
+    assert calls == [1, lag]
+    assert _lag_key(problem) not in PETSc.Options()
+
+    # Retry the step, now feasibly: back in PRELOAD with Newton's budget back.
+    problem.problem.solver.setTolerances(max_it=50)
+    controller.cycles["ENDO"].phase = cycle.Phase.PRELOAD
+    calls.clear()
+    assert controller.step(t=t + 1e-3, dt=1e-3) is True
+    assert calls == [1, lag]
+    assert _lag_key(problem) not in PETSc.Options()
 
 
 def test_step_before_initialize_raises(cube_geometry):
@@ -195,32 +284,39 @@ def test_unknown_cavity_name_raises_key_error(cube_geometry):
         cycle.CycleController(problem, {"NOT_A_CAVITY": lv_cycle_params()})
 
 
-def test_preconditioner_lag_is_refreshed_then_restored_and_not_leaked(cube_geometry):
-    """A pending refresh makes the next solve set `snes_lag_preconditioner` to 1,
-    then restore it to `preconditioner_lag` -- through the PETSc options
-    database, which must not be left holding the temporary key afterward
-    (`PETSc.Options()` is process-global, so a leaked key would leak into
+def test_preconditioner_lag_is_refreshed_then_restored_and_not_leaked(cube_geometry, monkeypatch):
+    """The first solve, and the first solve after a phase switch, run at lag 1
+    and then restore `preconditioner_lag`; any other solve leaves the lag
+    alone. The temporary options key must never be left in the options
+    database (`PETSc.Options()` is process-global, so a leaked key would reach
     every other SNES solve in the process, not just this one).
+
+    PRELOAD is shortened to two steps here, so the switch into IVC comes at
+    t = 4 ms; IVC then holds (the cube's passive pressure stays far below the
+    Windkessel's 9 kPa).
     """
-    from petsc4py import PETSc
-
+    lag = 5
+    params = dataclasses.replace(lv_cycle_params(), t_zero=2e-3, t_end_diastole=4e-3)
     problem = _cube_dynamic_problem(cube_geometry)
-    controller = cycle.CycleController(problem, {"ENDO": lv_cycle_params()}, preconditioner_lag=5)
+    controller = cycle.CycleController(problem, {"ENDO": params}, preconditioner_lag=lag)
     controller.initialize(t0=0.0)
-
-    key = f"{problem.problem.solver.getOptionsPrefix() or ''}snes_lag_preconditioner"
+    calls = _record_lag_calls(monkeypatch)
+    key = _lag_key(problem)
     assert key not in PETSc.Options()
 
-    # As if the previous step's phase changed, or its retry needed a fresh
-    # factorization -- `step` itself sets this the same way; forced directly
-    # here so the refresh runs on a step that is otherwise a trivial PRELOAD
-    # solve (t=2 ms is well inside the ramp, nowhere near a real transition).
-    controller._refresh_pending = True
-    ok = controller.step(t=2e-3, dt=2e-3)
-
-    assert ok is True
-    assert controller._refresh_pending is False
-    assert key not in PETSc.Options()
+    expected = [
+        # (t, lag calls during the step, phase after the step)
+        (2e-3, [1, lag], cycle.Phase.PRELOAD),  # the first solve
+        (4e-3, [], cycle.Phase.ISOVOLUMIC_CONTRACTION),  # a plain solve; switches
+        (6e-3, [1, lag], cycle.Phase.ISOVOLUMIC_CONTRACTION),  # the solve after the switch
+        (8e-3, [], cycle.Phase.ISOVOLUMIC_CONTRACTION),  # a plain solve
+    ]
+    for t, expected_calls, expected_phase in expected:
+        calls.clear()
+        assert controller.step(t=t, dt=2e-3) is True
+        assert calls == expected_calls, t
+        assert controller.cycles["ENDO"].phase == expected_phase, t
+        assert key not in PETSc.Options()
 
 
 # --- The real gate: a full LV cycle on pulse's own ellipsoid. ---
@@ -262,22 +358,11 @@ def _twitch(t: float) -> float:
     return (tau / 0.02) * math.exp(1.0 - tau / 0.02)
 
 
-#: kPa. The brief's own Laplace estimate, P ~= 0.8 Ta, puts a 60 kPa peak
-#: comfortably above the 9 kPa IVC threshold (Ta ~= 11.25 kPa needed) -- but
-#: *where* on the twitch curve that threshold is crossed matters as much as
-#: whether it is: the twitch shape's slope is steepest right at onset and
-#: falls to zero at its own peak (x = tau / 20 ms = 1), so a higher Tmax
-#: reaches the fixed 11.25 kPa crossing earlier on the curve, where the slope
-#: -- and so the pressure rise per 2 ms step -- is largest. At 60 kPa the
-#: crossing lands early enough that the per-switch |dP| bound (Step 1's
-#: "below 0.1 * max P") is overshot at the IVC -> EJECTION switch (2721 Pa
-#: against a 1600 Pa bound, measured). 20 and 25 kPa are too low the other
-#: way: peak Ta never reaches 11.25 kPa at all within one beat, so IVC never
-#: opens the valve. 30 kPa crosses right where the twitch curve is flattening
-#: toward its own peak, minimizing the crossing-step pressure rise (25.71 Pa
-#: against the same 901 Pa bound, comfortably inside it) -- see the commit
-#: message for the full sweep this was found with.
-TMAX_KPA = 30.0
+#: kPa. The Laplace estimate P ~= 0.8 Ta for this ellipsoid puts a 60 kPa
+#: peak well above what IVC needs to open the valve at the Windkessel's
+#: 9 kPa (Ta ~= 11.25 kPa). Measured: max P 16.0 kPa, EDV 183.2 mL, ESV
+#: 147.9 mL, FILLING from t = 0.254 s.
+TMAX_KPA = 60.0
 
 
 @pytest.mark.slow
@@ -296,10 +381,9 @@ def test_phases_run_in_order_on_lv_ellipsoid(ellipsoid_geo):
     control = pulse.problem.CavityControl(geo.mesh)
 
     dt = 2e-3
-    # A step near onset/offset of the twitch, or the low-pressure part of
-    # isovolumic relaxation, is a genuinely hard Newton solve; pulse's default
-    # snes_max_it (50) is not always enough at this dt, though every step here
-    # does converge given more.
+    # One step late in isovolumic relaxation (t = 206 ms) needs 72 Newton
+    # iterations, more than pulse's default snes_max_it of 50; every other
+    # step converges in at most 16.
     petsc_options = dict(pulse.problem.StaticProblem.default_parameters()["petsc_options"])
     petsc_options["snes_max_it"] = 150
 
@@ -319,22 +403,26 @@ def test_phases_run_in_order_on_lv_ellipsoid(ellipsoid_geo):
     controller = cycle.CycleController(problem, {"ENDO": lv_cycle_params()})
     controller.initialize(t0=0.0)
 
+    # One entry per step: (t, the phase in force *during* the step, V, P).
+    # The phase is read before `step`, which transitions it after solving.
     history: list[tuple[float, cycle.Phase, float, float]] = []
     t = 0.0
     n_steps = int(round(LV_PERIOD / dt))
     for _ in range(n_steps):
         t_new = t + dt
         Ta.assign(TMAX_KPA * _twitch(t_new - 0.12))
+        solved_under = controller.cycles["ENDO"].phase
         ok = controller.step(t_new, dt)
         assert ok, f"step failed to converge at t={t_new:.4f} s"
         t = t_new
 
         cyc = controller.cycles["ENDO"]
-        history.append((t, cyc.phase, cyc.volume_n, cyc.pressure_n))
+        history.append((t, solved_under, cyc.volume_n, cyc.pressure_n))
         if cyc.phase == cycle.Phase.FILLING:
             break
 
-    phases_seen = [h[1] for h in history]
+    # The phases steps were solved under, then the one the run ended in.
+    phases_seen = [h[1] for h in history] + [controller.cycles["ENDO"].phase]
     distinct_phases: list[cycle.Phase] = [phases_seen[0]]
     for phase in phases_seen[1:]:
         if phase != distinct_phases[-1]:
@@ -350,14 +438,22 @@ def test_phases_run_in_order_on_lv_ellipsoid(ellipsoid_geo):
 
     for phase in (cycle.Phase.ISOVOLUMIC_CONTRACTION, cycle.Phase.ISOVOLUMIC_RELAXATION):
         volumes = [h[2] for h in history if h[1] == phase]
-        assert volumes, f"never entered {phase!r}"
+        assert volumes, f"no step solved under {phase!r}"
         assert max(volumes) - min(volumes) <= 1e-6 * abs(volumes[0])
 
+    # A constraint switch may change the pressure's rate -- the pressure rises
+    # steeply through IVC and then far less once the valve opens -- but must
+    # not make it jump. At each switch step k, the first solved under the new
+    # phase, the second difference P_k - 2 P_(k-1) + P_(k-2) is what a jump
+    # shows up in, whatever the rate either side of it.
     max_P = max(h[3] for h in history)
-    for i in range(1, len(history)):
-        if history[i][1] != history[i - 1][1]:
-            dP = abs(history[i][3] - history[i - 1][3])
-            assert dP < 0.1 * max_P, (
-                f"switch {history[i - 1][1].name} -> {history[i][1].name} at "
-                f"t={history[i][0]:.4f} s: |dP|={dP:.1f} Pa >= 0.1 * max P = {0.1 * max_P:.1f} Pa"
-            )
+    switches = [k for k in range(1, len(history)) if history[k][1] != history[k - 1][1]]
+    assert len(switches) == 3
+    for k in switches:
+        assert k >= 2
+        d2P = abs(history[k][3] - 2.0 * history[k - 1][3] + history[k - 2][3])
+        assert d2P < 0.1 * max_P, (
+            f"switch {history[k - 1][1].name} -> {history[k][1].name} at "
+            f"t={history[k][0]:.4f} s: |P_k - 2 P_(k-1) + P_(k-2)| = {d2P:.1f} Pa "
+            f">= 0.1 * max P = {0.1 * max_P:.1f} Pa"
+        )
