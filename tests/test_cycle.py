@@ -360,8 +360,8 @@ def _twitch(t: float) -> float:
 
 #: kPa. The Laplace estimate P ~= 0.8 Ta for this ellipsoid puts a 60 kPa
 #: peak well above what IVC needs to open the valve at the Windkessel's
-#: 9 kPa (Ta ~= 11.25 kPa). Measured: max P 16.0 kPa, EDV 183.2 mL, ESV
-#: 147.9 mL, FILLING from t = 0.254 s.
+#: 9 kPa (Ta ~= 11.25 kPa). Measured: max P 15.5 kPa, EDV 181.0 mL, ESV
+#: 148.9 mL, FILLING from t = 0.270 s.
 TMAX_KPA = 60.0
 
 
@@ -373,20 +373,20 @@ def test_phases_run_in_order_on_lv_ellipsoid(ellipsoid_geo):
     material = pulse.HolzapfelOgden(f0=geo.f0, s0=geo.s0, **material_params)  # type: ignore[arg-type]
 
     Ta = pulse.Variable(dolfinx.fem.Constant(geo.mesh, dolfinx.default_scalar_type(0.0)), "kPa")
+    # Damped, as a heart model is. Undamped, the wall rings after the switch
+    # into IVR's volume constraint: the cavity pressure saw-tooths by up to
+    # 1.6 kPa per step, and at dt = 2 ms Newton needs up to 72 iterations on
+    # one IVR step and diverges on it on some PETSc builds. With `Viscous`
+    # the IVR pressure falls monotonically and no step needs more than 4.
     model = pulse.CardiacModel(
         material=material,
         active=pulse.ActiveStress(geo.f0, activation=Ta),
         compressibility=pulse.Compressible(),
+        viscoelasticity=pulse.Viscous(),
     )
     control = pulse.problem.CavityControl(geo.mesh)
 
     dt = 2e-3
-    # One step late in isovolumic relaxation (t = 206 ms) needs 72 Newton
-    # iterations, more than pulse's default snes_max_it of 50; every other
-    # step converges in at most 16.
-    petsc_options = dict(pulse.problem.StaticProblem.default_parameters()["petsc_options"])
-    petsc_options["snes_max_it"] = 150
-
     problem = pulse.problem.DynamicProblem(
         model=model,
         geometry=geometry,
@@ -396,7 +396,6 @@ def test_phases_run_in_order_on_lv_ellipsoid(ellipsoid_geo):
             "mesh_unit": "m",
             "rho": pulse.Variable(1e3, "kg/m^3"),
             "dt": pulse.Variable(dt, "s"),
-            "petsc_options": petsc_options,
         },
     )
 
