@@ -992,6 +992,30 @@ class StaticProblem:
 
 
 class DynamicProblem(StaticProblem):
+    r"""Second-order elastodynamics, via the generalized-:math:`\alpha` method.
+
+    Every term of the residual is evaluated at one of three points:
+
+    - at the :math:`\alpha_f` point (``interpolate(u_old, u, alpha_f)``,
+      built in :attr:`R`): the material, compressibility and viscous stress,
+      the Robin and Neumann loads, and the body force -- the genuine
+      second-order dynamics, for which alpha_f-interpolation is the
+      consistent choice.
+    - at the :math:`\alpha_m` point: the inertia term.
+    - at the end of the step, i.e. the true current ``self.u``: the
+      cavity-volume constraint, :math:`J - 1`, and the circuit. These are
+      algebraic constraints (Lagrange multipliers), not part of the
+      differential dynamics an alpha-blend applies to -- enforcing them
+      against the alpha_f-interpolated configuration instead would leave
+      ``self.u``'s actual volume/incompressibility/circuit coupling
+      unconstrained. The active stress joins this group precisely when
+      :attr:`~pulse.active_model.ActiveModel.evaluate_at_end_of_step` is set
+      on the active model: such a model's stress depends on state advanced
+      over the step (a stretch rate, or ODE states), and the alpha_f point
+      would feed it a blended stretch and a rate scaled by
+      :math:`1 - \alpha_f` rather than the ones it actually advanced with.
+    """
+
     def __post_init__(self):
         super().__post_init__()
         # Just make sure we have units on rho and dt
@@ -1029,7 +1053,22 @@ class DynamicProblem(StaticProblem):
         var_C = ufl.grad(self.u_test).T * F + F.T * ufl.grad(self.u_test)
 
         forms = self._empty_form()
-        forms[0] += ufl.inner(self.model.S(C, C_dot=C_dot), 0.5 * var_C) * self.geometry.dx
+        if self.model.active.evaluate_at_end_of_step:
+            # The active model is stateful/rate-dependent: assemble
+            # everything else at the alpha_f point as usual, but the active
+            # stress at the true end-of-step displacement self.u, built the
+            # same way the J - 1 row below builds F_true.
+            forms[0] += (
+                ufl.inner(self.model.S(C, C_dot=C_dot, active=False), 0.5 * var_C)
+                * self.geometry.dx
+            )
+
+            F1 = ufl.grad(self.u) + ufl.Identity(3)
+            C1 = ufl.variable(F1.T * F1)
+            var_C1 = ufl.grad(self.u_test).T * F1 + F1.T * ufl.grad(self.u_test)
+            forms[0] += ufl.inner(self.model.active.S(C1), 0.5 * var_C1) * self.geometry.dx
+        else:
+            forms[0] += ufl.inner(self.model.S(C, C_dot=C_dot), 0.5 * var_C) * self.geometry.dx
 
         if self.is_incompressible:
             # Incompressibility is an algebraic constraint (like the

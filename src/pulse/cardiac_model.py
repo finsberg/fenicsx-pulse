@@ -123,10 +123,34 @@ class CardiacModel:
         self,
         C: ufl.core.expr.Expr,
         C_dot: ufl.core.expr.Expr | None = None,
+        *,
+        active: bool = True,
     ) -> ufl.core.expr.Expr:
-        """Cauchy stress for the cardiac model."""
+        """Second Piola-Kirchhoff stress for the cardiac model.
 
-        S = self.material.S(C, dev=True) + self.active.S(C) + self.compressibility.S(C)
+        Parameters
+        ----------
+        C : ufl.core.expr.Expr
+            Right Cauchy-Green deformation tensor
+        C_dot : ufl.core.expr.Expr | None, optional
+            Time derivative of the right Cauchy-Green deformation tensor, by
+            default None
+        active : bool, optional
+            Whether to include the active model's stress, by default True.
+            Set to False to build the passive/compressible(/viscous) stress
+            only, so a caller can add the active model's own contribution
+            separately -- e.g. at a different point in time, for a model with
+            :attr:`pulse.active_model.ActiveModel.evaluate_at_end_of_step` set
+            (see :class:`pulse.problem.DynamicProblem`).
+
+        Returns
+        -------
+        ufl.core.expr.Expr
+            The second Piola-Kirchhoff stress tensor
+        """
+        S = self.material.S(C, dev=True) + self.compressibility.S(C)
+        if active:
+            S += self.active.S(C)
         if C_dot is not None:
             S += self.viscoelasticity.S(C_dot)
         return S
