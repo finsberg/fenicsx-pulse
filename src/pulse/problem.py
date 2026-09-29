@@ -68,18 +68,81 @@ class Geometry(typing.Protocol):
     def surface_area(self, marker: str) -> float: ...
 
 
-class Cavity(typing.NamedTuple):
-    """A chamber whose volume is constrained to a prescribed value.
+class CavityControl:
+    """Which constraint a cavity's pressure unknown satisfies, set at run time.
 
-    `volume` is usually a `Constant` you set each step. It may instead be a
-    `Function` on the real space, in which case the volume is itself an unknown
-    of the problem and the constraint couples the two: this is how a chamber of
-    a 0D circulation model is tied to the deformed cavity. See
-    :mod:`pulse.circulation`.
+    A controlled cavity has one pressure unknown ``p``, as a prescribed-volume
+    cavity does, but its equation is chosen by the constants held here:
+
+    - volume mode (``mode == 1``): ``V(u) = V_target``;
+    - pressure mode (``mode == 0``): ``p = A + B V(u)``. ``B = 0`` prescribes
+      the pressure, and ``B != 0`` ties the pressure to the volume inside
+      Newton, as a Windkessel does during ejection.
+
+    Every one of these is a `Constant` read when the form is assembled, so
+    switching between them does not rebuild the problem. A new control starts
+    in pressure mode at zero pressure. Values are in SI units: ``V_target`` in
+    m^3, ``A`` in Pa and ``B`` in Pa/m^3.
+
+    Do not also put a Neumann pressure on the cavity's marker: the load on the
+    wall comes from ``p``.
+    """
+
+    def __init__(self, mesh: dolfinx.mesh.Mesh):
+        def constant(value: float) -> dolfinx.fem.Constant:
+            return dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(value))
+
+        self.mode = constant(0.0)
+        self.V_target = constant(0.0)
+        self.A = constant(0.0)
+        self.B = constant(0.0)
+
+    def set_volume(self, V: float) -> None:
+        """Hold the cavity volume at `V` (m^3)."""
+        _assign(self.mode, 1.0)
+        _assign(self.V_target, V)
+
+    def set_pressure(self, P: float) -> None:
+        """Hold the cavity pressure at `P` (Pa)."""
+        self.set_affine_pressure(P, 0.0)
+
+    def set_affine_pressure(self, A: float, B: float) -> None:
+        """Make the cavity pressure ``A + B V(u)``, with `A` in Pa and `B` in Pa/m^3."""
+        _assign(self.mode, 0.0)
+        _assign(self.A, A)
+        _assign(self.B, B)
+
+
+def _assign(constant: dolfinx.fem.Constant, value: float) -> None:
+    # `Constant.value`'s setter is typed for an array, not a scalar.
+    constant.value = np.asarray(value)
+
+
+#: The rows of a controlled cavity measure the volume in mL and the pressure in
+#: kPa, so that both modes have residuals of order one for a heart and Newton's
+#: tolerance means the same thing whichever mode is active.
+CONTROLLED_VOLUME_SCALE = 1 / mL
+CONTROLLED_PRESSURE_SCALE = 1e-3
+
+
+class Cavity(typing.NamedTuple):
+    """A chamber whose pressure is an unknown of the problem, and its constraint.
+
+    Exactly one of these constrains it:
+
+    - `volume`: the volume is held at that value, with the pressure as its
+      Lagrange multiplier. It is usually a `Constant` you set each step.
+    - `control`: a :class:`CavityControl`, whose constraint (volume, pressure,
+      or pressure affine in the volume) can be switched at run time.
+    - neither, when the marker is coupled to a chamber of a 0D circulation
+      model (see :mod:`pulse.circulation`): the problem then points `volume` at
+      that chamber's volume state, so the volume is itself an unknown and the
+      constraint couples the two.
     """
 
     marker: str
-    volume: dolfinx.fem.Constant | dolfinx.fem.Function
+    volume: dolfinx.fem.Constant | dolfinx.fem.Function | ufl.core.expr.Expr | None = None
+    control: CavityControl | None = None
 
 
 class BaseBC(str, Enum):
@@ -108,6 +171,7 @@ class StaticProblem:
         parameters = type(self).default_parameters()
         parameters.update(self.parameters)
         self.parameters = parameters
+        self._check_cavities()
         self._init_spaces()
         self._init_forms()
         logger.debug("Initialized StaticProblem with parameters:")
@@ -119,6 +183,34 @@ class StaticProblem:
                 f"Circulation states: {list(self.circulation.state_names)}",
             )
         logger.debug(f"Boundary conditions: {self.bcs}")
+
+    def _check_cavities(self):
+        """Refuse a cavity that is not constrained exactly once.
+
+        Checked before anything is built, because a cavity with no constraint
+        would otherwise surface only as a row that fails to compile, far from
+        the cavity that caused it.
+        """
+        coupled = set()
+        if self.circulation is not None:
+            coupled = {chamber.marker for chamber in self.chambers}
+        for cavity in self.cavities:
+            if cavity.control is not None:
+                if cavity.volume is not None:
+                    raise ValueError(
+                        f"Cavity {cavity.marker!r} has both a volume and a control. "
+                        "Give it one: a control can hold the volume itself.",
+                    )
+                if cavity.marker in coupled:
+                    raise ValueError(
+                        f"Cavity {cavity.marker!r} has a control and is also coupled to "
+                        "a circulation chamber, which constrains its volume already.",
+                    )
+            elif cavity.volume is None and cavity.marker not in coupled:
+                raise ValueError(
+                    f"Cavity {cavity.marker!r} has no constraint: give it a volume or a "
+                    "control, or couple it to a chamber of a circulation model.",
+                )
 
     def _init_spaces(self):
         """Initialize function spaces"""
@@ -621,16 +713,47 @@ class StaticProblem:
         V_u = self.geometry.volume_form(u)
 
         form = ufl.as_ufl(0.0)
+        has_lagrangian = False
+        controlled = self._empty_form()
 
         assert cavity_pressures is not None
         assert len(self.cavities) == self.num_cavity_pressure_states
-        for i, (marker, cavity_volume) in enumerate(self.cavities):
-            area = self.geometry.surface_area(marker)
+        for i, cavity in enumerate(self.cavities):
+            area = self.geometry.surface_area(cavity.marker)
             pendo = cavity_pressures[i]
-            marker_id = self.geometry.markers[marker][0]
-            form += pendo * (cavity_volume / area - V_u) * self.geometry.ds(marker_id)
+            ds = self.geometry.ds(self.geometry.markers[cavity.marker][0])
+            control = cavity.control
+            if control is None:
+                # `_check_cavities` refused a cavity with neither, and a
+                # circuit-coupled one has had its volume set by now.
+                assert cavity.volume is not None
+                form += pendo * (cavity.volume / area - V_u) * ds
+                has_lagrangian = True
+                continue
 
-        residual = self._create_residual_form(form)
+            # A controlled cavity's rows are written out rather than derived
+            # from a Lagrangian: the two are scaled independently, and with
+            # B = 0 pressure mode is not the stationary point of one. The
+            # displacement row is the one the Lagrangian path produces; the
+            # pressure row blends the two constraints by `mode`, and integrates
+            # to (V_target - V(u)) in mL or (A + B V(u) - p) in kPa. The cavity
+            # pressures sit right after u in the block order.
+            controlled[0] += ufl.derivative(-pendo * V_u * ds, self.u, self.u_test)
+            volume_row = (control.V_target / area - V_u) * CONTROLLED_VOLUME_SCALE
+            pressure_row = ((control.A - pendo) / area + control.B * V_u) * (
+                CONTROLLED_PRESSURE_SCALE
+            )
+            controlled[1 + i] += (
+                (control.mode * volume_row + (1.0 - control.mode) * pressure_row)
+                * self.cavity_pressures_test[i]
+                * ds
+            )
+
+        if has_lagrangian:
+            residual = self._create_residual_form(form)
+        else:
+            # Every cavity is controlled: there is no Lagrangian to differentiate.
+            residual = self._empty_form()
 
         # `_create_residual_form` differentiates this term against every state,
         # which is what produces both the pressure traction on the displacement
@@ -643,6 +766,9 @@ class StaticProblem:
         # quietly changing what is being solved.
         for i in range(self.num_states - self.num_circulation_states, self.num_states):
             residual[i] = ufl.as_ufl(0.0)
+
+        for i in range(self.num_states):
+            residual[i] += controlled[i]
 
         return residual
 
