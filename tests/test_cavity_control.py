@@ -18,6 +18,21 @@ surface is closed off by a rim lying in a plane through the origin and not
 moving out of it, as an LV endocardium is at a fixed base. Here that rim is the
 edge of the fixed face x = 0; on the x = 1 face alone it moves freely, and the
 load picks up edge terms a Neumann pressure does not have.
+
+The ENDO/FIXED meshtags are built by hand from the mesh's exterior facets,
+classified by facet midpoint -- not from `HeartGeometry`'s usual
+`Marker`/`locate_entities` path. `locate_entities` tags a facet whenever every
+one of its vertices *individually* satisfies the locator, which is not the
+same as the facet lying on the surface the locator describes: a union of five
+plane conditions lets a facet's three vertices each satisfy a *different*
+clause (e.g. a corner facet of the fixed x = 0 face can have one vertex on
+y = 0, one on y = 1, one on z = 1), and `locate_entities` does not restrict to
+boundary facets either. On this mesh that tags two boundary facets of the
+fixed face as ENDO too (`ENDO` and `FIXED` on the same facet) and tags 27
+interior facets that are not on the boundary at all, inflating `ENDO`'s area
+to 5.25 instead of 5. Tagging by midpoint over `exterior_facet_indices` alone
+avoids both: every exterior facet gets exactly one tag and no interior facet
+gets any.
 """
 
 from mpi4py import MPI
@@ -27,6 +42,7 @@ import numpy as np
 import pytest
 
 import pulse
+from pulse.circulation import ChamberCoupling
 from pulse.problem import Cavity, CavityControl
 
 #: Solver-tolerance agreement between two formulations of the same problem.
@@ -40,25 +56,28 @@ def mesh():
 
 @pytest.fixture
 def geometry(mesh):
-    def endo(x):
-        # Every face but the fixed one x = 0 (see the module docstring). No
-        # facet of x = 0 has all its vertices on any of these planes.
-        return (
-            np.isclose(x[0], 1.0)
-            | np.isclose(x[1], 0.0)
-            | np.isclose(x[1], 1.0)
-            | np.isclose(x[2], 0.0)
-            | np.isclose(x[2], 1.0)
-        )
+    # See the module docstring: tagging by midpoint over the mesh's own
+    # exterior facets, rather than through a `Marker`/`locate_entities`
+    # locator, is what makes ENDO's area exactly 5 (not 5.25) and keeps every
+    # facet single-tagged.
+    mesh.topology.create_connectivity(2, 3)
+    exterior = dolfinx.mesh.exterior_facet_indices(mesh.topology)
+    midpoints = dolfinx.mesh.compute_midpoints(mesh, 2, exterior)
+    is_fixed = np.isclose(midpoints[:, 0], 0.0)
+    values = np.where(is_fixed, 2, 1).astype(np.int32)
 
-    def fixed_face(x):
-        return np.isclose(x[0], 0.0)
-
-    boundaries = [
-        pulse.Marker(name="ENDO", marker=1, dim=2, locator=endo),
-        pulse.Marker(name="FIXED", marker=2, dim=2, locator=fixed_face),
-    ]
-    return pulse.HeartGeometry(mesh=mesh, boundaries=boundaries)
+    order = np.argsort(exterior)
+    facet_tags = dolfinx.mesh.meshtags(
+        mesh,
+        2,
+        exterior[order].astype(np.int32),
+        values[order],
+    )
+    return pulse.HeartGeometry(
+        mesh=mesh,
+        facet_tags=facet_tags,
+        markers={"ENDO": (1, 2), "FIXED": (2, 2)},
+    )
 
 
 @pytest.fixture
@@ -81,14 +100,40 @@ def _model():
     )
 
 
-def _problem(geometry, dirichlet_bc, cavities=(), neumann=()):
-    return pulse.problem.StaticProblem(
+def _problem(geometry, dirichlet_bc, cavities=(), neumann=(), **overrides):
+    kwargs = dict(
         model=_model(),
         geometry=geometry,
         bcs=pulse.BoundaryConditions(dirichlet=(dirichlet_bc,), neumann=tuple(neumann)),
         cavities=list(cavities),
         parameters={"mesh_unit": "m"},
     )
+    kwargs.update(overrides)
+    return pulse.problem.StaticProblem(**kwargs)
+
+
+class _StubCirculation:
+    """Just enough of `CirculationModel` to mark a chamber coupled.
+
+    `_check_cavities` only needs `self.circulation is not None` and each
+    chamber's `marker`; it never calls into the circuit itself, so nothing
+    here has to do anything real.
+    """
+
+    @property
+    def state_names(self) -> tuple[str, ...]:
+        return ()
+
+    @property
+    def missing_names(self) -> tuple[str, ...]:
+        return ()
+
+    @property
+    def initial_states(self) -> np.ndarray:
+        return np.zeros(0)
+
+    def rhs(self, t, states, missing):
+        raise NotImplementedError
 
 
 def _volume(problem, geometry):
@@ -168,3 +213,56 @@ def test_cavity_needs_exactly_one_constraint(mesh, geometry, dirichlet_bc):
 
     with pytest.raises(ValueError, match="ENDO"):
         _problem(geometry, dirichlet_bc, [Cavity("ENDO")])
+
+
+def test_coupled_cavity_refuses_a_volume_too(mesh, geometry, dirichlet_bc):
+    """A coupled cavity that also carries an explicit volume is refused.
+
+    Without this, the circuit rewrite (`_init_circulation_spaces`) silently
+    replaces that volume with the chamber's own volume state -- the cavity
+    would still solve, just not against the volume it was given.
+    """
+    volume = dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(0.0))
+    chamber = ChamberCoupling(marker="ENDO", volume_state="V", pressure_missing="p")
+
+    with pytest.raises(ValueError, match="ENDO"):
+        _problem(
+            geometry,
+            dirichlet_bc,
+            [Cavity("ENDO", volume=volume)],
+            circulation=_StubCirculation(),
+            chambers=[chamber],
+        )
+
+
+def test_coupled_cavity_refuses_a_control_too(mesh, geometry, dirichlet_bc):
+    """A coupled cavity that also carries a control is refused (existing rule)."""
+    control = CavityControl(mesh)
+    chamber = ChamberCoupling(marker="ENDO", volume_state="V", pressure_missing="p")
+
+    with pytest.raises(ValueError, match="ENDO"):
+        _problem(
+            geometry,
+            dirichlet_bc,
+            [Cavity("ENDO", control=control)],
+            circulation=_StubCirculation(),
+            chambers=[chamber],
+        )
+
+
+def test_controlled_cavity_needs_mesh_unit_m(mesh, geometry, dirichlet_bc):
+    """A control's V_target/A/B are SI; any other mesh_unit is refused.
+
+    `geometry.volume_form` is in mesh units, so a controlled cavity's rows
+    would silently compare a millimeter-scaled V(u) against a V_target/A/B
+    meant in metres/pascals if this weren't refused.
+    """
+    control = CavityControl(mesh)
+
+    with pytest.raises(ValueError, match="ENDO"):
+        _problem(
+            geometry,
+            dirichlet_bc,
+            [Cavity("ENDO", control=control)],
+            parameters={"mesh_unit": "mm"},
+        )

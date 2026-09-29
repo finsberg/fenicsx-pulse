@@ -82,7 +82,10 @@ class CavityControl:
     Every one of these is a `Constant` read when the form is assembled, so
     switching between them does not rebuild the problem. A new control starts
     in pressure mode at zero pressure. Values are in SI units: ``V_target`` in
-    m^3, ``A`` in Pa and ``B`` in Pa/m^3.
+    m^3, ``A`` in Pa and ``B`` in Pa/m^3 -- which only means what it says when
+    the problem's own ``V(u)`` is in cubic metres, so a controlled cavity
+    requires ``parameters["mesh_unit"] == "m"``; `StaticProblem` refuses one
+    otherwise.
 
     Do not also put a Neumann pressure on the cavity's marker: the load on the
     wall comes from ``p``.
@@ -122,7 +125,11 @@ def _assign(constant: dolfinx.fem.Constant, value: float) -> None:
 #: kPa, so that both modes have residuals of order one for a heart and Newton's
 #: tolerance means the same thing whichever mode is active.
 CONTROLLED_VOLUME_SCALE = 1 / mL
-CONTROLLED_PRESSURE_SCALE = 1e-3
+#: 1 kPa in pascals -- the pressure analogue of `mL` (1 mL in cubic metres)
+#: above. There is no shared `kPa` constant to import for this, unlike `mL`,
+#: so it is defined right here, next to the one row that uses it.
+kPa = 1e3
+CONTROLLED_PRESSURE_SCALE = 1 / kPa
 
 
 class Cavity(typing.NamedTuple):
@@ -185,28 +192,46 @@ class StaticProblem:
         logger.debug(f"Boundary conditions: {self.bcs}")
 
     def _check_cavities(self):
-        """Refuse a cavity that is not constrained exactly once.
+        """Refuse a cavity that is not constrained exactly once, or a control the mesh_unit breaks.
 
         Checked before anything is built, because a cavity with no constraint
         would otherwise surface only as a row that fails to compile, far from
-        the cavity that caused it.
+        the cavity that caused it -- and a coupled cavity that also carries an
+        explicit volume would otherwise have that volume silently replaced by
+        the circulation rewrite (`_init_circulation_spaces`), rather than
+        refused.
         """
         coupled = set()
         if self.circulation is not None:
             coupled = {chamber.marker for chamber in self.chambers}
         for cavity in self.cavities:
+            is_coupled = cavity.marker in coupled
             if cavity.control is not None:
                 if cavity.volume is not None:
                     raise ValueError(
                         f"Cavity {cavity.marker!r} has both a volume and a control. "
                         "Give it one: a control can hold the volume itself.",
                     )
-                if cavity.marker in coupled:
+                if is_coupled:
                     raise ValueError(
                         f"Cavity {cavity.marker!r} has a control and is also coupled to "
                         "a circulation chamber, which constrains its volume already.",
                     )
-            elif cavity.volume is None and cavity.marker not in coupled:
+                if str(self.parameters["mesh_unit"]) != "m":
+                    raise ValueError(
+                        f"Cavity {cavity.marker!r} has a control, whose V_target/A/B are "
+                        "in SI units (m^3, Pa, Pa/m^3), so it needs mesh_unit == 'm'; this "
+                        f"problem's mesh_unit is {self.parameters['mesh_unit']!r}.",
+                    )
+            elif is_coupled:
+                if cavity.volume is not None:
+                    raise ValueError(
+                        f"Cavity {cavity.marker!r} has a volume and is also coupled to a "
+                        "circulation chamber, which would silently replace it with the "
+                        "chamber's own volume state. Give it one: drop the volume, or "
+                        "uncouple the chamber.",
+                    )
+            elif cavity.volume is None:
                 raise ValueError(
                     f"Cavity {cavity.marker!r} has no constraint: give it a volume or a "
                     "control, or couple it to a chamber of a circulation model.",
