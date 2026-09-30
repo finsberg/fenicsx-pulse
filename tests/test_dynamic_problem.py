@@ -385,5 +385,7 @@ def test_constant_dt_can_change_between_solves():
         assert reference.solve()
         assert problem.solve()
     np.testing.assert_allclose(problem.u.x.array, reference.u.x.array, rtol=1e-10, atol=1e-12)
-    np.testing.assert_allclose(problem.v_old.x.array, reference.v_old.x.array, rtol=1e-8, atol=1e-10)
+    np.testing.assert_allclose(
+        problem.v_old.x.array, reference.v_old.x.array, rtol=1e-8, atol=1e-10
+    )
     np.testing.assert_allclose(problem.a_old.x.array, reference.a_old.x.array, rtol=1e-8, atol=1e-8)
