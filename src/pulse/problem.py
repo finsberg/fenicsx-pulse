@@ -1111,7 +1111,13 @@ class StaticProblem:
                 solver = self.problem.solver
                 solver.setErrorIfNotConverged(raise_on_failure)
                 solver.getKSP().setErrorIfNotConverged(raise_on_failure)
-                self.problem.solve()
+                try:
+                    self.problem.solve()
+                finally:
+                    # Runs even when raise_on_failure made solve() raise on
+                    # divergence, so a failure that propagates as an exception
+                    # is still counted rather than silently dropped.
+                    self.monitor.record_snes(solver)
                 reason = typing.cast(int, solver.getConvergedReason())
                 converged = reason > 0
                 iters = solver.getIterationNumber()
@@ -1121,7 +1127,6 @@ class StaticProblem:
                         f"Newton did not converge after {iters} iterations "
                         f"(SNES converged reason {reason})",
                     )
-                self.monitor.record_snes(solver)
             else:
                 # scifem's Newton solver returns the iteration count, not a flag,
                 # and raises when it gives up -- so the old code here assigned an

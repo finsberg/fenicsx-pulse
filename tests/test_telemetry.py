@@ -2,6 +2,7 @@ import json
 import logging
 
 from mpi4py import MPI
+from petsc4py import PETSc
 
 import dolfinx
 import numpy as np
@@ -128,3 +129,70 @@ def test_problem_solve_is_monitored():
         assert monitor.newton_failures == 0
     else:  # scifem's Newton solver exposes no SNES
         pytest.skip("iteration counts need dolfinx >= 0.10")
+
+
+def _hopeless_problem(monitor):
+    """A problem Newton cannot solve in one iteration, with `raise_on_failure=True`.
+
+    Mirrors `tests/test_solve_convergence_reporting.py`'s `_hopeless`: a huge load
+    and one allowed iteration make this a genuine convergence failure rather than
+    a mesh that inverts for an unrelated reason. Unlike that helper, `solve` is
+    configured to raise, so this exercises the failure path where `record_snes`
+    must still run despite PETSc raising out of `self.problem.solve()`.
+    """
+    mesh = dolfinx.mesh.create_unit_cube(MPI.COMM_WORLD, 3, 3, 3)
+    boundaries = [
+        pulse.Marker(name="X0", marker=1, dim=2, locator=lambda x: np.isclose(x[0], 0.0)),
+        pulse.Marker(name="X1", marker=2, dim=2, locator=lambda x: np.isclose(x[0], 1.0)),
+    ]
+    geometry = pulse.Geometry(mesh=mesh, boundaries=boundaries, metadata={"quadrature_degree": 4})
+
+    f0 = dolfinx.fem.Constant(mesh, PETSc.ScalarType((1.0, 0.0, 0.0)))
+    s0 = dolfinx.fem.Constant(mesh, PETSc.ScalarType((0.0, 1.0, 0.0)))
+    model = pulse.CardiacModel(
+        material=pulse.HolzapfelOgden(
+            f0=f0,
+            s0=s0,
+            **pulse.HolzapfelOgden.transversely_isotropic_parameters(),
+        ),
+        active=pulse.ActiveStress(f0, activation=dolfinx.fem.Constant(mesh, PETSc.ScalarType(0.0))),
+        compressibility=pulse.Compressible(),
+    )
+
+    def dirichlet_bc(V):
+        mesh.topology.create_connectivity(mesh.topology.dim - 1, mesh.topology.dim)
+        dofs = dolfinx.fem.locate_dofs_topological(V, 2, geometry.facet_tags.find(1))
+        u_fixed = dolfinx.fem.Function(V)
+        u_fixed.x.array[:] = 0.0
+        return [dolfinx.fem.dirichletbc(u_fixed, dofs)]
+
+    t = dolfinx.fem.Constant(mesh, PETSc.ScalarType(-1e7))
+    bcs = pulse.BoundaryConditions(
+        dirichlet=(dirichlet_bc,),
+        neumann=(pulse.NeumannBC(traction=t, marker=2),),
+    )
+    petsc_options = dict(pulse.StaticProblem.default_parameters()["petsc_options"])
+    petsc_options["snes_max_it"] = 1
+    return pulse.StaticProblem(
+        model=model,
+        geometry=geometry,
+        bcs=bcs,
+        parameters={
+            "petsc_options": petsc_options,
+            "raise_on_failure": True,
+        },
+        monitor=monitor,
+    )
+
+
+def test_record_snes_runs_even_when_solve_raises():
+    from packaging.version import Version
+
+    if Version(dolfinx.__version__) < Version("0.10"):
+        pytest.skip("iteration counts need dolfinx >= 0.10")
+
+    monitor = PerformanceMonitor()
+    problem = _hopeless_problem(monitor)
+    with pytest.raises((PETSc.Error, RuntimeError)):
+        problem.solve()
+    assert monitor.newton_failures == 1

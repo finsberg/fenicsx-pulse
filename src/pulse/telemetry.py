@@ -97,7 +97,7 @@ class PerformanceMonitor(BaseMonitor):
     def record_ksp(self, ksp: PETSc.KSP) -> None:
         try:
             self._add_linear(int(ksp.getIterationNumber()))
-            self.ksp_last_converged_reason = int(ksp.getConvergedReason())
+            self.ksp_last_converged_reason = int(ksp.getConvergedReason())  # type: ignore[call-overload]
         except PETSc.Error:
             pass
 
@@ -108,10 +108,12 @@ class PerformanceMonitor(BaseMonitor):
             self.newton_last_iterations = iterations
             self.newton_total_iterations += iterations
             self.newton_max_iterations = max(self.newton_max_iterations, iterations)
-            if int(snes.getConvergedReason()) <= 0:
+            if int(snes.getConvergedReason()) <= 0:  # type: ignore[call-overload]
                 self.newton_failures += 1
             self._add_linear(int(snes.getLinearSolveIterations()))
-            self.ksp_last_converged_reason = int(snes.getKSP().getConvergedReason())
+            self.ksp_last_converged_reason = int(
+                snes.getKSP().getConvergedReason()  # type: ignore[call-overload]
+            )
         except PETSc.Error:
             pass
 
