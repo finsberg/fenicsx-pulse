@@ -142,6 +142,8 @@ module = [
     "gotranx.*",
     "circulation",
     "circulation.*",
+    "scipy",
+    "scipy.*",
 ]
 ignore_missing_imports = true
 
