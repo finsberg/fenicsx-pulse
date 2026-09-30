@@ -108,6 +108,7 @@ addopts = [
 testpaths = [
     "tests"
 ]
+markers = ["slow: takes more than a few seconds"]
 
 
 [tool.mypy]
