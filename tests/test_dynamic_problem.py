@@ -333,3 +333,57 @@ def test_flagged_active_stress_is_assembled_at_end_of_step(geometry, dirichlet_b
         rtol=1e-12,
         atol=1e-12 * np.linalg.norm(expected),
     )
+
+
+def _neo_hookean_dynamic_problem(dt, mesh=None):
+    if mesh is None:
+        mesh = dolfinx.mesh.create_unit_cube(MPI.COMM_WORLD, 2, 2, 2)
+    boundaries = [
+        pulse.Marker(name="X0", marker=1, dim=2, locator=lambda x: np.isclose(x[0], 0.0)),
+        pulse.Marker(name="X1", marker=2, dim=2, locator=lambda x: np.isclose(x[0], 1.0)),
+    ]
+    geometry = pulse.HeartGeometry(mesh=mesh, boundaries=boundaries)
+    model = pulse.CardiacModel(
+        material=pulse.NeoHookean(),
+        active=pulse.Passive(),
+        compressibility=pulse.Compressible(),
+    )
+    traction = pulse.Variable(dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(0.0)), "kPa")
+
+    def clamp(V):
+        facets = geometry.facet_tags.find(1)
+        dofs = dolfinx.fem.locate_dofs_topological(V, 2, facets)
+        return [dolfinx.fem.dirichletbc(dolfinx.fem.Function(V), dofs)]
+
+    bcs = pulse.BoundaryConditions(
+        neumann=(pulse.NeumannBC(traction=traction, marker=2),),
+        dirichlet=(clamp,),
+    )
+    problem = pulse.DynamicProblem(
+        model=model,
+        geometry=geometry,
+        bcs=bcs,
+        parameters={"dt": dt, "u_space": "P_1"},
+    )
+    return problem, traction
+
+
+def test_constant_dt_can_change_between_solves():
+    """A Constant-backed dt set to 1 ms before the first solve reproduces a float dt of 1 ms."""
+    reference, t_ref = _neo_hookean_dynamic_problem(pulse.Variable(1e-3, "s"))
+    # dt_constant must live on the same mesh instance as `problem`'s own
+    # forms: a Constant built on a different (even if topologically
+    # identical) mesh object raises UFL's "multiple domains" error as soon
+    # as it is combined with problem's own C/C_dot in the material form.
+    mesh = dolfinx.mesh.create_unit_cube(MPI.COMM_WORLD, 2, 2, 2)
+    dt_constant = dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(2e-3))
+    problem, t_new = _neo_hookean_dynamic_problem(pulse.Variable(dt_constant, "s"), mesh=mesh)
+    dt_constant.value = 1e-3  # changed after the forms were built
+    for step in range(1, 4):
+        t_ref.assign(0.5 * step)
+        t_new.assign(0.5 * step)
+        assert reference.solve()
+        assert problem.solve()
+    np.testing.assert_allclose(problem.u.x.array, reference.u.x.array, rtol=1e-10, atol=1e-12)
+    np.testing.assert_allclose(problem.v_old.x.array, reference.v_old.x.array, rtol=1e-8, atol=1e-10)
+    np.testing.assert_allclose(problem.a_old.x.array, reference.a_old.x.array, rtol=1e-8, atol=1e-8)

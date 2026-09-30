@@ -1313,11 +1313,20 @@ class DynamicProblem(StaticProblem):
         )
         return parameters
 
+    def _dt_float(self) -> float:
+        """The current time step in seconds as a plain float (for numpy updates)."""
+        dt = self.parameters["dt"]
+        value = dt.value
+        if isinstance(value, dolfinx.fem.Constant):
+            value = float(value.value)
+        return float(value) * dt.factor
+
     def v(
         self,
         a: T,
         v_old: T,
         a_old: T,
+        dt: typing.Any = None,
     ) -> T:
         r"""
         Velocity computed using the generalized
@@ -1334,12 +1343,16 @@ class DynamicProblem(StaticProblem):
             Previous velocity
         a_old: T
             Previous acceleration
+        dt: optional
+            Time step; defaults to ``parameters["dt"]`` in base units (a UFL
+            expression when ``dt`` wraps a Constant). Pass a float for numpy input.
         Returns
         -------
         T
             The current velocity
         """
-        dt = self.parameters["dt"].to_base_units()
+        if dt is None:
+            dt = self.parameters["dt"].to_base_units()
         return v_old + (1 - self._gamma) * dt * a_old + self._gamma * dt * a
 
     def a(
@@ -1348,6 +1361,7 @@ class DynamicProblem(StaticProblem):
         u_old: T,
         v_old: T,
         a_old: T,
+        dt: typing.Any = None,
     ) -> T:
         r"""
         Acceleration computed using the generalized
@@ -1367,12 +1381,15 @@ class DynamicProblem(StaticProblem):
             Previous velocity
         a_old: T
             Previous acceleration
+        dt: optional
+            Time step; see :meth:`v`.
         Returns
         -------
         T
             The current acceleration
         """
-        dt = self.parameters["dt"].to_base_units()
+        if dt is None:
+            dt = self.parameters["dt"].to_base_units()
         dt2 = dt**2
         beta = self._beta
         return (u - (u_old + dt * v_old + (0.5 - beta) * dt2 * a_old)) / (beta * dt2)
@@ -1382,19 +1399,14 @@ class DynamicProblem(StaticProblem):
         and acceleration
         """
         super().update_fields()
+        dt = self._dt_float()
         u = self.u.x.array.copy()
         u_old = self.u_old.x.array.copy()
         v_old = self.v_old.x.array.copy()
         a_old = self.a_old.x.array.copy()
 
-        a = self.a(
-            u=u,
-            u_old=u_old,
-            v_old=v_old,
-            a_old=a_old,
-        )
-
-        v = self.v(a=a, v_old=v_old, a_old=a_old)
+        a = self.a(u=u, u_old=u_old, v_old=v_old, a_old=a_old, dt=dt)
+        v = self.v(a=a, v_old=v_old, a_old=a_old, dt=dt)
 
         self.a_old.x.array[:] = a
         self.v_old.x.array[:] = v
