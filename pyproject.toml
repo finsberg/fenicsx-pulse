@@ -21,11 +21,23 @@ dependencies = ["fenics-dolfinx", "pint", "scifem", "rich", "rich-argparse"]
 [project.scripts]
 pulse = "pulse.cli:main"
 
+# `pulse init --template <name>` copies these from the installed package.
+[tool.setuptools.package-data]
+"pulse.cli" = ["templates/*/*"]
+
 [project.optional-dependencies]
+cli = [
+    "pydantic>=2",
+    "pydantic-pint",
+    "toml",
+    "cardiac-geometriesx",
+    "io4dolfinx",
+]
 test = [
     "pytest",
     "pytest-cov",
     "cardiac-geometriesx",
+    "fenicsx-pulse[cli]",
 ]
 dev = [
     "pdbpp",
@@ -108,7 +120,10 @@ addopts = [
 testpaths = [
     "tests"
 ]
-markers = ["slow: takes more than a few seconds"]
+markers = [
+    "slow: takes more than a few seconds",
+    "skip_in_parallel: test cannot be run under multi-rank MPI",
+]
 
 
 [tool.mypy]

@@ -96,7 +96,7 @@ def display_version_info():
 
     import dolfinx
 
-    from . import __version__
+    from .. import __version__
 
     logger.info(f"fenicsx-pulse: {__version__}")
     logger.info(f"dolfinx: {dolfinx.__version__}")
