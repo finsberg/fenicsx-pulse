@@ -18,6 +18,7 @@ from .boundary_conditions import BoundaryConditions
 from .cardiac_model import CardiacModel
 from .circulation import ChamberCoupling, CirculationModel, mL, mmHg
 from .geometry import HeartGeometry
+from .telemetry import BaseMonitor, NullMonitor
 from .units import Variable, mesh_factor
 
 T = typing.TypeVar("T", dolfinx.fem.Function, np.ndarray)
@@ -173,6 +174,7 @@ class StaticProblem:
         dolfinx.fem.petsc.NonlinearProblem
     )
     Function: typing.Type[dolfinx.fem.Function] = dolfinx.fem.Function
+    monitor: BaseMonitor = field(default_factory=NullMonitor, repr=False)
 
     def __post_init__(self):
         parameters = type(self).default_parameters()
@@ -1104,40 +1106,43 @@ class StaticProblem:
         if update_old_states:
             self.update_old_states()
 
-        if _dolfinx_version >= Version("0.10"):
-            solver = self.problem.solver
-            solver.setErrorIfNotConverged(raise_on_failure)
-            solver.getKSP().setErrorIfNotConverged(raise_on_failure)
-            self.problem.solve()
-            reason = typing.cast(int, solver.getConvergedReason())
-            converged = reason > 0
-            iters = solver.getIterationNumber()
-            logger.debug(f"Solved in {iters} iterations, converged: {converged}")
-            if not converged:
-                logger.warning(
-                    f"Newton did not converge after {iters} iterations "
-                    f"(SNES converged reason {reason})",
-                )
-        else:
-            # scifem's Newton solver returns the iteration count, not a flag,
-            # and raises when it gives up -- so the old code here assigned an
-            # int to `converged` and could only ever report success.
-            try:
-                self._solver.solve(rtol=1e-10, atol=1e-6)
-            except RuntimeError:
-                if raise_on_failure:
-                    raise
-                logger.warning("Newton did not converge")
-                converged = False
+        with self.monitor.track_time("newton_solve"):
+            if _dolfinx_version >= Version("0.10"):
+                solver = self.problem.solver
+                solver.setErrorIfNotConverged(raise_on_failure)
+                solver.getKSP().setErrorIfNotConverged(raise_on_failure)
+                self.problem.solve()
+                reason = typing.cast(int, solver.getConvergedReason())
+                converged = reason > 0
+                iters = solver.getIterationNumber()
+                logger.debug(f"Solved in {iters} iterations, converged: {converged}")
+                if not converged:
+                    logger.warning(
+                        f"Newton did not converge after {iters} iterations "
+                        f"(SNES converged reason {reason})",
+                    )
+                self.monitor.record_snes(solver)
             else:
-                converged = True
+                # scifem's Newton solver returns the iteration count, not a flag,
+                # and raises when it gives up -- so the old code here assigned an
+                # int to `converged` and could only ever report success.
+                try:
+                    self._solver.solve(rtol=1e-10, atol=1e-6)
+                except RuntimeError:
+                    if raise_on_failure:
+                        raise
+                    logger.warning("Newton did not converge")
+                    converged = False
+                else:
+                    converged = True
 
         # Derived fields are only meaningful for a solution that exists. A
         # `DynamicProblem` in particular reconstructs velocity and acceleration
         # from the displacement, so updating them from a failed iterate would
         # write the failure into the history and outlast the rollback.
         if converged:
-            self.update_fields()
+            with self.monitor.track_time("update_fields"):
+                self.update_fields()
 
         return converged
 

@@ -25,6 +25,7 @@ from . import (
     material_model,
     material_models,
     problem,
+    telemetry,
     units,
     unloading,
     utils,
@@ -57,6 +58,7 @@ from .material_models import (
     Usyk,
 )
 from .problem import BaseBC, DynamicProblem, StaticProblem
+from .telemetry import NullMonitor, PerformanceMonitor
 from .units import Variable, ureg
 from .unloading import FixedPointUnloader, PrestressProblem, TargetPressure
 from .viscoelasticity import NoneViscoElasticity, ViscoElasticity, Viscous
@@ -122,4 +124,7 @@ __all__ = [
     "PrestressProblem",
     "TargetPressure",
     "FrankStarlingActiveStress",
+    "telemetry",
+    "NullMonitor",
+    "PerformanceMonitor",
 ]
