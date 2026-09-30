@@ -99,6 +99,7 @@ holzapfelogden
 Hookean
 hstack
 hyperelastic
+hypre
 icntl
 Iglesias
 inproceedings
