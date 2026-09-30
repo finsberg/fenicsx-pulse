@@ -102,7 +102,7 @@ def test_robin_units_depend_on_damping(tmp_path):
         "robin": [
             {"marker": "X1", "value": "1e3 Pa/m"},
             {"marker": "X1", "value": "5e3 Pa*s/m", "damping": True},
-        ]
+        ],
     }
     assert _config(tmp_path, bcs=ok)
     with pytest.raises(ValidationError, match="Pa\\*s/m"):
@@ -115,11 +115,13 @@ def test_material_region_keys_and_units(tmp_path):
     assert conf.material.region[0].values() == {"a": "22.8 kPa", "b_f": 20.0}
     with pytest.raises(ValidationError, match="unknown"):
         _config(
-            tmp_path, material={"type": "holzapfel_ogden", "region": [{"marker": "1", "zz": 1.0}]}
+            tmp_path,
+            material={"type": "holzapfel_ogden", "region": [{"marker": "1", "zz": 1.0}]},
         )
     with pytest.raises(ValidationError, match="pressure"):
         _config(
-            tmp_path, material={"type": "holzapfel_ogden", "region": [{"marker": "1", "a": 2.0}]}
+            tmp_path,
+            material={"type": "holzapfel_ogden", "region": [{"marker": "1", "a": 2.0}]},
         )
 
 
