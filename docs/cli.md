@@ -54,7 +54,9 @@ keyed on a hash of the `[geometry]` section (everything except `folder`, `unit`,
 the old one rather than replacing it, and `pulse` never deletes `geometry.folder` itself or
 anything in it that it didn't create — `geometry.folder = "."` (the config's own directory) is
 safe. Run `pulse geometry` on its own first if you just want to warm that cache (e.g. on a cluster
-login node, see [Running on a cluster](cli_cluster.md)); it logs the subfolder it used.
+login node, see [Running on a cluster](cli_cluster.md)); it logs the subfolder it used. The mesh
+(and its fibres) is generated in serial on rank 0, whatever the number of ranks, and then read and
+distributed by every rank — cardiac-geometriesx's generators are not reliably parallel-safe.
 
 `geometry.type = "folder"` points `folder` at a mesh you (or another `cardiac-geometriesx`
 -compatible tool) already generated externally; `pulse` only *loads* it, via

@@ -3,6 +3,7 @@ from mpi4py import MPI
 import dolfinx
 import numpy as np
 import pytest
+from cli_helpers import write_file
 
 from pulse.cli.config import (
     BestelActivationProfile,
@@ -50,8 +51,7 @@ def test_inline_table_interpolates_and_holds():
 
 
 def test_table_units_and_period(tmp_path):
-    csv = tmp_path / "ta.csv"
-    csv.write_text("t_ms,Ta\n0,0\n500,60\n1000,0\n")
+    csv = write_file(tmp_path / "ta.csv", "t_ms,Ta\n0,0\n500,60\n1000,0\n")
     profile = TableProfile(
         file=csv,
         time_column="t_ms",
@@ -68,8 +68,7 @@ def test_table_units_and_period(tmp_path):
 def test_table_file_errors_are_config_errors(tmp_path):
     with pytest.raises(ConfigError, match="missing.csv"):
         build_profile(TableProfile(file=tmp_path / "missing.csv"), 0.0, 1.0, 0.1)
-    bad = tmp_path / "bad.csv"
-    bad.write_text("a,b\n0,1\n")
+    bad = write_file(tmp_path / "bad.csv", "a,b\n0,1\n")
     with pytest.raises(ConfigError, match="column"):
         build_profile(TableProfile(file=bad), 0.0, 1.0, 0.1)
 

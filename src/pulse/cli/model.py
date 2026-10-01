@@ -85,11 +85,16 @@ def _region_function(geo: CLIGeometry, conf: MaterialConfig, name: str, base: fl
         raise ConfigError("material.region needs a geometry with cell markers (cfun)")
     regions = [r for r in conf.region if name in r.values()]
     tags = [_cell_tag(geo, r.marker) for r in regions]
-    indices = geo.cfun.indices
-    values = np.zeros_like(geo.cfun.values)
+    # The simple-function space needs a patch for every local cell, ghosts included, but cfun may
+    # tag only some cells (e.g. only owned ones in parallel): untagged cells keep ``base``.
+    cell_map = geo.mesh.topology.index_map(geo.mesh.topology.dim)
+    n_owned = cell_map.size_local
+    indices = np.arange(n_owned + cell_map.num_ghosts, dtype=np.int32)
+    values = np.zeros_like(indices)
+    tagged, owned = geo.cfun.indices, geo.cfun.indices < n_owned
     for k, tag in enumerate(tags, start=1):
-        values[geo.cfun.values == tag] = k
-    local_hits = [int(np.sum(geo.cfun.values == tag)) for tag in tags]
+        values[tagged[geo.cfun.values == tag]] = k
+    local_hits = [int(np.sum((geo.cfun.values == tag) & owned)) for tag in tags]
     hits = geo.mesh.comm.allreduce(np.array(local_hits), op=MPI.SUM)
     for region, count in zip(regions, np.atleast_1d(hits)):
         if count == 0:

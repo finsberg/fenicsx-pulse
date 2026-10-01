@@ -57,3 +57,13 @@ def write_cfg(tmp_path, **overrides: Any) -> Path:
         path.write_text(toml.dumps(minimal_config_dict(tmp_path, **overrides)))
     MPI.COMM_WORLD.barrier()
     return path
+
+
+def write_file(path, text: str) -> Path:
+    """Write ``text`` to ``path`` on rank 0 only (all ranks share it), then synchronize."""
+    path = Path(path)
+    if MPI.COMM_WORLD.rank == 0:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+    MPI.COMM_WORLD.barrier()
+    return path

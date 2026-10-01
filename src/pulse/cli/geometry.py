@@ -4,6 +4,7 @@ Generated cardiac-geometriesx meshes are cached in ``geometry.folder/<hash16>/``
 layout as beat), installed by an atomic rename; nothing else in ``geometry.folder`` is touched.
 """
 
+import gc
 import hashlib
 import json
 import logging
@@ -156,32 +157,41 @@ def ensure_generated(conf: GeometryConfig, comm: MPI.Intracomm) -> Path:
     name = f".tmp-{target.name}-{os.getpid()}-{uuid.uuid4().hex[:8]}" if comm.rank == 0 else None
     tmp: Path = target.with_name(comm.bcast(name, root=0))
     raw = tmp.with_name(tmp.name + "-raw")
-    _on_rank0(comm, OSError, lambda: target.parent.mkdir(parents=True, exist_ok=True))
     generator = getattr(cg.mesh, GENERATORS[conf.type])
     kwargs = conf.generator_kwargs()
     kwargs["create_fibers"] = conf.fibers.type == "from_geometry"
     rotate = getattr(conf, "rotate_base_normal", None)
-    try:
-        if rotate is None:
-            generator(outdir=tmp, comm=comm, **kwargs)
-        else:
-            g = generator(outdir=raw, comm=comm, **kwargs)
-            g.rotate(target_normal=list(rotate), base_marker="BASE").save_folder(folder=tmp)
-            comm.barrier()
-            if comm.rank == 0:
-                shutil.rmtree(raw, ignore_errors=True)
-    except BaseException as e:
-        # No collective here (ranks may fail independently): best-effort cleanup only.
-        if comm.rank == 0:
-            shutil.rmtree(tmp, ignore_errors=True)
-            shutil.rmtree(raw, ignore_errors=True)
-        if isinstance(e, ImportError):
+
+    def generate() -> None:
+        # Generated in serial on rank 0 (every rank later reads the cached files, redistributed):
+        # cardiac-geometriesx's parallel writers race (e.g. save_geometry deletes geometry.bp on
+        # one rank while another still writes it) and its mesh rotation is serial-only.
+        target.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            if rotate is None:
+                generator(outdir=tmp, comm=MPI.COMM_SELF, **kwargs)
+            else:
+                g = generator(outdir=raw, comm=MPI.COMM_SELF, **kwargs)
+                g.rotate(target_normal=list(rotate), base_marker="BASE").save_folder(folder=tmp)
+        except ImportError as e:
             # e.g. BiV/UKB fibres need fenicsx-ldrb, UKB meshes need ukb-atlas.
             raise ConfigError(
                 f"Generating a {conf.type!r} geometry needs an optional package: {e}",
             ) from e
-        raise
-    _on_rank0(comm, OSError, lambda: _install_generated(tmp, target, conf.type, h))
+        finally:
+            shutil.rmtree(raw, ignore_errors=True)
+        _install_generated(tmp, target, conf.type, h)
+
+    try:
+        _on_rank0(comm, RuntimeError, generate)
+    finally:
+        if comm.rank == 0:
+            shutil.rmtree(tmp, ignore_errors=True)  # gone already unless something failed
+    # Rank 0 just allocated (and dropped) far more objects than the others: collect now, on every
+    # rank, so the cyclic garbage collector's later runs -- whose __del__s destroy PETSc objects
+    # collectively -- don't fire at different points on different ranks and deadlock.
+    gc.collect()
+    comm.barrier()
     return target
 
 

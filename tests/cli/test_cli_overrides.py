@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 import toml
-from cli_helpers import minimal_config_dict, write_cfg
+from cli_helpers import minimal_config_dict, write_cfg, write_file
 
 from pulse.cli.config import ConfigError
 from pulse.cli.overrides import (
@@ -40,8 +40,7 @@ def test_list_items_can_be_overridden(tmp_path):
 
 
 def test_relative_paths_resolve_against_config_dir(tmp_path):
-    csv = tmp_path / "ta.csv"
-    csv.write_text("time,value\n0,0\n1,5\n")
+    csv = write_file(tmp_path / "ta.csv", "time,value\n0,0\n1,5\n")
     cfg = write_cfg(
         tmp_path,
         active={"type": "active_stress"},
@@ -109,8 +108,7 @@ def test_physics_hash_uses_effective_dt(tmp_path):
 
 def test_physics_hash_uses_csv_contents_not_path(tmp_path):
     for sub in ("a", "b"):
-        (tmp_path / sub).mkdir()
-        (tmp_path / sub / "ta.csv").write_text("time,value\n0,0\n1,5\n")
+        write_file(tmp_path / sub / "ta.csv", "time,value\n0,0\n1,5\n")
     hashes = []
     for sub in ("a", "b"):
         cfg = write_cfg(
@@ -120,7 +118,7 @@ def test_physics_hash_uses_csv_contents_not_path(tmp_path):
         )
         hashes.append(physics_hash(load_config(cfg, environ={})))
     assert hashes[0] == hashes[1]
-    (tmp_path / "b" / "ta.csv").write_text("time,value\n0,0\n1,6\n")
+    write_file(tmp_path / "b" / "ta.csv", "time,value\n0,0\n1,6\n")
     cfg = tmp_path / "b" / "config.toml"
     assert physics_hash(load_config(cfg, environ={})) != hashes[0]
 
@@ -132,10 +130,10 @@ def test_geometry_folder_only_hashed_for_folder_type(tmp_path):
     data = minimal_config_dict(tmp_path)
     data["geometry"] = {"type": "folder", "folder": "g1"}
     path = tmp_path / "f.toml"
-    path.write_text(toml.dumps(data))
+    write_file(path, toml.dumps(data))
     h1 = physics_hash(load_config(path, environ={}))
     data["geometry"]["folder"] = "g2"
-    path.write_text(toml.dumps(data))
+    write_file(path, toml.dumps(data))
     assert physics_hash(load_config(path, environ={})) != h1
 
 
