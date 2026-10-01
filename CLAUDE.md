@@ -68,7 +68,18 @@ StaticProblem / DynamicProblem(model, geometry, bcs, parameters)
 - **`unloading.py`** — `PrestressProblem`/`FixedPointUnloader`/`TargetPressure`: iterative schemes to back out an unloaded reference geometry from a loaded one.
 - **`kinematics.py` / `invariants.py`** — pure UFL helper functions (deformation gradient, `Cdev`, Piola transforms, invariant computations) used throughout the material/active models; no state, safe to unit-test without a mesh.
 - **`exceptions.py`** — package-specific exceptions (e.g. `MarkerNotFoundError`, `MeshTagNotFoundError`) raised by `Geometry`/`HeartGeometry` lookups.
-- **`cli.py`** — `pulse` console-script entry point (argparse + rich). Subcommands `run`/`validate-config`/`post` are currently stubs (`return NotImplemented`); `version` is implemented.
+- **`telemetry.py`** — `BaseMonitor`/`NullMonitor`/`PerformanceMonitor`, the same interface as fenicsx-beat's `beat.telemetry` plus `record_snes`/`count`. `StaticProblem`/`DynamicProblem` take `monitor=` (default `NullMonitor`) and time every `solve()` (`"newton_solve"`) and record Newton/KSP iterations; the CLI adds its own phases.
+- **`cli/`** — `pulse` console script (`pulse.cli:main`), a TOML-config-driven CLI mirroring `beat`'s:
+  `config.py` (pydantic models, no dolfinx import), `overrides.py` (TOML < `PULSE_*` env < `--set` <
+  flags, `physics_hash`), `geometry.py` (box/folder/generated meshes, hash-keyed cache), `model.py`/
+  `bcs.py`/`loads.py` (builders), `runner.py` (`MechanicsSimulation` step API: `step` with adaptive
+  halving, `save`, `checkpoint`, `restore`; `run()` loops over it), `postprocess.py`, `templates/`
+  (one config per demo, shipped as package data; `pulse init --template`). Needs the `cli` extra.
+  `overrides.py`, `log.py`, `_on_rank0`, the output-folder handling and the geometry cache are
+  **copied from fenicsx-beat's `beat.cli`** with identical names — keep them in sync until they are
+  extracted into a shared package (to be decided when simcardemsx gets its CLI). After changing
+  `cli/config.py`, run `python scripts/gen_cli_reference.py` (a test fails when
+  `docs/cli_reference.md` is stale).
 
 When adding a new material, active, compressibility, or viscoelasticity model: match the existing protocol shape in `cardiac_model.py` — `strain_energy(C)` / `S(C, dev)` / `P(F, dev)` for materials, and `strain_energy(C)` / `S(C)` / `P(F)` for active models, which see the full `C` rather than its isochoric part rather than inheriting a base class, and export it from `material_models/__init__.py` (or the relevant module) plus `pulse/__init__.py`'s `__all__` so it's reachable as `pulse.X`.
 
