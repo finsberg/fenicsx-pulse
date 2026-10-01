@@ -251,12 +251,18 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return EXIT_OK
 
     # "version" needs none of the cli extra's modules (just dolfinx/mpi4py/petsc4py, always
-    # present), so it must stay usable to report what's missing even without the extra.
-    if args["command"] != "version":
-        missing = [m for m in _CLI_EXTRA_MODULES if importlib.util.find_spec(m) is None]
-        if missing:
-            logger.error(f"{_INSTALL_HINT} (missing: {', '.join(missing)})")
-            return EXIT_CONFIG
+    # present), so it must stay usable to report what's missing even without the extra. Handled
+    # here, before the find_spec probe and before `.config`/`.runner` are imported below: those
+    # modules import pydantic/io4dolfinx at module level and would raise an unhandled ImportError
+    # for a plain `pulse version` when the cli extra isn't installed.
+    if args["command"] == "version":
+        display_version_info()
+        return EXIT_OK
+
+    missing = [m for m in _CLI_EXTRA_MODULES if importlib.util.find_spec(m) is None]
+    if missing:
+        logger.error(f"{_INSTALL_HINT} (missing: {', '.join(missing)})")
+        return EXIT_CONFIG
 
     from .config import ConfigError
     from .runner import SolverFailure

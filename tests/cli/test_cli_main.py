@@ -65,17 +65,23 @@ def test_geometry_and_run_and_exit_codes(tmp_path, monkeypatch):
 
 
 def test_install_hint_without_cli_extra(monkeypatch, caplog):
-    import importlib.util
+    import sys
 
-    real = importlib.util.find_spec
-    monkeypatch.setattr(
-        importlib.util,
-        "find_spec",
-        lambda name, *a: None if name == "pydantic_pint" else real(name, *a),
-    )
+    # Make the cli extra genuinely impossible to import (not just missing from find_spec):
+    # pydantic_pint itself, plus pulse.cli.config/pulse.cli.runner which import it (and
+    # io4dolfinx) at module level. `None` in sys.modules makes the next `import`/`from ... import`
+    # of that name raise ImportError immediately. This proves `version` returns before any of
+    # those imports are attempted -- a weaker fake (just patching find_spec) would pass even if
+    # `version` still unconditionally ran `from .config import ConfigError` /
+    # `from .runner import SolverFailure` ahead of the dispatch, which crashes with an unhandled
+    # ImportError instead of EXIT_OK.
+    monkeypatch.setitem(sys.modules, "pydantic_pint", None)
+    monkeypatch.setitem(sys.modules, "pulse.cli.config", None)
+    monkeypatch.setitem(sys.modules, "pulse.cli.runner", None)
+
+    assert main(["version"]) == EXIT_OK
     assert main(["validate-config", "x.toml"]) == EXIT_CONFIG
     assert "fenicsx-pulse[cli]" in caplog.text
-    assert main(["version"]) == EXIT_OK
 
 
 def test_unit_cube_template_runs(tmp_path):
