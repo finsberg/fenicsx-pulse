@@ -109,7 +109,11 @@ def _problem(monitor=None):
     )
     kwargs = {} if monitor is None else {"monitor": monitor}
     return pulse.StaticProblem(
-        model=model, geometry=geometry, bcs=bcs, parameters={"u_space": "P_1"}, **kwargs
+        model=model,
+        geometry=geometry,
+        bcs=bcs,
+        parameters={"u_space": "P_1"},
+        **kwargs,
     )
 
 

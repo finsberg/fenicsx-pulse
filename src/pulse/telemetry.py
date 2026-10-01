@@ -112,7 +112,7 @@ class PerformanceMonitor(BaseMonitor):
                 self.newton_failures += 1
             self._add_linear(int(snes.getLinearSolveIterations()))
             self.ksp_last_converged_reason = int(
-                snes.getKSP().getConvergedReason()  # type: ignore[call-overload]
+                snes.getKSP().getConvergedReason(),  # type: ignore[call-overload]
             )
         except PETSc.Error:
             pass
