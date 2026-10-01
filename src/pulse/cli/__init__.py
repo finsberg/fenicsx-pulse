@@ -226,7 +226,7 @@ def _dispatch(args: dict, comm) -> None:
 
         run(conf, comm=comm, restart=args["restart"], overwrite=args["overwrite"])
     elif command == "post":
-        from .postprocess import run_post  # type: ignore[import-not-found]
+        from .postprocess import run_post
 
         run_post(conf, comm=comm)
     else:  # pragma: no cover - argparse restricts choices

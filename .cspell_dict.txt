@@ -253,3 +253,6 @@ xvfb
 yjmcc
 Zhou
 autouse
+figsize
+xlabel
+ylabel
