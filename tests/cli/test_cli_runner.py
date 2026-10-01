@@ -208,3 +208,36 @@ def test_failure_after_a_converged_half_rolls_back_to_step_start(tmp_path, monke
     assert float(sim.loads.loads[0].variable.value.value) == pytest.approx(100.0)
     assert float(sim.dt_constant.value) == pytest.approx(0.1)
     assert sim.t == pytest.approx(0.1) and sim.step_index == 1
+
+
+def test_unexpected_error_mid_step_rolls_back_and_propagates(tmp_path, monkeypatch):
+    conf = load_config(
+        write_cfg(
+            tmp_path,
+            problem={"type": "dynamic", "u_space": "P_1"},
+            solver={"max_halvings": 1},
+        ),
+        environ={},
+    )
+    sim = build_simulation(conf)
+    sim.step(0.1)
+    u, v, a = (f.x.array.copy() for f in (sim.problem.u, sim.problem.v_old, sim.problem.a_old))
+    original = sim.problem.solve
+    calls = iter([False, True])  # full step fails, first half converges, then a PETSc-like error
+
+    def solve(*args, **kwargs):
+        outcome = next(calls, None)
+        if outcome is None:
+            raise RuntimeError("PETSc error")
+        return original(*args, **kwargs) and outcome
+
+    monkeypatch.setattr(sim.problem, "solve", solve)
+    with pytest.raises(RuntimeError, match="PETSc error") as info:
+        sim.step(0.1)
+    assert not isinstance(info.value, SolverFailure)
+    np.testing.assert_array_equal(sim.problem.u.x.array, u)
+    np.testing.assert_array_equal(sim.problem.v_old.x.array, v)
+    np.testing.assert_array_equal(sim.problem.a_old.x.array, a)
+    assert float(sim.loads.loads[0].variable.value.value) == pytest.approx(100.0)
+    assert float(sim.dt_constant.value) == pytest.approx(0.1)
+    assert sim.t == pytest.approx(0.1) and sim.step_index == 1

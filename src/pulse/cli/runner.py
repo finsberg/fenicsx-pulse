@@ -214,6 +214,20 @@ def _append_row(path: Path, fields: list[str], row: dict[str, float]) -> None:
         csv.writer(f).writerow([repr(float(row[k])) for k in fields])
 
 
+def _truncate_csv(path: Path, t_max: float, fields: list[str]) -> None:
+    """Keep loads.csv rows with t <= t_max (rows written after the restart checkpoint go)."""
+    if not path.is_file():
+        _write_csv_header(path, fields)
+        return
+    with open(path, newline="") as f:
+        rows = list(csv.reader(f))
+    kept = [rows[0]] + [r for r in rows[1:] if r and float(r[0]) <= t_max]
+    tmp = path.with_suffix(f".tmp{os.getpid()}")
+    with open(tmp, "w", newline="") as f:
+        csv.writer(f).writerows(kept)
+    os.replace(tmp, path)
+
+
 def required_markers(conf: Config) -> dict[str, list[str]]:
     """Facet markers each config section needs, for a check against the mesh at build time."""
     out = {
@@ -280,6 +294,7 @@ class MechanicsSimulation:
     dt_constant: Any = None
     monitor: Any = field(default_factory=NullMonitor)
     _last_saved: float = field(default=-np.inf, repr=False)
+    _last_row: float = field(default=-np.inf, repr=False)
     _checkpoints: np.ndarray = field(default_factory=lambda: np.zeros(0), repr=False)
 
     @property
@@ -324,18 +339,22 @@ class MechanicsSimulation:
 
         Raises :class:`SolverFailure` when the deepest halving fails; the problem (states, old
         states, loads and the ``dt`` Constant) is then back at ``t``, as it was before this call,
-        even when some halves had already converged, and ``t``/``step_index`` are unchanged.
+        even when some halves had already converged, and ``t``/``step_index`` are unchanged. Any
+        other exception raised mid-step (e.g. a PETSc error) rolls back the same way and
+        propagates unchanged.
         """
         t0 = self.t
         with self.monitor.track_time("step"):
             snapshot = [(f, f.x.array.copy()) for f in self._state_functions()]
             try:
                 self._advance(t0, dt, 0)
-            except SolverFailure as e:
+            except Exception as e:
                 for f, values in snapshot:
                     f.x.array[:] = values
                 self.loads.update(t0)
-                raise SolverFailure(f"Step to t={t0 + dt:.6g} s failed: {e}") from e
+                if isinstance(e, SolverFailure):
+                    raise SolverFailure(f"Step to t={t0 + dt:.6g} s failed: {e}") from e
+                raise
             finally:
                 if self.dt_constant is not None:
                     self.dt_constant.value = dt
@@ -375,25 +394,119 @@ class MechanicsSimulation:
         self._advance(t + dt / 2, dt / 2, level + 1)
 
     def save(self) -> None:
-        """Write ``u`` (+ ``p``) to results.bp and a loads.csv row, unless ``t`` is saved."""
-        t = self.t
-        if t <= self._last_saved + self._tol():
-            return
+        """Write ``u`` (+ ``p``) to results.bp and a loads.csv row, each only if new."""
         with self.monitor.track_time("save"):
+            self._save()
+
+    def _save(self) -> None:
+        t = self.t
+        tol = self._tol()
+        if t > self._last_saved + tol:
             path = self.folder / RESULTS
             io4dolfinx.write_function_on_input_mesh(path, self.problem.u, time=t, name="u")
             if self.problem.is_incompressible:
                 io4dolfinx.write_function_on_input_mesh(path, self.problem.p, time=t, name="p")
+            self._last_saved = t
+        if t > self._last_row + tol:
             row = self.record(t)
             fields = self.csv_fields()
             _on_rank0(self.comm, OSError, lambda: _append_row(self.folder / LOADS, fields, row))
-            self._last_saved = t
+            self._last_row = t
 
-    def checkpoint(self) -> None:  # replaced in Task 9
-        return
+    def restart_functions(self) -> list[tuple[str, dolfinx.fem.Function]]:
+        """The state a restart needs, under ``mechanics_*`` names (composable with beat's)."""
+        p = self.problem
+        out = [("mechanics_u", p.u), ("mechanics_u_old", p.u_old)]
+        if p.is_incompressible:
+            out += [("mechanics_p", p.p), ("mechanics_p_old", p.p_old)]
+        if isinstance(p, pulse.DynamicProblem):
+            out += [("mechanics_v_old", p.v_old), ("mechanics_a_old", p.a_old)]
+        return out
 
-    def restore(self) -> None:  # Task 9
-        raise NotImplementedError
+    def checkpoint(self) -> None:
+        """Write the state at ``t`` to restart.bp and point restart.json at it.
+
+        restart.bp already holding ``t`` (a run killed between the two writes, restarted from an
+        earlier checkpoint) only updates restart.json: io4dolfinx would append a duplicate and
+        read the first one anyway, which is the same state.
+        """
+        with self.monitor.track_time("checkpoint"):
+            self._checkpoint()
+
+    def _checkpoint(self) -> None:
+        t = self.t
+        functions = self.restart_functions()
+        exists = bool(np.any(np.abs(self._checkpoints - t) < self._tol()))
+        if not exists:
+            for name, f in functions:
+                io4dolfinx.write_function_on_input_mesh(
+                    self.folder / RESTART,
+                    f,
+                    time=t,
+                    name=name,
+                )
+        meta = {
+            NAMESPACE: {
+                "t": t,
+                "step": self.step_index,
+                "physics_hash": physics_hash(self.conf),
+                "functions": [name for name, _ in functions],
+            },
+        }
+        # Written last (and atomically): restart.json only ever names a complete checkpoint.
+        _write_json(self.folder / RESTART_META, meta, self.comm)
+        self._checkpoints = np.append(self._checkpoints, t)
+
+    def _stored_times(self, name: str) -> np.ndarray:
+        return np.asarray(
+            io4dolfinx.read_timestamps(
+                filename=self.folder / RESTART,
+                comm=self.comm,
+                function_name=name,
+            ),
+            dtype=float,
+        )
+
+    def restore(self) -> None:
+        """Load the latest checkpoint (restart.json) into the problem and set ``t``/``step``."""
+        folder = self.folder
+        meta = json.loads((folder / RESTART_META).read_text())[NAMESPACE]
+        functions = self.restart_functions()
+        names = [name for name, _ in functions]
+        if meta["functions"] != names:
+            raise ConfigError(
+                f"Cannot restart: the checkpoint holds {meta['functions']}, this problem "
+                f"needs {names}",
+            )
+        t = float(meta["t"])
+        tol = self._tol()
+        stored = self._stored_times(names[0])
+        if stored.size == 0 or np.min(np.abs(stored - t)) >= tol:
+            raise ConfigError(
+                f"Cannot restart: {folder / RESTART} has no checkpoint at t={t} s named by "
+                f"{folder / RESTART_META} (stored: {sorted(set(stored.tolist()))})",
+            )
+        t_file = float(stored[np.argmin(np.abs(stored - t))])
+        for name, f in functions:
+            io4dolfinx.read_function(folder / RESTART, f, time=t_file, name=name)
+            f.x.scatter_forward()
+        # Only checkpoints whose every function is present may be reused instead of rewritten.
+        complete = stored
+        for name in names[1:]:
+            times = self._stored_times(name)
+            complete = complete[[bool(np.any(np.abs(times - c) < tol)) for c in complete]]
+        self._checkpoints = complete
+        self.t = t
+        self.step_index = int(meta["step"])
+        if (folder / RESULTS).exists():
+            self._last_saved = float(read_result_times(folder / RESULTS, self.comm).max())
+        self._last_row = t
+        fields = self.csv_fields()
+        _on_rank0(self.comm, OSError, lambda: _truncate_csv(folder / LOADS, t + tol, fields))
+        self.loads.update(t)
+        if self.dt_constant is not None:
+            self.dt_constant.value = self.conf.time.dt_s()
+        logger.info(f"Restarting from t={t} s (step {self.step_index})")
 
 
 def build_simulation(
