@@ -6,6 +6,8 @@
 # - One pressure step to 0.1 kPa over pseudo-time [0, 1] s.
 # - Confirmed against the demo: base is fixed, pressure is applied as a Neumann BC on ENDO,
 #   and the single pressure step is 0.1 kPa (matches the survey).
+# - unit = "mm" (the demo leaves pulse's default "m"); with no Robin BCs this only changes the
+#   reported cavity volume, not the solution.
 
 [geometry]
 type = "lv_ellipsoid"

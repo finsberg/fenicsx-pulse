@@ -7,6 +7,8 @@
 #   mu_base_endo = -acos(5/17), mu_base_epi = -acos(5/20)).
 # - Apex positions come from `pulse post` (post/points.csv, displacements; add the reference
 #   coordinates to get positions). The demo prints them.
+# - unit = "mm" (the demo leaves pulse's default "m"); with no Robin BCs this only changes the
+#   reported cavity volume, not the solution.
 
 [geometry]
 type = "lv_ellipsoid"

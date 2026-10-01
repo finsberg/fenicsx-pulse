@@ -67,6 +67,8 @@ def test_template_smoke_run(name, tmp_path):
     for item in SMOKE.get(name, []):
         sets += ["--set", item]
     assert main(["run", str(cfg), *sets]) == 0
+    loads_csv = (tmp / "output" / "loads.csv").read_text().splitlines()
+    assert len(loads_csv) >= 3  # header + at least 2 data rows
     assert main(["post", str(cfg), *sets, "--set", "postprocess.plots=false"]) == 0
     if MPI.COMM_WORLD.rank == 0:
         shutil.rmtree(tmp / "geometry", ignore_errors=True)

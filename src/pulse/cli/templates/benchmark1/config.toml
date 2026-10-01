@@ -5,6 +5,8 @@
 # - The demo's pressure steps [0.0005, 0.001, 0.002, 0.003, 0.004] kPa are a table over
 #   pseudo-time 1..5 s (one step each).
 # - The tip displacement is written by `pulse post` to post/points.csv (the demo prints it).
+# - unit = "mm" (the demo leaves pulse's default "m"); with no Robin BCs and no cavity marker
+#   on this geometry, this changes nothing in the solution.
 
 [geometry]
 type = "box"

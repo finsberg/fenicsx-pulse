@@ -6,6 +6,11 @@
 # - Confirmed against the demo: Viscous() IS passed into CardiacModel, so [viscoelasticity]
 #   stays "viscous" (not "none"). All RV Bestel parameters below are copied verbatim from the
 #   demo's rv_pressure_model parameters dict.
+# - Load timing: the demo solves once at zero load, then at step i assigns the Bestel load
+#   evaluated at t_i = i*dt and writes/labels that solution at (i+1)*dt
+#   (time_dependent_bestel_biv.py:108,191-197). The CLI instead evaluates loads at each step's
+#   end time and labels the result there too, so the CLI's load trajectory leads the demo's
+#   labelled output by about 1-2 steps (1-2 ms).
 # Needs: circulation, scipy, fenicsx-ldrb.
 
 [geometry]

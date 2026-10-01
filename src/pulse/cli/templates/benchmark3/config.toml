@@ -4,6 +4,8 @@
 # - The demo solves at 20 linspace points including the unloaded state; here 19 pseudo-time
 #   steps ramp the pressure to 15 kPa and Ta to 60 kPa together (same loaded states).
 # - Apex positions come from `pulse post` (post/points.csv).
+# - unit = "mm" (the demo leaves pulse's default "m"); with no Robin BCs this only changes the
+#   reported cavity volume, not the solution.
 
 [geometry]
 type = "lv_ellipsoid"

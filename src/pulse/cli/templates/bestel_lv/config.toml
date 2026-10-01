@@ -5,6 +5,11 @@
 #   problem.parameters["dt"] which defaults to 1 ms, matching the 1 ms here).
 # - Results are saved every 10 ms (the demo writes every step).
 # - Confirmed psize_ref = 0.03 against the demo (not a cardiac-geometriesx default).
+# - Load timing: the demo solves once at zero load, then at step i assigns the Bestel load
+#   evaluated at t_i = i*dt and writes/labels that solution at (i+1)*dt
+#   (time_dependent_bestel_lv.py:314,370-375). The CLI instead evaluates loads at each step's
+#   end time and labels the result there too, so the CLI's load trajectory leads the demo's
+#   labelled output by about 1-2 steps (1-2 ms).
 # Needs: circulation, scipy.
 
 [geometry]
