@@ -1,0 +1,62 @@
+# Transcribes demo/geometries/biv_ellipsoid.py.
+#
+# Deviations from the demo:
+# - Fibres come from cardiac-geometriesx's create_fibers (which uses fenicsx-ldrb, 60/-60,
+#   P_2) instead of the demo's explicit ldrb call with zero sheet angles.
+# - p_LV [0.1, 0.5, 1.0] kPa (p_RV = 0.2 p_LV) over pseudo-time 1..3 s, then Ta [1, 5, 10] kPa
+#   over 4..6 s, as tables. Confirmed against the demo: base fixed, compressible (incompressible
+#   = False), Robin EPI stiffness magnitude 1.0 (defaults to Pa/m).
+# Needs: fenicsx-ldrb.
+
+[geometry]
+type = "biv_ellipsoid"
+unit = "m"
+scale = 1.4e-2
+quadrature_degree = 4
+fiber_space = "P_2"
+
+[material]
+type = "neo_hookean"
+mu = "15 kPa"
+
+[active]
+type = "active_stress"
+
+[compressibility]
+type = "compressible"
+
+[bcs]
+base_bc = "fixed"
+[[bcs.robin]]
+marker = "EPI"
+value = "1 Pa/m"
+
+[[load]]
+target = "pressure"
+marker = "LV"
+[load.profile]
+type = "table"
+times = [0.0, 1.0, 2.0, 3.0]
+values = [0.0, 0.1, 0.5, 1.0]
+
+[[load]]
+target = "pressure"
+marker = "RV"
+[load.profile]
+type = "table"
+times = [0.0, 1.0, 2.0, 3.0]
+values = [0.0, 0.02, 0.1, 0.2]
+
+[[load]]
+target = "activation"
+[load.profile]
+type = "table"
+times = [3.0, 4.0, 5.0, 6.0]
+values = [0.0, 1.0, 5.0, 10.0]
+
+[time]
+end_time = "6 s"
+dt = "1 s"
+
+[output]
+folder = "output"

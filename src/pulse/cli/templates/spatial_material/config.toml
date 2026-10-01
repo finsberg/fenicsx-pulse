@@ -1,0 +1,44 @@
+# Transcribes demo/howto/spatial_material.py: a 10x stiffer `a` in AHA segment 10.
+#
+# Deviations from the demo:
+# - The demo builds its own 0/1 region tags from cfun; here the region is the AHA cell tag 10
+#   directly ([[material.region]] marker = "10"), which is the same set of cells.
+# - One pressure step to 0.1 kPa over pseudo-time [0, 1] s.
+# - Confirmed against the demo: base is fixed, pressure is applied as a Neumann BC on ENDO,
+#   and the single pressure step is 0.1 kPa (matches the survey).
+
+[geometry]
+type = "lv_ellipsoid"
+unit = "mm"
+quadrature_degree = 4
+fiber_space = "Quadrature_4"
+aha = true
+dmu_factor = 0.25
+
+[material]
+type = "holzapfel_ogden"
+preset = "transversely_isotropic"
+[[material.region]]
+marker = "10"
+a = "22.8 kPa"
+
+[compressibility]
+type = "incompressible"
+
+[bcs]
+base_bc = "fixed"
+
+[[load]]
+target = "pressure"
+marker = "ENDO"
+[load.profile]
+type = "ramp"
+end = "1 s"
+to_value = "0.1 kPa"
+
+[time]
+end_time = "1 s"
+num_steps = 1
+
+[output]
+folder = "output"

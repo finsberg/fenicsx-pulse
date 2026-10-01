@@ -1,0 +1,74 @@
+# Transcribes demo/time_dependent/time_dependent_bestel_lv.py (dynamic LV, Bestel P and Ta).
+#
+# Deviations from the demo:
+# - 1000 steps of 1 ms up to t = 1.0 s (the demo's np.arange stops at 0.999 s; it uses
+#   problem.parameters["dt"] which defaults to 1 ms, matching the 1 ms here).
+# - Results are saved every 10 ms (the demo writes every step).
+# - Confirmed psize_ref = 0.03 against the demo (not a cardiac-geometriesx default).
+# Needs: circulation, scipy.
+
+[geometry]
+type = "lv_ellipsoid"
+unit = "m"
+r_short_endo = 0.025
+r_short_epi = 0.035
+r_long_endo = 0.09
+r_long_epi = 0.097
+psize_ref = 0.03
+fiber_angle_endo = 60.0
+fiber_angle_epi = -60.0
+fiber_space = "Quadrature_6"
+quadrature_degree = 6
+
+[material]
+type = "holzapfel_ogden"
+preset = "orthotropic"
+
+[active]
+type = "active_stress"
+
+[compressibility]
+type = "compressible2"
+
+[viscoelasticity]
+type = "viscous"
+eta = "100 Pa*s"
+
+[bcs]
+base_bc = "free"
+[[bcs.robin]]
+marker = "EPI"
+value = "1e8 Pa/m"
+[[bcs.robin]]
+marker = "EPI"
+value = "5e3 Pa*s/m"
+damping = true
+[[bcs.robin]]
+marker = "BASE"
+value = "1e5 Pa/m"
+[[bcs.robin]]
+marker = "BASE"
+value = "5e3 Pa*s/m"
+damping = true
+
+[[load]]
+target = "pressure"
+marker = "ENDO"
+[load.profile]
+type = "bestel_pressure"
+
+[[load]]
+target = "activation"
+[load.profile]
+type = "bestel_activation"
+
+[time]
+end_time = "1 s"
+dt = "1 ms"
+
+[problem]
+type = "dynamic"
+
+[output]
+folder = "output"
+save_every = "10 ms"

@@ -1,0 +1,50 @@
+# Transcribes demo/geometries/lv_ellipsoid.py.
+#
+# Deviations from the demo:
+# - The demo's single pressure step (0.1 kPa) then single activation step (Ta = 0.1 kPa) are
+#   two ramps over pseudo-time [0, 1] s and [1, 2] s, one step each.
+# - unit = "mm" (the demo leaves pulse's default "m"); with no Robin BCs this only changes the
+#   reported cavity volume, not the solution.
+
+[geometry]
+type = "lv_ellipsoid"
+unit = "mm"
+quadrature_degree = 4
+fiber_space = "P_2"
+
+[material]
+type = "holzapfel_ogden"
+preset = "transversely_isotropic"
+
+[active]
+type = "active_stress"
+eta = 0.3
+
+[compressibility]
+type = "incompressible"
+
+[bcs]
+base_bc = "fixed"
+
+[[load]]
+target = "pressure"
+marker = "ENDO"
+[load.profile]
+type = "ramp"
+end = "1 s"
+to_value = "0.1 kPa"
+
+[[load]]
+target = "activation"
+[load.profile]
+type = "ramp"
+start = "1 s"
+end = "2 s"
+to_value = "0.1 kPa"
+
+[time]
+end_time = "2 s"
+dt = "1 s"
+
+[output]
+folder = "output"

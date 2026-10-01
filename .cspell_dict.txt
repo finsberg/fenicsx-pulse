@@ -3,9 +3,11 @@ Alexandre
 Alfio
 allclose
 allreduce
+allreduced
 Alya
 Ambrosi
 Appl
+arange
 Arens
 argsort
 arostica
@@ -21,6 +23,7 @@ bddc
 behaviour
 Bernardino
 Berruezo
+Biobank
 bestel
 Bestel
 Biophysically
@@ -71,6 +74,7 @@ Elsevier
 endo
 ENDOPT
 Engrg
+EPIPT
 Erlicher
 Favino
 Fdev
@@ -182,6 +186,7 @@ petsc
 Pezzuto
 physcardems
 Piersanti
+psize
 Piola
 PLOS
 preconditioner
@@ -206,6 +211,7 @@ Rumberger
 Sanjiv
 sarcomere
 scifem
+scipy
 SELLIER
 Sermesant
 Severi
@@ -216,6 +222,7 @@ snes
 Sorine
 staggered
 Stefano
+stiffnesses
 stica
 subplus
 Taras

@@ -1,0 +1,50 @@
+# Transcribes demo/benchmark/problem2.py (Land et al. 2015, problem 2: passive LV inflation).
+#
+# Deviations from the demo:
+# - The demo's own adaptive continuation (1 kPa increments, extrapolated initial guesses) is
+#   replaced by a 10-step ramp to 10 kPa with pulse's adaptive halving (solver.max_halvings).
+# - The Land geometry parameters are cardiac-geometriesx's lv_ellipsoid defaults (same values:
+#   mu_base_endo = -acos(5/17), mu_base_epi = -acos(5/20)).
+# - Apex positions come from `pulse post` (post/points.csv, displacements; add the reference
+#   coordinates to get positions). The demo prints them.
+
+[geometry]
+type = "lv_ellipsoid"
+unit = "mm"
+quadrature_degree = 4
+[geometry.fibers]
+type = "none"
+
+[material]
+type = "guccione"
+C = "10 kPa"
+bf = 1.0
+bt = 1.0
+bfs = 1.0
+
+[compressibility]
+type = "incompressible"
+
+[bcs]
+base_bc = "fixed"
+
+[[load]]
+target = "pressure"
+marker = "ENDO"
+[load.profile]
+type = "ramp"
+end = "1 s"
+to_value = "10 kPa"
+
+[time]
+end_time = "1 s"
+num_steps = 10
+
+[solver]
+max_halvings = 6
+
+[output]
+folder = "output"
+
+[postprocess]
+vertex_tags = { endo_apex = "ENDOPT", epi_apex = "EPIPT" }
