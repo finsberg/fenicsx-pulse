@@ -374,7 +374,7 @@ Set `[output] performance = true` to have `pulse run` build a
 `pulse.PerformanceMonitor(log_frequency=output.log_every)` and hand it to the simulation. Every
 `log_every` steps it logs a line with the Newton and KSP iteration counts of the latest step, the
 number of halvings so far, and the accumulated wall-clock time (rank 0's) spent in `step`,
-`newton_solve`, `save`, `checkpoint`, `volumes` and `loads`. At the end of the run it logs a
+`newton_solve`, `update_fields`, `save`, `checkpoint`, `volumes` and `loads`. At the end of the run it logs a
 summary table and writes `performance.json` (an `--overwrite` artifact) with the same totals.
 
 From Python, pass the same monitor to `build_simulation`/`StaticProblem`/`DynamicProblem`
@@ -433,7 +433,7 @@ comment documents the deviation — summarized here:
 | Template | Demo | Needs beyond `.[cli,test]` | Known deviation |
 |---|---|---|---|
 | `unit_cube` | `demo/geometries/unit_cube.py` | — | Pressure and activation applied together in one pseudo-time step (matches the demo's single combined solve). |
-| `benchmark1` | `demo/benchmark/problem1.py` | — | Pressure steps are a 5-row table over pseudo-time 1..5 s instead of the demo's adaptive continuation. |
+| `benchmark1` | `demo/benchmark/problem1.py` | — | Pressure steps are a 5-row table over pseudo-time 1..5 s (the same five values the demo loops over). |
 | `benchmark2` | `demo/benchmark/problem2.py` | — | A 10-step ramp to 10 kPa with adaptive halving replaces the demo's own continuation scheme. |
 | `benchmark3` | `demo/benchmark/problem3.py` | — | 19 pseudo-time steps ramp pressure and Ta together instead of the demo's 20 linspace points. |
 | `lv_ellipsoid` | `demo/geometries/lv_ellipsoid.py` | — | The demo's single pressure step, then single activation step, become two one-step ramps over pseudo-time `[0, 1]` s and `[1, 2]` s. |
