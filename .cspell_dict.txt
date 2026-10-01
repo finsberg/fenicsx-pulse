@@ -10,6 +10,7 @@ Arens
 argsort
 arostica
 astype
+atleast
 atol
 Augustin
 Barnafi
@@ -72,6 +73,7 @@ Engrg
 Erlicher
 Favino
 Fdev
+fdim
 Fedele
 fenics
 fenicsx
@@ -216,6 +218,7 @@ Stefano
 stica
 subplus
 Taras
+tdim
 TMAX
 Tmax
 tomek
