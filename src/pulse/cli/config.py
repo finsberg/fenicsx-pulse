@@ -61,6 +61,12 @@ def _check_unit(v: Any, unit: str, what: str) -> str:
     return v
 
 
+def _is_multiple(value: float, step: float) -> bool:
+    """Whether ``value`` is an integer multiple of ``step`` (1e-9 relative tolerance)."""
+    n = value / step
+    return abs(n - round(n)) <= 1e-9 * max(1.0, abs(n))
+
+
 def _check_unit_name(v: str, unit: str, what: str) -> str:
     try:
         dim = ureg.Quantity(1, v).dimensionality
@@ -90,9 +96,14 @@ class AxisFibers(_Base):
 
 
 class NoFibers(_Base):
-    """No fibre field (isotropic materials only, e.g. neo_hookean or isotropic guccione)."""
+    """No fibre field (isotropic materials only); "isotropic" (beat's name) is an alias."""
 
-    type: Literal["none"] = "none"
+    type: Literal["none", "isotropic"] = "none"
+
+    @field_validator("type")
+    @classmethod
+    def _alias(cls, v: str) -> str:
+        return "none"
 
 
 FibersConfig = Annotated[
@@ -606,6 +617,11 @@ class TimeConfig(_Base):
             raise ValueError("time: end_time must be after start_time")
         if self.dt is not None and self.dt.magnitude <= 0:
             raise ValueError("time: dt must be positive")
+        if self.dt is not None and not _is_multiple(self.end_s() - self.start_s(), self.dt_s()):
+            raise ValueError(
+                "time: end_time - start_time must be an integer multiple of dt "
+                f"({self.end_s() - self.start_s():g} s vs dt = {self.dt_s():g} s)",
+            )
         return self
 
     def start_s(self) -> float:
@@ -707,11 +723,34 @@ class Config(_Base):
     def _cross_checks(self) -> "Config":
         dt = self.time.dt_s()
         tol = 1e-12 * dt
-        if self.output.save_every is not None and si(self.output.save_every) < dt - tol:
-            raise ValueError("output.save_every must be >= the time step")
+        if self.output.save_every is not None:
+            save_every = si(self.output.save_every)
+            if save_every < dt - tol:
+                raise ValueError("output.save_every must be >= the time step")
+            if not _is_multiple(save_every, dt):
+                raise ValueError(
+                    f"output.save_every must be an integer multiple of the time step ({dt:g} s)",
+                )
         every = si(self.output.checkpoint_every)
         if 0 < every < dt - tol:
             raise ValueError("output.checkpoint_every must be 0 or >= the time step")
+        if every > 0 and not _is_multiple(every, dt):
+            raise ValueError(
+                f"output.checkpoint_every must be 0 or an integer multiple of the time step "
+                f"({dt:g} s)",
+            )
+        if self.problem.type != "dynamic":
+            if self.viscoelasticity.type == "viscous":
+                raise ValueError(
+                    "viscoelasticity.type = 'viscous' only has an effect for "
+                    "problem.type = 'dynamic'",
+                )
+            damped = [r.marker for r in self.bcs.robin if r.damping]
+            if damped:
+                raise ValueError(
+                    f"bcs.robin damping = true (markers {damped}) only has an effect for "
+                    "problem.type = 'dynamic'",
+                )
         names = [load.name for load in self.load]
         duplicates = sorted({n for n in names if names.count(n) > 1})
         if duplicates:

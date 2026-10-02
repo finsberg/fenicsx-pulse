@@ -223,10 +223,16 @@ def physics_hash(conf: Config) -> str:
 
     Excludes the run length (``time.end_time``/``num_steps``: the *effective* ``dt`` and the
     start time are hashed instead, so a changed ``dt`` is caught however it is spelled),
-    ``[output]`` and ``[postprocess]``; replaces table CSV paths by their contents' hash;
-    keeps ``geometry.folder`` only for ``type = "folder"``, where it *is* the mesh.
+    ``[output]``, ``[postprocess]`` and ``[solver]`` (``max_halvings``/``petsc_options`` only
+    change how a step is solved, not the physics: after a solver failure, exit code 2, a run may
+    be restarted with more halvings or other PETSc options); replaces table CSV paths by their
+    contents' hash; keeps ``geometry.folder`` only for ``type = "folder"``, where it *is* the
+    mesh.
     """
-    data = conf.model_dump(mode="json", exclude={"output": True, "postprocess": True})
+    data = conf.model_dump(
+        mode="json",
+        exclude={"output": True, "postprocess": True, "solver": True},
+    )
     data["time"] = {"start_time": conf.time.start_s(), "dt": conf.time.dt_s()}
     for dumped, load in zip(data["load"], conf.load):
         profile = load.profile

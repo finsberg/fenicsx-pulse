@@ -208,12 +208,11 @@ def _dispatch(args: dict, comm) -> None:
         logger.info(f"Configuration file {args['config']} is valid.")
     elif command == "geometry":
         from .config import GENERATED_GEOMETRY_TYPES
-        from .geometry import build_geometry, cache_folder, check_markers
-        from .runner import required_markers
+        from .geometry import build_geometry, cache_folder
+        from .runner import check_config_markers
 
         geo = build_geometry(conf.geometry, comm)
-        for what, names in required_markers(conf).items():
-            check_markers(geo, names, what)
+        check_config_markers(conf, geo)
         n_cells = geo.mesh.topology.index_map(geo.mesh.topology.dim).size_global
         where = ""
         if conf.geometry.type == "folder":

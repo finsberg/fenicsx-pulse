@@ -5,6 +5,7 @@ from mpi4py import MPI
 
 import numpy as np
 import pytest
+import toml
 from cli_helpers import write_cfg
 
 import pulse
@@ -241,3 +242,74 @@ def test_unexpected_error_mid_step_rolls_back_and_propagates(tmp_path, monkeypat
     assert float(sim.loads.loads[0].variable.value.value) == pytest.approx(100.0)
     assert float(sim.dt_constant.value) == pytest.approx(0.1)
     assert sim.t == pytest.approx(0.1) and sim.step_index == 1
+
+
+def _doc_snippet(heading: str) -> str:
+    from pathlib import Path
+
+    text = (Path(__file__).parents[2] / "docs" / "cli.md").read_text()
+    section = text.split(heading, 1)[1]
+    return section.split("```python\n", 1)[1].split("```", 1)[0]
+
+
+def test_step_api_doc_snippet_runs_in_a_fresh_directory(tmp_path, monkeypatch):
+    from cli_helpers import write_file
+
+    data = toml.loads(write_cfg(tmp_path / "src").read_text())
+    data["output"]["folder"] = "output"
+    write_file(tmp_path / "fresh" / "config.toml", toml.dumps(data))
+    monkeypatch.chdir(tmp_path / "fresh")
+    namespace: dict = {}
+    exec(_doc_snippet("## Using pulse from Python"), namespace)
+    out = tmp_path / "fresh" / "output"
+    np.testing.assert_allclose(read_result_times(out / RESULTS, MPI.COMM_WORLD), [0.1, 0.2, 0.3])
+    assert (out / "restart.json").is_file()
+    assert isinstance(namespace["sim"].geo.geometry, pulse.HeartGeometry)  # as documented
+
+
+def test_vertex_tags_are_checked_before_wipe(tmp_path):
+    conf = load_config(write_cfg(tmp_path), environ={})
+    run(conf)
+    for marker in ("NOPE", "X0"):  # unknown, and a facet (not a vertex) marker
+        bad = load_config(
+            write_cfg(tmp_path, postprocess={"vertex_tags": {"apex": marker}}),
+            environ={},
+        )
+        with pytest.raises(ConfigError, match="vertex_tags"):
+            run(bad, overwrite=True)
+        assert (conf.output.folder / RESULTS).exists()
+
+
+def test_load_and_bc_markers_must_be_facet_markers(tmp_path):
+    from pulse.cli.geometry import build_geometry
+
+    for over in (
+        {
+            "load": [
+                {
+                    "target": "pressure",
+                    "marker": "CELLS",
+                    "profile": {"type": "constant", "value": "1 kPa"},
+                },
+            ],
+        },
+        {"bcs": {"dirichlet": [{"marker": "CELLS"}]}},
+        {"bcs": {"robin": [{"marker": "CELLS", "value": "1 Pa/m"}]}},
+        {"bcs": {"base_bc": "fixed", "base_marker": "CELLS"}},
+    ):
+        conf = load_config(write_cfg(tmp_path, **over), environ={})
+        geo = build_geometry(conf.geometry)
+        geo.geometry.markers["CELLS"] = (1, 3)
+        with pytest.raises(ConfigError, match=r"CELLS.*dimension 3"):
+            build_simulation(conf, geometry=geo)
+
+
+def test_performance_summary_is_saved_on_failure(tmp_path, monkeypatch):
+    conf = load_config(
+        write_cfg(tmp_path, output={"performance": True}, solver={"max_halvings": 0}),
+        environ={},
+    )
+    monkeypatch.setattr(pulse.StaticProblem, "solve", lambda self, *a, **k: False)
+    with pytest.raises(SolverFailure):
+        run(conf)
+    assert (conf.output.folder / "performance.json").is_file()

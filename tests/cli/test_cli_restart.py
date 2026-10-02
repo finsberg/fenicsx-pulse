@@ -104,3 +104,59 @@ def test_unknown_marker_is_config_error_before_wipe(tmp_path):
         with pytest.raises(ConfigError, match="available"):
             run(bad, overwrite=True)
         assert (conf.output.folder / RESULTS).exists()
+
+
+def _loads_times(folder):
+    with open(folder / LOADS) as f:
+        return [float(r["t"]) for r in csv.DictReader(f)]
+
+
+def test_restart_with_finer_save_every_keeps_loads_in_sync(tmp_path, monkeypatch):
+    import pulse
+    from pulse.cli.runner import SolverFailure
+
+    output = {"folder": str(tmp_path / "o"), "save_every": "0.2 s", "checkpoint_every": "0.1 s"}
+    cfg = write_cfg(
+        tmp_path,
+        time={"end_time": "0.6 s", "dt": "0.1 s"},
+        output=output,
+        solver={"max_halvings": 0},
+    )
+    conf = load_config(cfg, environ={})
+    # die in the 4th step: checkpoint at t=0.3, which is not on the save_every = 0.2 s grid
+    original = pulse.StaticProblem.solve
+    calls = {"n": 0}
+
+    def solve(self, *args, **kwargs):
+        calls["n"] += 1
+        return calls["n"] < 4 and original(self, *args, **kwargs)
+
+    monkeypatch.setattr(pulse.StaticProblem, "solve", solve)
+    with pytest.raises(SolverFailure):
+        run(conf)
+    monkeypatch.setattr(pulse.StaticProblem, "solve", original)
+    finer = load_config(cfg, sets=['output.save_every="0.1 s"'], environ={})
+    run(finer, restart=True)
+    folder = finer.output.folder
+    times = read_result_times(folder / RESULTS, MPI.COMM_WORLD)
+    rows = _loads_times(folder)
+    assert len(rows) == len(set(rows))  # no duplicated rows
+    np.testing.assert_allclose(sorted(rows), rows)
+    for t in times:
+        assert np.min(np.abs(np.asarray(rows) - t)) < 1e-9, (t, rows)
+
+
+def test_restart_with_empty_loads_csv_rewrites_header(tmp_path):
+    conf = load_config(write_cfg(tmp_path), environ={})
+    run(conf)
+    folder = conf.output.folder
+    with open(folder / LOADS) as f:
+        header = f.readline()
+    if MPI.COMM_WORLD.rank == 0:
+        (folder / LOADS).write_text("")
+    MPI.COMM_WORLD.barrier()
+    longer = load_config(write_cfg(tmp_path), sets=['time.end_time="0.5 s"'], environ={})
+    run(longer, restart=True)
+    with open(folder / LOADS) as f:
+        assert f.readline() == header
+    np.testing.assert_allclose(_loads_times(folder), [0.3, 0.4, 0.5])

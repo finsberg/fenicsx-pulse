@@ -147,3 +147,16 @@ def test_missing_csv_is_config_error_in_hash(tmp_path):
     with pytest.raises(ConfigError, match="nope.csv"):
         physics_hash(conf)
     assert isinstance(conf.load[0].profile.file, Path)
+
+
+def test_physics_hash_ignores_solver_section(tmp_path):
+    base = physics_hash(load_config(write_cfg(tmp_path), environ={}))
+    for sets, petsc in (
+        (["solver.max_halvings=8"], None),
+        ([], "-ksp_type cg -pc_type hypre"),
+    ):
+        conf = load_config(write_cfg(tmp_path), sets=sets, petsc_options=petsc, environ={})
+        assert physics_hash(conf) == base
+    for sets in (['time.dt="0.05 s"'], ['load.0.profile.to_value="0.5 kPa"']):
+        conf = load_config(write_cfg(tmp_path), sets=sets, environ={})
+        assert physics_hash(conf) != base

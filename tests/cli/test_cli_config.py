@@ -104,7 +104,8 @@ def test_robin_units_depend_on_damping(tmp_path):
             {"marker": "X1", "value": "5e3 Pa*s/m", "damping": True},
         ],
     }
-    assert _config(tmp_path, bcs=ok)
+    dynamic = {"type": "dynamic", "u_space": "P_1"}
+    assert _config(tmp_path, bcs=ok, problem=dynamic)
     with pytest.raises(ValidationError, match="Pa\\*s/m"):
         _config(tmp_path, bcs={"robin": [{"marker": "X1", "value": "1e3 Pa/m", "damping": True}]})
 
@@ -133,3 +134,46 @@ def test_save_every_must_not_be_smaller_than_dt(tmp_path):
 def test_dirichlet_components_unique(tmp_path):
     with pytest.raises(ValidationError, match="unique"):
         _config(tmp_path, bcs={"dirichlet": [{"marker": "X0", "components": ["x", "x"]}]})
+
+
+@pytest.mark.parametrize(
+    "over",
+    [
+        {"viscoelasticity": {"type": "viscous"}},
+        {"bcs": {"robin": [{"marker": "X1", "value": "5e3 Pa*s/m", "damping": True}]}},
+    ],
+)
+def test_dynamic_only_settings_rejected_for_static(tmp_path, over):
+    with pytest.raises(ValidationError, match="only has an effect for problem.type = 'dynamic'"):
+        _config(tmp_path, **over)
+    _config(tmp_path, problem={"type": "dynamic", "u_space": "P_1"}, **over)
+
+
+def test_isotropic_fibers_is_an_alias_of_none(tmp_path):
+    conf = _config(tmp_path, geometry={"fibers": {"type": "isotropic"}})
+    assert conf.geometry.fibers.type == "none"
+
+
+@pytest.mark.parametrize(
+    "time",
+    [
+        {"end_time": "0.35 s", "dt": "0.1 s"},
+        {"start_time": "0.05 s", "end_time": "0.3 s", "dt": "0.1 s"},
+    ],
+)
+def test_time_span_must_be_a_multiple_of_dt(tmp_path, time):
+    with pytest.raises(ValidationError, match="multiple of"):
+        _config(tmp_path, time=time)
+
+
+def test_time_span_multiple_tolerates_rounding(tmp_path):
+    conf = _config(tmp_path, time={"end_time": "1 s", "dt": "0.1 s"})  # 10.000000000000002
+    assert conf.time.n_steps() == 10
+    _config(tmp_path, time={"end_time": "0.002 s", "dt": "1 ms"})
+
+
+@pytest.mark.parametrize("field", ["save_every", "checkpoint_every"])
+def test_output_intervals_must_be_multiples_of_dt(tmp_path, field):
+    with pytest.raises(ValidationError, match=f"output.{field}.*multiple of"):
+        _config(tmp_path, output={field: "0.15 s"})
+    _config(tmp_path, output={field: "0.3 s"})

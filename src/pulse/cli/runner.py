@@ -143,7 +143,7 @@ def _output_decision(conf: Config, restart: bool, overwrite: bool) -> tuple[str,
         if meta.get("physics_hash") != current:
             return "error", (
                 "Cannot restart: the physics settings differ from the original run "
-                "(only time.end_time/num_steps, [output] and [postprocess] may change). "
+                "(only time.end_time/num_steps, [output], [postprocess] and [solver] may change). "
                 f"Compare with {folder / 'config.resolved.toml'}"
             )
         return "restart", ""
@@ -214,18 +214,25 @@ def _append_row(path: Path, fields: list[str], row: dict[str, float]) -> None:
         csv.writer(f).writerow([repr(float(row[k])) for k in fields])
 
 
-def _truncate_csv(path: Path, t_max: float, fields: list[str]) -> None:
-    """Keep loads.csv rows with t <= t_max (rows written after the restart checkpoint go)."""
-    if not path.is_file():
+def _truncate_csv(path: Path, t_max: float, fields: list[str]) -> float:
+    """Keep loads.csv rows with t <= t_max (rows written after the restart checkpoint go).
+
+    A missing, empty or header-less file is rewritten with just the header. Returns the largest
+    ``t`` kept (``-inf`` if no data row is left).
+    """
+    rows: list[list[str]] = []
+    if path.is_file():
+        with open(path, newline="") as f:
+            rows = list(csv.reader(f))
+    if not rows or rows[0] != fields:
         _write_csv_header(path, fields)
-        return
-    with open(path, newline="") as f:
-        rows = list(csv.reader(f))
-    kept = [rows[0]] + [r for r in rows[1:] if r and float(r[0]) <= t_max]
+        return -np.inf
+    kept = [r for r in rows[1:] if r and float(r[0]) <= t_max]
     tmp = path.with_suffix(f".tmp{os.getpid()}")
     with open(tmp, "w", newline="") as f:
-        csv.writer(f).writerows(kept)
+        csv.writer(f).writerows([rows[0], *kept])
     os.replace(tmp, path)
+    return max((float(r[0]) for r in kept), default=-np.inf)
 
 
 def required_markers(conf: Config) -> dict[str, list[str]]:
@@ -238,6 +245,33 @@ def required_markers(conf: Config) -> dict[str, list[str]]:
     if conf.bcs.base_bc == "fixed":
         out["bcs.base_marker"] = [conf.bcs.base_marker]
     return out
+
+
+def check_config_markers(conf: Config, geo: CLIGeometry) -> None:
+    """Check every marker the config names against the mesh (ConfigError on a mismatch).
+
+    Load and boundary-condition markers must exist and be facet markers (dim = tdim - 1);
+    ``postprocess.vertex_tags`` must name vertex markers (dim 0). Run before anything is wiped.
+    """
+    facet_dim = geo.mesh.topology.dim - 1
+    for what, names in required_markers(conf).items():
+        check_markers(geo, names, what)
+        for name in names:
+            dim = geo.markers[name][1]
+            if dim != facet_dim:
+                raise ConfigError(
+                    f"{what}: marker {name!r} has dimension {dim}, but must be a facet marker "
+                    f"(dimension {facet_dim})",
+                )
+    for tag, name in conf.postprocess.vertex_tags.items():
+        what = f"postprocess.vertex_tags.{tag}"
+        check_markers(geo, [name], what)
+        dim = geo.markers[name][1]
+        if dim != 0 or geo.vfun is None:
+            raise ConfigError(
+                f"{what}: marker {name!r} is not a vertex marker (dimension {dim}, needs 0 and "
+                "vertex tags in the geometry)",
+            )
 
 
 def build_problem(
@@ -329,9 +363,16 @@ class MechanicsSimulation:
         return {"t": t, **self.loads.values(t), **volumes}
 
     def start(self) -> None:
-        """Fresh run: write loads.csv's header and set the loads to the start time."""
+        """Fresh run: create the output folder, write loads.csv's header and set the loads to the
+        start time."""
         fields = self.csv_fields()
-        _on_rank0(self.comm, OSError, lambda: _write_csv_header(self.folder / LOADS, fields))
+        folder = self.folder
+
+        def write() -> None:
+            folder.mkdir(parents=True, exist_ok=True)
+            _write_csv_header(folder / LOADS, fields)
+
+        _on_rank0(self.comm, OSError, write)
         self.loads.update(self.t)
 
     def step(self, dt: float) -> None:
@@ -500,9 +541,15 @@ class MechanicsSimulation:
         self.step_index = int(meta["step"])
         if (folder / RESULTS).exists():
             self._last_saved = float(read_result_times(folder / RESULTS, self.comm).max())
-        self._last_row = t
         fields = self.csv_fields()
-        _on_rank0(self.comm, OSError, lambda: _truncate_csv(folder / LOADS, t + tol, fields))
+        last_row = [-np.inf]
+
+        def truncate() -> None:
+            last_row[0] = _truncate_csv(folder / LOADS, t + tol, fields)
+
+        _on_rank0(self.comm, OSError, truncate)
+        # The latest row actually kept, not t: a checkpoint off the old save grid has no row yet.
+        self._last_row = float(self.comm.bcast(last_row[0], root=0))
         self.loads.update(t)
         if self.dt_constant is not None:
             self.dt_constant.value = self.conf.time.dt_s()
@@ -522,8 +569,7 @@ def build_simulation(
     monitor = monitor if monitor is not None else NullMonitor()
     require_optional_packages(conf.load)
     geo = geometry if geometry is not None else build_geometry(conf.geometry, comm)
-    for what, names in required_markers(conf).items():
-        check_markers(geo, names, what)
+    check_config_markers(conf, geo)
     variables = make_load_variables(conf.load, geo.mesh)
     activation = variables.get("activation")
     if activation is not None:
@@ -609,12 +655,14 @@ def _run(sim: MechanicsSimulation, comm, restart: bool) -> Path:
         if isinstance(e, (ConfigError, SolverFailure)):
             raise
         raise SolverFailure(str(e)) from e
+    finally:
+        # Also on failure: the timings up to a solver failure are what one wants to look at.
+        if isinstance(sim.monitor, PerformanceMonitor):
+            sim.monitor.display_summary()
+            _on_rank0(comm, OSError, lambda: sim.monitor.save_summary(folder / PERFORMANCE))
     record["status"] = "finished"
     record["end"] = datetime.datetime.now().isoformat()
     _write_json(folder / RUN_META, record, comm)
-    if isinstance(sim.monitor, PerformanceMonitor):
-        sim.monitor.display_summary()
-        _on_rank0(comm, OSError, lambda: sim.monitor.save_summary(folder / PERFORMANCE))
     logger.info(f"Simulation finished. Results in {folder / RESULTS}")
     return folder
 

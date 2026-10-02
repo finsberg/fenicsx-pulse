@@ -88,7 +88,7 @@ artifacts, and only after the config has been validated.
 **What may change across a restart, and what may not:** `pulse` refuses `--restart` if the run's
 *physics* has changed since the last checkpoint, comparing a hash of the whole resolved config
 except the run length (`time.end_time`/`num_steps`) and everything under
-`[output]`/`[postprocess]`. So between restarts you may freely:
+`[output]`/`[postprocess]`/`[solver]`. So between restarts you may freely:
 
 - Extend `time.end_time`, or change `num_steps`, to run longer than originally configured — as
   long as the *effective* `dt` (`(end_time - start_time) / num_steps` when `num_steps` is given)
@@ -96,6 +96,9 @@ except the run length (`time.end_time`/`num_steps`) and everything under
   silently mixing time steps.
 - Change anything under `[output]` (`save_every`, `checkpoint_every`, `performance`, `log_every`)
   or `[postprocess]` (`vtx`, `fields`, `points`, `vertex_tags`, `plots`).
+- Change anything under `[solver]` (`max_halvings`, `petsc_options`, or `--petsc-options`): they
+  change how a step is solved, not the physics. This is the way to continue after a solver failure
+  (exit code 2) — e.g. `--restart --set solver.max_halvings=8`.
 - Run on a **different number of MPI ranks** than the original job used (the checkpoint is read
   and redistributed across however many ranks the new job has).
 
@@ -106,7 +109,9 @@ But not, without `pulse` refusing with an error naming the mismatch:
   there, not the physics itself — it does count for `geometry.type = "folder"`, where it's the
   actual mesh being simulated), `[material]`, `[active]`, `[compressibility]`,
   `[viscoelasticity]`, `[bcs]`, `[[load]]` (including a `[load.profile] file` table's *contents*,
-  not just its path — editing that CSV also counts as a physics change), `[problem]`, `[solver]`.
+  not just its path — editing that CSV also counts as a physics change), `[problem]`. So a
+  solver failure that needs a smaller `time.dt` or a gentler load cannot be continued: rerun it
+  with `--overwrite` (or into a new output folder).
 
 ## Exit codes for job-script branching
 

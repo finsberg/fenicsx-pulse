@@ -212,6 +212,9 @@ type = "incompressible"   # incompressible | compressible | compressible2 | comp
 type = "none"   # none | viscous
 ```
 
+`viscous` (like a Robin condition with `damping = true`) only acts on velocities, so it is
+rejected unless `problem.type = "dynamic"`.
+
 ### `[bcs]`
 
 ```toml
@@ -253,8 +256,10 @@ equilibrium solve, not physical time), physical time for a dynamic one. Phases (
 pressure, then ramp the activation") are expressed as separate loads whose `ramp`/`table` windows
 occupy different parts of that one axis — see the `lv_ellipsoid` template above. `num_steps` and
 `dt` both describe the same axis; whichever is given, the other is derived
-(`dt = (end_time - start_time) / num_steps`), and `output.save_every`/`checkpoint_every` are
-compared against the *effective* `dt`.
+(`dt = (end_time - start_time) / num_steps`). With `dt` given, `end_time - start_time` must be an
+integer multiple of it, and `output.save_every`/`checkpoint_every` (when non-zero) must be integer
+multiples of the *effective* `dt` (all to a 1e-9 relative tolerance) — otherwise the config is
+rejected instead of silently rounding the run length or the output grid.
 
 ### `[problem]`
 
@@ -348,7 +353,8 @@ by hand) is refused by default — `pulse` never silently deletes anything:
   **physics** has changed since the checkpoint was written: the check is a hash of the whole
   resolved config *excluding* the run length (`time.end_time`/`num_steps` — the effective `dt` and
   `start_time` are hashed instead, so changing `num_steps` without changing `dt` is still caught)
-  and excluding `[output]` and `[postprocess]` entirely. `geometry.folder` only matters for
+  and excluding `[output]`, `[postprocess]` and `[solver]` entirely (`max_halvings` and
+  `petsc_options` only change *how* a step is solved, not the physics). `geometry.folder` only matters for
   `geometry.type = "folder"` (where it *is* the mesh being simulated); for every generated
   geometry type it's just a cache location and is excluded like any other non-physics path.
   Restarting on a **different number of MPI ranks** than the original run is allowed. If the run
@@ -366,8 +372,10 @@ Each step calls `problem.solve()`. If Newton fails to converge, the step is halv
 problem — every state function, old-state function, and for a dynamic problem `v_old`/`a_old` and
 the `dt` `Constant` — is restored to exactly where it was before the failed `step()` call, even
 when some of the halves had already converged. The last checkpoint on disk is therefore always
-intact and consistent; rerun with `--restart` (after addressing whatever made the step too large —
-a smaller `time.dt`, a gentler load ramp, looser `solver.petsc_options` tolerances, ...).
+intact and consistent. Since `[solver]` is not part of the physics hash, you may continue with
+`--restart` and a larger `solver.max_halvings` (e.g. `--set solver.max_halvings=8`) or different
+`--petsc-options`. A smaller `time.dt` or a changed load (e.g. a gentler ramp) changes the physics:
+the restart is refused, so rerun with `--overwrite` (or into a new output folder) instead.
 
 (performance)=
 ## Performance
@@ -403,7 +411,7 @@ from pulse.cli.runner import build_simulation
 
 conf = load_config("config.toml")
 sim = build_simulation(conf)  # geometry=..., active_model=... may be injected
-sim.start()
+sim.start()  # creates the output folder and writes the loads.csv header
 dt = conf.time.dt_s()
 for _ in range(conf.time.n_steps()):
     sim.step(dt)
@@ -411,9 +419,14 @@ for _ in range(conf.time.n_steps()):
 sim.checkpoint()
 ```
 
-`build_simulation` accepts `geometry=` and `active_model=` to reuse an already-built
-`pulse.HeartGeometry` or swap `[active]` for an externally driven active model (an injected active
-model and a `[[load]] target = "activation"` are mutually exclusive — only one may drive `Ta`).
+`build_simulation` accepts `geometry=` and `active_model=` to reuse an already-built geometry or
+swap `[active]` for an externally driven active model (an injected active model and a
+`[[load]] target = "activation"` are mutually exclusive — only one may drive `Ta`). `geometry=`
+takes a `pulse.cli.geometry.CLIGeometry`, as returned by
+`pulse.cli.geometry.build_geometry(conf.geometry)` (the mesh plus fibres and cell/vertex tags), not
+a bare `pulse.HeartGeometry`; the simulation keeps it as `sim.geo`, with `sim.geo.geometry` the
+`pulse.HeartGeometry` and `sim.geo.mesh` the mesh. The config's markers are checked against it
+like against a built geometry.
 
 (units)=
 ## Units

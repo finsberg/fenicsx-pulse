@@ -138,11 +138,11 @@ Constant fibres along an axis; sheets/normals along the next two axes (cyclicall
 
 ### NoFibers (`none`)
 
-No fibre field (isotropic materials only, e.g. neo_hookean or isotropic guccione).
+No fibre field (isotropic materials only); "isotropic" (beat's name) is an alias.
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `type` | 'none' | `'none'` |  |
+| `type` | 'none' \| 'isotropic' | `'none'` |  |
 
 ## `[material]`
 

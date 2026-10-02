@@ -9,6 +9,7 @@ jobs:
   test-code:
     name: Test CLI on 2 ranks
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     container: ghcr.io/fenics/dolfinx/dolfinx:stable
     env:
       DEB_PYTHON_INSTALL_LAYOUT: deb_system
