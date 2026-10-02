@@ -1,0 +1,57 @@
+# Transcribes demo/benchmark/problem3.py (Land et al. 2015, problem 3: active LV contraction).
+#
+# Deviations from the demo:
+# - The demo solves at 20 linspace points including the unloaded state; here 19 pseudo-time
+#   steps ramp the pressure to 15 kPa and Ta to 60 kPa together (same loaded states).
+# - Apex positions come from `pulse post` (post/points.csv).
+# - unit = "mm" (the demo leaves pulse's default "m"); with no Robin BCs this only changes the
+#   reported cavity volume, not the solution.
+
+[geometry]
+type = "lv_ellipsoid"
+unit = "mm"
+quadrature_degree = 6
+fiber_angle_endo = 90.0
+fiber_angle_epi = -90.0
+fiber_space = "Quadrature_6"
+
+[material]
+type = "guccione"
+C = "2 kPa"
+bf = 8.0
+bt = 2.0
+bfs = 4.0
+
+[active]
+type = "active_stress"
+
+[compressibility]
+type = "incompressible"
+
+[bcs]
+base_bc = "fixed"
+
+[[load]]
+target = "pressure"
+marker = "ENDO"
+[load.profile]
+type = "ramp"
+end = "1 s"
+to_value = "15 kPa"
+
+[[load]]
+target = "activation"
+[load.profile]
+type = "ramp"
+end = "1 s"
+to_value = "60 kPa"
+
+[time]
+end_time = "1 s"
+num_steps = 19
+
+[output]
+folder = "output"
+
+[postprocess]
+vertex_tags = { endo_apex = "ENDOPT", epi_apex = "EPIPT" }

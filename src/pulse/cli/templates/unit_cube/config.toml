@@ -1,0 +1,56 @@
+# Transcribes demo/geometries/unit_cube.py.
+#
+# Deviations from the demo:
+# - The pressure (-1 kPa on X1) and the active tension (2 kPa) are applied together in one
+#   pseudo-time step; the demo also solves once with both set, so the final state is the same.
+# - Fibres f0/s0 are the builtin box's axis fibres (x, y) - identical to the demo's Constants.
+#
+# Run:  pulse run config.toml     Postprocess:  pulse post config.toml
+
+[geometry]
+type = "box"
+unit = "m"
+lx = 1.0
+ly = 1.0
+lz = 1.0
+nx = 3
+ny = 3
+nz = 3
+cell_type = "tetrahedron"
+quadrature_degree = 4
+[geometry.fibers]
+type = "axis"
+direction = "x"
+
+[material]
+type = "holzapfel_ogden"
+preset = "transversely_isotropic"
+
+[active]
+type = "active_stress"
+
+[compressibility]
+type = "incompressible"
+
+[[bcs.dirichlet]]
+marker = "X0"
+
+[[load]]
+target = "pressure"
+marker = "X1"
+[load.profile]
+type = "constant"
+value = "-1 kPa"
+
+[[load]]
+target = "activation"
+[load.profile]
+type = "constant"
+value = "2 kPa"
+
+[time]
+end_time = "1 s"
+num_steps = 1
+
+[output]
+folder = "output"

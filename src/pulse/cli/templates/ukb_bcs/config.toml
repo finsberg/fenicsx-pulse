@@ -1,0 +1,77 @@
+# Transcribes demo/boundary_conditions/ukb_bcs.py (UK Biobank atlas BiV, sliding base).
+#
+# Deviations from the demo:
+# - p_LV [0.5, 1.0, 1.5] kPa (p_RV half) over pseudo-time 1..3 s, then Ta [3, 5, 10] kPa over
+#   4..6 s, as tables. Confirmed against the demo: Ta is applied after the pressures, so the
+#   [active] section and activation load are kept.
+# - unit = "m" on purpose: the atlas mesh is in mm but the demo keeps pulse's default mesh_unit
+#   "m", which scales the Robin stiffnesses.
+# Needs: ukb-atlas (and fenicsx-ldrb for the fibres).
+
+[geometry]
+type = "ukb"
+unit = "m"
+mode = -1
+std = 0.0
+case = "ED"
+char_length_max = 10.0
+char_length_min = 10.0
+clipped = true
+fiber_angle_endo = 60.0
+fiber_angle_epi = -60.0
+fiber_space = "Quadrature_6"
+rotate_base_normal = [1.0, 0.0, 0.0]
+quadrature_degree = 4
+
+[material]
+type = "holzapfel_ogden"
+preset = "transversely_isotropic"
+
+[active]
+type = "active_stress"
+eta = 0.3
+
+[compressibility]
+type = "incompressible"
+
+[bcs]
+base_bc = "free"
+[[bcs.dirichlet]]
+marker = "BASE"
+components = ["x"]
+[[bcs.robin]]
+marker = "EPI"
+value = "1e3 Pa/m"
+[[bcs.robin]]
+marker = "BASE"
+value = "1e6 Pa/m"
+
+[[load]]
+target = "pressure"
+marker = "LV"
+[load.profile]
+type = "table"
+times = [0.0, 1.0, 2.0, 3.0]
+values = [0.0, 0.5, 1.0, 1.5]
+
+[[load]]
+target = "pressure"
+marker = "RV"
+[load.profile]
+type = "table"
+times = [0.0, 1.0, 2.0, 3.0]
+values = [0.0, 0.25, 0.5, 0.75]
+
+[[load]]
+target = "activation"
+[load.profile]
+type = "table"
+times = [3.0, 4.0, 5.0, 6.0]
+values = [0.0, 3.0, 5.0, 10.0]
+
+[time]
+end_time = "6 s"
+dt = "1 s"
+
+[output]
+folder = "output"

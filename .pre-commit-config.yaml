@@ -54,7 +54,9 @@ repos:
         # recursing into a directory, not to filenames pre-commit passes
         # explicitly -- so demo/ (needs the `demo`/`docs` extras, see
         # CLAUDE.md) has to be excluded here too, same as ruff-format above.
-        exclude: 'demo/.*.py$'
+        # tests/cli/conftest.py too: mypy would see two top-level `conftest` modules (tests/ has no
+        # __init__.py, on purpose: tests/cli imports its `cli_helpers` as a top-level module).
+        exclude: 'demo/.*.py$|tests/cli/conftest.py$'
 
   - repo: https://github.com/streetsidesoftware/cspell-cli
     rev: v10.2.0
