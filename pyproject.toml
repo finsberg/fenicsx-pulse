@@ -45,6 +45,7 @@ dev = [
     "bump-my-version",
     "pre-commit",
     "mypy",
+    "types-toml",
     "fenicsx-pulse[test]",
     "fenicsx-pulse[docs]",
 ]

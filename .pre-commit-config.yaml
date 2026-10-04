@@ -49,7 +49,6 @@ repos:
         # instead -- the one `python3 -m mypy .` uses, with pyproject.toml's
         # [tool.mypy] config picked up as normal.
         language: system
-        additional_dependencies: ["types-toml"]
         args: ["--scripts-are-modules"]
         # mypy's own `exclude` config only applies when it discovers files by
         # recursing into a directory, not to filenames pre-commit passes
