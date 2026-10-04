@@ -1,0 +1,59 @@
+# Transcribes demo/boundary_conditions/lv_ellipsoid_fixed_x.py (sliding base: u_x = 0).
+#
+# Deviations from the demo:
+# - Pressure (1 kPa) then Ta (3 kPa) are ramps over pseudo-time [0, 1] s and [1, 2] s.
+# - unit = "m" on purpose: the demo's mesh is in mm but it keeps pulse's default mesh_unit "m",
+#   and the Robin stiffness 1e3 Pa/m is scaled by it. Changing unit to "mm" makes the springs
+#   1000x softer.
+
+[geometry]
+type = "lv_ellipsoid"
+unit = "m"
+quadrature_degree = 4
+fiber_space = "P_2"
+
+[material]
+type = "holzapfel_ogden"
+preset = "transversely_isotropic"
+
+[active]
+type = "active_stress"
+eta = 0.3
+
+[compressibility]
+type = "incompressible"
+
+[bcs]
+base_bc = "free"
+[[bcs.dirichlet]]
+marker = "BASE"
+components = ["x"]
+[[bcs.robin]]
+marker = "EPI"
+value = "1e3 Pa/m"
+[[bcs.robin]]
+marker = "BASE"
+value = "1e3 Pa/m"
+
+[[load]]
+target = "pressure"
+marker = "ENDO"
+[load.profile]
+type = "ramp"
+end = "1 s"
+to_value = "1 kPa"
+
+[[load]]
+target = "activation"
+[load.profile]
+type = "ramp"
+start = "1 s"
+end = "2 s"
+to_value = "3 kPa"
+
+[time]
+end_time = "2 s"
+dt = "1 s"
+
+[output]
+folder = "output"

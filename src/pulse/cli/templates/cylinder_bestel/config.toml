@@ -1,0 +1,71 @@
+# Transcribes demo/geometries/cylinder.py (D-shaped cylinder driven by Bestel pressure and Ta).
+#
+# Deviations from the demo:
+# - 100 quasi-static steps of 10 ms up to t = 1.0 s (the demo's np.arange stops at 0.99 s).
+# - The demo's regional stress/strain averages and PNG plots are replaced by `pulse post`
+#   (fibre stress/strain fields, loads.png).
+# Needs: circulation, scipy.
+
+[geometry]
+type = "cylinder"
+unit = "m"
+r_inner = 0.02
+r_outer = 0.03
+height = 0.05
+inner_flat_face_distance = 0.015
+outer_flat_face_distance = 0.025
+char_length = 0.01
+fiber_angle_endo = 60.0
+fiber_angle_epi = -60.0
+fiber_space = "DG_1"
+quadrature_degree = 6
+
+[material]
+type = "holzapfel_ogden"
+preset = "transversely_isotropic"
+
+[active]
+type = "active_stress"
+
+[compressibility]
+type = "compressible2"
+
+[[bcs.robin]]
+marker = "OUTSIDE_CURVED"
+value = "1e6 Pa/m"
+[[bcs.robin]]
+marker = "OUTSIDE_FLAT"
+value = "1e6 Pa/m"
+[[bcs.dirichlet]]
+marker = "TOP"
+components = ["z"]
+[[bcs.dirichlet]]
+marker = "BOTTOM"
+components = ["z"]
+
+[[load]]
+target = "pressure"
+marker = "INSIDE_CURVED"
+[load.profile]
+type = "bestel_pressure"
+
+[[load]]
+target = "pressure"
+marker = "INSIDE_FLAT"
+[load.profile]
+type = "bestel_pressure"
+
+[[load]]
+target = "activation"
+[load.profile]
+type = "bestel_activation"
+
+[time]
+end_time = "1 s"
+dt = "10 ms"
+
+[output]
+folder = "output"
+
+[postprocess]
+fields = ["fiber_stress", "fiber_strain"]

@@ -1,0 +1,103 @@
+# Transcribes demo/time_dependent/time_dependent_bestel_biv.py (dynamic BiV, Bestel P and Ta).
+#
+# Deviations from the demo:
+# - 1000 steps of 1 ms up to t = 1.0 s; results saved every 10 ms.
+# - Cavity volumes in loads.csv are allreduced over ranks (the demo's are rank-local).
+# - Confirmed against the demo: Viscous() IS passed into CardiacModel, so [viscoelasticity]
+#   stays "viscous" (not "none"). All RV Bestel parameters below are copied verbatim from the
+#   demo's rv_pressure_model parameters dict.
+# - Load timing: the demo solves once at zero load, then at step i assigns the Bestel load
+#   evaluated at t_i = i*dt and writes/labels that solution at (i+1)*dt
+#   (time_dependent_bestel_biv.py:108,191-197). The CLI instead evaluates loads at each step's
+#   end time and labels the result there too, so the CLI's load trajectory leads the demo's
+#   labelled output by about 1-2 steps (1-2 ms).
+# Needs: circulation, scipy, fenicsx-ldrb.
+
+[geometry]
+type = "biv_ellipsoid"
+unit = "m"
+scale = 1.5e-2
+char_length = 1.0
+fiber_angle_endo = 60.0
+fiber_angle_epi = -60.0
+fiber_space = "Quadrature_6"
+quadrature_degree = 6
+
+[material]
+type = "holzapfel_ogden"
+preset = "orthotropic"
+
+[active]
+type = "active_stress"
+
+[compressibility]
+type = "compressible2"
+
+[viscoelasticity]
+type = "viscous"
+eta = "100 Pa*s"
+
+[bcs]
+base_bc = "free"
+[[bcs.robin]]
+marker = "EPI"
+value = "1e8 Pa/m"
+[[bcs.robin]]
+marker = "EPI"
+value = "5e3 Pa*s/m"
+damping = true
+[[bcs.robin]]
+marker = "BASE"
+value = "1e5 Pa/m"
+[[bcs.robin]]
+marker = "BASE"
+value = "5e3 Pa*s/m"
+damping = true
+
+[[load]]
+target = "pressure"
+marker = "LV"
+[load.profile]
+type = "bestel_pressure"
+[load.profile.parameters]
+t_sys_pre = "0.17 s"
+t_dias_pre = "0.484 s"
+gamma = "0.005 s"
+a_max = "5 1/s"
+a_min = "-30 1/s"
+alpha_pre = "5 1/s"
+alpha_mid = "15 1/s"
+sigma_pre = "12000 Pa"
+sigma_mid = "16000 Pa"
+
+[[load]]
+target = "pressure"
+marker = "RV"
+[load.profile]
+type = "bestel_pressure"
+[load.profile.parameters]
+t_sys_pre = "0.17 s"
+t_dias_pre = "0.484 s"
+gamma = "0.005 s"
+a_max = "5 1/s"
+a_min = "-30 1/s"
+alpha_pre = "1 1/s"
+alpha_mid = "10 1/s"
+sigma_pre = "3000 Pa"
+sigma_mid = "4000 Pa"
+
+[[load]]
+target = "activation"
+[load.profile]
+type = "bestel_activation"
+
+[time]
+end_time = "1 s"
+dt = "1 ms"
+
+[problem]
+type = "dynamic"
+
+[output]
+folder = "output"
+save_every = "10 ms"

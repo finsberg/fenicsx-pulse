@@ -1,0 +1,42 @@
+name: Test package (MPI)
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test-code:
+    name: Test CLI on 2 ranks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    container: ghcr.io/fenics/dolfinx/dolfinx:stable
+    env:
+      DEB_PYTHON_INSTALL_LAYOUT: deb_system
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install build requirements
+        run: |
+          python3 -m pip install --group build
+
+      - name: Install h5py with MPI support
+        run: |
+          python3 -m pip install pkgconfig
+          HDF5_MPI=ON HDF5_PKGCONFIG_NAME="hdf5" python3 -m pip install h5py --no-build-isolation --no-binary=h5py
+
+      - name: Install package
+        run: |
+          python3 -m pip install scifem --no-build-isolation
+          python3 -m pip install .[test]
+
+      - name: Run CLI tests on 2 ranks
+        run: mpirun -n 2 python3 -m pytest tests/cli -m "not skip_in_parallel" --no-cov
+
+      - name: CLI restart on a different number of ranks
+        run: |
+          pulse init /tmp/cli-restart/config.toml --template unit_cube
+          pulse run /tmp/cli-restart/config.toml --set 'time.num_steps=2' --set 'time.end_time="1 s"'
+          mpirun -n 2 pulse run /tmp/cli-restart/config.toml --restart --set 'time.num_steps=4' --set 'time.end_time="2 s"'
+          python3 -c "import json; assert json.load(open('/tmp/cli-restart/output/run.json'))['status'] == 'finished'"

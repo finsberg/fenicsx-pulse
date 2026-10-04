@@ -48,6 +48,12 @@ parts:
       - file: "demo/crossbridge/crossbridge_rdq20mf"
       - file: "demo/crossbridge/crossbridge_comparison"
 
+  - caption: Command line interface
+    chapters:
+    - file: "docs/cli"
+    - file: "docs/cli_cluster"
+    - file: "docs/cli_reference"
+
   - caption: Community
     chapters:
       - file: "CONTRIBUTING"

@@ -24,6 +24,7 @@ exclude_patterns = [
     "third_party/*",
     "jupyter_execute/",
     "**.jupyter_cache",
+    "docs/superpowers/**",
 ]
 extensions = [
     "sphinx_togglebutton",

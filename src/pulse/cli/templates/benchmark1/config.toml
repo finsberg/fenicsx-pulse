@@ -1,0 +1,56 @@
+# Transcribes demo/benchmark/problem1.py (Land et al. 2015, problem 1: beam bending).
+#
+# Deviations from the demo:
+# - The demo's facet markers "left" (x = 0) and "bottom" (z = 0) are the builtin box's X0 and Z0.
+# - The demo's pressure steps [0.0005, 0.001, 0.002, 0.003, 0.004] kPa are a table over
+#   pseudo-time 1..5 s (one step each).
+# - The tip displacement is written by `pulse post` to post/points.csv (the demo prints it).
+# - unit = "mm" (the demo leaves pulse's default "m"); with no Robin BCs and no cavity marker
+#   on this geometry, this changes nothing in the solution.
+
+[geometry]
+type = "box"
+unit = "mm"
+lx = 10.0
+ly = 1.0
+lz = 1.0
+nx = 30
+ny = 3
+nz = 3
+cell_type = "hexahedron"
+quadrature_degree = 4
+[geometry.fibers]
+type = "axis"
+direction = "x"
+
+[material]
+type = "guccione"
+C = "2 kPa"
+bf = 8.0
+bt = 2.0
+bfs = 4.0
+
+[compressibility]
+type = "incompressible"
+
+[[bcs.dirichlet]]
+marker = "X0"
+
+[[load]]
+target = "pressure"
+marker = "Z0"
+[load.profile]
+type = "table"
+times = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0]
+values = [0.0, 0.0005, 0.001, 0.002, 0.003, 0.004]
+value_unit = "kPa"
+
+[time]
+end_time = "5 s"
+dt = "1 s"
+
+[output]
+folder = "output"
+
+[postprocess]
+points = { tip = [10.0, 0.5, 1.0] }
