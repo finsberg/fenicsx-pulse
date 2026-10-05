@@ -19,6 +19,7 @@ checked against finite differences.
 
 from __future__ import annotations
 
+import json
 import math
 from pathlib import Path
 
@@ -494,23 +495,12 @@ def test_dynamic_coupled_step_holds_the_constraint(dynamic_problem):
         assert abs(volume - V_LV) / V_LV < 1e-8
 
 
-def test_bdf2_takes_its_first_step_as_backward_euler(
-    geo,
-    ode_file,
-    flat_parameters,
-    numpy_reference,
-):
-    """BDF2 needs two past levels, and the first step has one.
-
-    The derivative stencil is carried by constants so the first step can be
-    backward Euler without rebuilding the form. Switch a step early and the
-    opening step differences against `y_prev = y_old`, taking a step of the
-    wrong length; a step late and the scheme never reaches second order.
-    """
+def _bdf2_problem(geo, ode_file, flat_parameters):
+    """A static LV coupled to the circuit, with the circuit stepped by BDF2."""
     geometry = pulse.HeartGeometry.from_cardiac_geometries(geo, metadata={"quadrature_degree": 4})
     material_params = pulse.HolzapfelOgden.transversely_isotropic_parameters()
     Ta = pulse.Variable(dolfinx.fem.Constant(geo.mesh, dolfinx.default_scalar_type(0.0)), "kPa")
-    problem = pulse.problem.StaticProblem(
+    return pulse.problem.StaticProblem(
         model=pulse.CardiacModel(
             material=pulse.HolzapfelOgden(f0=geo.f0, s0=geo.s0, **material_params),  # type: ignore[arg-type]
             active=pulse.ActiveStress(geo.f0, activation=Ta),
@@ -536,15 +526,31 @@ def test_bdf2_takes_its_first_step_as_backward_euler(
         },
     )
 
-    def stencil():
-        return tuple(float(c.value) for c in problem._circulation_stencil)
 
-    assert stencil() == pulse.problem.BACKWARD_EULER_STENCIL
+def _stencil(problem) -> tuple[float, ...]:
+    return tuple(float(c.value) for c in problem._circulation_stencil)
+
+
+def test_bdf2_takes_its_first_step_as_backward_euler(
+    geo,
+    ode_file,
+    flat_parameters,
+    numpy_reference,
+):
+    """BDF2 needs two past levels, and the first step has one.
+
+    The derivative stencil is carried by constants so the first step can be
+    backward Euler without rebuilding the form. Switch a step early and the
+    opening step differences against `y_prev = y_old`, taking a step of the
+    wrong length; a step late and the scheme never reaches second order.
+    """
+    problem = _bdf2_problem(geo, ode_file, flat_parameters)
+    assert _stencil(problem) == pulse.problem.BACKWARD_EULER_STENCIL
 
     problem.circulation_dt.value = 1e-3
     problem.circulation_time.value = 1e-3
     assert problem.solve()
-    assert stencil() == pulse.problem.BDF2_STENCIL
+    assert _stencil(problem) == pulse.problem.BDF2_STENCIL
 
     # With the stencil switched, the rows must be the BDF2 residual built from
     # all three levels. Three distinct vectors distinguish the right
@@ -586,6 +592,76 @@ def test_bdf2_takes_its_first_step_as_backward_euler(
         assert abs(got - expected[i]) / scale < 1e-9, (
             f"BDF2 row for {name}: assembled {got:.6g}, expected {expected[i]:.6g}"
         )
+
+
+def test_bdf2_restart_is_bit_identical(geo, ode_file, flat_parameters):
+    """Restoring into a fresh problem and stepping on must match stepping on
+    uninterrupted, bit for bit.
+
+    The restart comes after two steps, so the stencil has switched to BDF2 and
+    the circuit's second history level `y_prev` is the first step's state, not
+    the initial one a fresh problem holds: a restart that lost either the step
+    count or that level would take its next step as backward Euler or with the
+    wrong history.
+    """
+    dt = 1e-3
+
+    def take_step(problem, t):
+        # Everything a solve reads that is not restart state is set from t.
+        problem.circulation_dt.value = dt
+        problem.circulation_time.value = t
+        problem.circulation_missing["beat_phase"].value = t % 0.8
+        problem.model.active.activation.assign(1000.0 * t)
+        assert problem.solve(), f"solve failed at t={t}"
+
+    a = _bdf2_problem(geo, ode_file, flat_parameters)
+    for k in (1, 2):
+        take_step(a, k * dt)
+    assert _stencil(a) == pulse.problem.BDF2_STENCIL
+
+    arrays = [f.x.array.copy() for _, f in a.restart_functions()]
+    metadata = json.loads(json.dumps(a.restart_metadata()))
+    assert metadata == {"circulation_steps": 2}
+
+    b = _bdf2_problem(geo, ode_file, flat_parameters)
+    assert _stencil(b) == pulse.problem.BACKWARD_EULER_STENCIL
+    i_V_LV = list(a.circulation.state_names).index("V_LV")
+    assert not np.array_equal(
+        a.circulation_states_prev[i_V_LV].x.array,
+        b.circulation_states_prev[i_V_LV].x.array,
+    )
+    for (_, f), values in zip(b.restart_functions(), arrays):
+        f.x.array[:] = values
+    b.load_restart_metadata(metadata)
+
+    for k in (3, 4):
+        take_step(a, k * dt)
+        take_step(b, k * dt)
+
+    names = [name for name, _ in a.restart_functions()]
+    assert names[:4] == [
+        "mechanics_u",
+        "mechanics_u_old",
+        "mechanics_cavity_pressure_ENDO",
+        "mechanics_cavity_pressure_ENDO_old",
+    ]
+    state_names = list(a.circulation.state_names)
+    assert names[4:] == [
+        f"mechanics_circulation_{name}{suffix}"
+        for name in state_names
+        for suffix in ("", "_old", "_prev")
+    ]
+    for (name, f), (_, g) in zip(a.restart_functions(), b.restart_functions()):
+        assert np.array_equal(f.x.array, g.x.array), name
+    assert _stencil(a) == _stencil(b) == pulse.problem.BDF2_STENCIL
+    assert a.restart_metadata() == b.restart_metadata() == {"circulation_steps": 4}
+
+    # Back to the first step: backward Euler again. A snapshot taken before a
+    # step that switched the stencil has to switch it back.
+    b.load_restart_metadata({"circulation_steps": 0})
+    assert _stencil(b) == pulse.problem.BACKWARD_EULER_STENCIL
+    with pytest.raises(ValueError, match="circulation"):
+        b.load_restart_metadata({})
 
 
 def test_unknown_circulation_scheme_is_rejected(geo, ode_file, flat_parameters):

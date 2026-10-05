@@ -1,6 +1,7 @@
 import inspect
 import logging
 import typing
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -920,6 +921,77 @@ class StaticProblem:
         for state, state_old in zip(self.circulation_states, self.circulation_states_old):
             state.x.array[:] = state_old.x.array.copy()
 
+    def restart_functions(self) -> list[tuple[str, dolfinx.fem.Function]]:
+        """Every Function a restart needs, under ``mechanics_*`` names, in a fixed order.
+
+        These are the problem's own Functions, not copies: write a checkpoint
+        from them, or restore one by writing into them in place, then call
+        :meth:`load_restart_metadata`. The order is ``u``; ``p`` if
+        incompressible; each cavity's pressure, in ``cavities`` order; the
+        rigid-body multiplier ``r``; then each circulation state. Each is
+        followed by its ``_old`` copy, and a circulation state also by its
+        ``_prev`` (BDF2's second level). `DynamicProblem` appends ``v_old``
+        and ``a_old``. With no cavity, rigid body or circulation, this is the
+        list the CLI wrote before it called this method, so its earlier
+        checkpoints still restore.
+
+        A solve overwrites the ``_old`` copies before it reads them, unless
+        called with ``update_old_states=False``.
+        """
+        out = [("mechanics_u", self.u), ("mechanics_u_old", self.u_old)]
+        if self.is_incompressible:
+            out += [("mechanics_p", self.p), ("mechanics_p_old", self.p_old)]
+        for cavity, pressure, pressure_old in zip(
+            self.cavities,
+            self.cavity_pressures,
+            self.cavity_pressures_old,
+        ):
+            name = f"mechanics_cavity_pressure_{cavity.marker}"
+            out += [(name, pressure), (f"{name}_old", pressure_old)]
+        if self.parameters["rigid_body_constraint"]:
+            out += [("mechanics_r", self.r), ("mechanics_r_old", self.r_old)]
+        if self.circulation is not None:
+            for name, state, state_old, state_prev in zip(
+                self.circulation.state_names,
+                self.circulation_states,
+                self.circulation_states_old,
+                self.circulation_states_prev,
+            ):
+                key = f"mechanics_circulation_{name}"
+                out += [(key, state), (f"{key}_old", state_old), (f"{key}_prev", state_prev)]
+        return out
+
+    def restart_metadata(self) -> dict[str, typing.Any]:
+        """The restart state that is not a Function, JSON-able.
+
+        With a circulation, that is the number of converged steps the circuit
+        has taken, which selects its stencil (BDF2 takes its first step as
+        backward Euler). Without one, nothing.
+        """
+        if self.circulation is None:
+            return {}
+        return {"circulation_steps": self._circulation_steps}
+
+    def load_restart_metadata(self, data: Mapping[str, typing.Any]) -> None:
+        """Restore what :meth:`restart_metadata` returned, after the Functions.
+
+        Sets the circuit's step count and the stencil it selects, backward
+        Euler included, so a snapshot taken before the step that switched to
+        BDF2 switches it back. Raises `ValueError` if `data` and this problem
+        disagree on whether there is a circulation.
+        """
+        has_circulation = self.circulation is not None
+        if ("circulation_steps" in data) != has_circulation:
+            raise ValueError(
+                "The restart metadata and this problem disagree on whether there is a "
+                f"circulation: the metadata is {dict(data)!r}, and this problem has "
+                f"{'a' if has_circulation else 'no'} circulation.",
+            )
+        if not has_circulation:
+            return
+        self._circulation_steps = int(data["circulation_steps"])
+        self._select_circulation_stencil()
+
     @property
     def test_functions(self):
         u = [self.u_test]
@@ -1059,8 +1131,14 @@ class StaticProblem:
         # count starting below zero: the first step has only one past level and
         # must be backward Euler whichever scheme is chosen.
         self._circulation_steps += 1
+        self._select_circulation_stencil()
+
+    def _select_circulation_stencil(self) -> None:
+        """BDF2 once the circuit has a second past level, backward Euler otherwise."""
         if self.parameters["circulation_scheme"] == "bdf2" and self._circulation_steps >= 1:
             self._set_circulation_stencil(BDF2_STENCIL)
+        else:
+            self._set_circulation_stencil(BACKWARD_EULER_STENCIL)
 
     def _set_circulation_stencil(self, stencil):
         for constant, value in zip(self._circulation_stencil, stencil):
@@ -1425,6 +1503,14 @@ class DynamicProblem(StaticProblem):
         # self.update_base_values()
         for i in range(self.num_cavity_pressure_states):
             self.cavity_pressures_old[i].x.array[:] = self.cavity_pressures[i].x.array.copy()
+
+    def restart_functions(self) -> list[tuple[str, dolfinx.fem.Function]]:
+        """`StaticProblem.restart_functions`, then the velocity and acceleration history."""
+        return [
+            *super().restart_functions(),
+            ("mechanics_v_old", self.v_old),
+            ("mechanics_a_old", self.a_old),
+        ]
 
     @property
     def _gamma(self) -> float:
