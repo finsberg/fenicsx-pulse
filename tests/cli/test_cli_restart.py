@@ -152,6 +152,7 @@ def test_restart_with_empty_loads_csv_rewrites_header(tmp_path):
     folder = conf.output.folder
     with open(folder / LOADS) as f:
         header = f.readline()
+    MPI.COMM_WORLD.barrier()  # every rank has read the header before rank 0 empties the file
     if MPI.COMM_WORLD.rank == 0:
         (folder / LOADS).write_text("")
     MPI.COMM_WORLD.barrier()
