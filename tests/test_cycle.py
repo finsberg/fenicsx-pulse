@@ -386,6 +386,10 @@ def test_cycle_restart_is_bit_identical(cube_geometry):
         f.x.array[:] = values
     b_ctl.load_state_dict(saved)
     b.load_restart_metadata(metadata)
+    # Everything was loaded, records included: the steps below recompute
+    # those, so only here can a load that kept b's own be seen.
+    assert saved["refresh_pending"] is True
+    assert b_ctl.state_dict() == saved
 
     for _ in range(2):
         t += dt
@@ -446,18 +450,24 @@ def test_load_state_dict_refuses_other_cavities(cube_geometry):
 
 def test_load_state_dict_keeps_a_pending_refresh(cube_geometry):
     """A pending refresh is never cleared by a load: a fresh solver has no
-    factorization to reuse. A pending refresh in the loaded state is kept too."""
+    factorization to reuse. A pending refresh in the loaded state is kept too.
+
+    The fresh controller is never initialized, as on a restart: the load
+    alone must leave it initialized, with the saved records, and able to step.
+    """
     problem = _cube_dynamic_problem(cube_geometry)
     controller = cycle.CycleController(problem, {"ENDO": lv_cycle_params()})
     controller.initialize(0.0)
-    _take_converged_steps(controller, 1)
+    t = _take_converged_steps(controller, 1)
     settled = controller.state_dict()
     assert settled["refresh_pending"] is False
 
     fresh = cycle.CycleController(_cube_dynamic_problem(cube_geometry), {"ENDO": lv_cycle_params()})
     assert fresh.state_dict()["refresh_pending"] is True
+    assert fresh.state_dict()["initialized"] is False
     fresh.load_state_dict(settled)
-    assert fresh.state_dict()["refresh_pending"] is True
+    assert fresh.state_dict() == {**settled, "refresh_pending": True}
+    assert fresh.step(t=t + 2e-3, dt=2e-3) is True
 
     controller.load_state_dict({**settled, "refresh_pending": True})
     assert controller.state_dict()["refresh_pending"] is True
