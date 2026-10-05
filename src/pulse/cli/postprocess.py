@@ -40,9 +40,9 @@ def _check_matches_run(conf: Config, comm) -> None:
     ``pulse post`` rebuilds the geometry, model and loads from the config, so e.g. an edited
     ``geometry.nx`` would otherwise crash reading ``results.bp`` or, on a same-topology mesh
     (e.g. an edited ``material.mu``), silently produce wrong derived fields. Only what
-    ``physics_hash`` excludes (``[output]``, ``[postprocess]``, the run length) may differ. The
-    recorded hash is taken from ``restart.json`` or, if the run was killed before its first
-    checkpoint, recomputed from ``config.resolved.toml``; if neither exists the results are
+    ``physics_hash`` excludes (``[output]``, ``[postprocess]``, ``[solver]``, the run length) may
+    differ. The recorded hash is taken from ``restart.json`` or, if the run was killed before its
+    first checkpoint, recomputed from ``config.resolved.toml``; if neither exists the results are
     refused as unverifiable.
     Checked on rank 0 and broadcast, so every rank raises together.
     """
@@ -63,8 +63,8 @@ def _check_matches_run(conf: Config, comm) -> None:
         if recorded != physics_hash(conf):
             raise ConfigError(
                 f"The config's physics settings differ from the run that wrote "
-                f"{folder / RESULTS} (only [output], [postprocess] and time.end_time may "
-                f"change for pulse post). Compare with {resolved}",
+                f"{folder / RESULTS} (only [output], [postprocess], [solver] and "
+                f"time.end_time may change for pulse post). Compare with {resolved}",
             )
 
     _on_rank0(comm, ConfigError, check)

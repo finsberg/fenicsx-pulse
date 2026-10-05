@@ -659,7 +659,11 @@ def _run(sim: MechanicsSimulation, comm, restart: bool) -> Path:
         # Also on failure: the timings up to a solver failure are what one wants to look at.
         if isinstance(sim.monitor, PerformanceMonitor):
             sim.monitor.display_summary()
-            _on_rank0(comm, OSError, lambda: sim.monitor.save_summary(folder / PERFORMANCE))
+            try:
+                _on_rank0(comm, OSError, lambda: sim.monitor.save_summary(folder / PERFORMANCE))
+            except OSError as e:
+                # Never let the timings mask the run's own outcome (or its original error).
+                logger.warning(f"Could not write {folder / PERFORMANCE}: {e}")
     record["status"] = "finished"
     record["end"] = datetime.datetime.now().isoformat()
     _write_json(folder / RUN_META, record, comm)
