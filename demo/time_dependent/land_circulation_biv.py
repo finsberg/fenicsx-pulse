@@ -34,6 +34,7 @@ import dolfinx
 import ldrb
 import matplotlib.pyplot as plt
 import numpy as np
+import scifem
 from circulation.regazzoni2020 import Regazzoni2020
 from crossbridge import Land2017, calcium_trace
 
@@ -215,14 +216,28 @@ LAND_WHOLE_ORGAN = {
 # is 120 kPa, which we use for the left ventricle. A weaker right ventricle
 # is what keeps the pulmonary pressures low, so we give the right ventricle a
 # smaller `Tref` than the left. The septum contracts with the LV by default.
-# The model takes `Tref` in pascals, one value per cell, which we look up from
-# each point's region.
+#
+# As in [](../howto/spatial_material.py), we build a space of simple
+# functions on the region tags: it has one degree of freedom per tag, in the
+# order of the tag list, so each region's value is a single entry.
 
 Tref = {LV: 120e3, SEPTUM: 120e3, RV: 45e3}  # Pa
-tref_q = np.vectorize(Tref.get)(region_q).astype(float)
+S = scifem.create_space_of_simple_functions(geo.mesh, regions, [LV, SEPTUM, RV])
+tref_simple = dolfinx.fem.Function(S)
+tref_simple.x.array[:] = [Tref[LV], Tref[SEPTUM], Tref[RV]]
 
-cell = Land2017(num_cells=len(Ta_q.x.array), params={**LAND_WHOLE_ORGAN, "Tref": tref_q})
-assert len(tref_q) == cell.num_cells
+# Land takes `Tref` in pascals, one value per cell of the model, that is per
+# quadrature point. We get those values by interpolating the simple function
+# into the quadrature space, and check them against each point's region.
+
+tref_q = dolfinx.fem.Function(Q)
+tref_q.interpolate(dolfinx.fem.Expression(tref_simple, Q.element.interpolation_points))
+assert np.array_equal(tref_q.x.array, np.vectorize(Tref.get)(region_q).astype(float))
+
+cell = Land2017(
+    num_cells=len(Ta_q.x.array),
+    params={**LAND_WHOLE_ORGAN, "Tref": tref_q.x.array.copy()},
+)
 SL0 = cell.p["SL0"]  # um, the sarcomere length at zero fibre strain
 
 # Scaling `Tref` inside Land, rather than scaling its output afterwards, keeps
