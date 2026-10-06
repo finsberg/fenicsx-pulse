@@ -403,9 +403,15 @@ bcs_prestress = pulse.BoundaryConditions(
     neumann=(neumann_lv, neumann_rv),
 )
 
-# We store the prestressed displacement in a file to avoid recomputing it.
+# We store the prestressed displacement in a file to avoid recomputing it. The
+# file name carries the two target pressures, so changing `p_end_diastole` of
+# either ventricle prestresses again rather than reusing a reference unloaded
+# from different pressures.
 
-prestress_fname = outdir / "prestress_biv_inverse.bp"
+prestress_fname = outdir / (
+    f"prestress_biv_inverse_LV{lv_params.p_end_diastole:g}Pa"
+    f"_RV{rv_params.p_end_diastole:g}Pa.bp"
+)
 if not prestress_fname.exists():
     logger.info(
         f"Start prestressing... Targets: p_LV={p_LV_ED:.2f} kPa, p_RV={p_RV_ED:.2f} kPa",
@@ -614,15 +620,41 @@ if comm.rank == 0:
     plt.show()
 
     if not IN_CI:
-        # The last beat simulated, or the whole run if it is shorter than a beat.
-        last = traces["time"] > traces["time"][-1] - PERIOD
+        # We read the end-diastolic and end-systolic volumes off the phase
+        # trace of the last complete beat, rather than taking the largest and
+        # smallest volume: filling at a prescribed rate can carry the volume
+        # past end diastole before the next beat starts. The first step solved
+        # under isovolumic contraction holds V at the end-diastolic volume, and
+        # the first one solved under isovolumic relaxation at the end-systolic
+        # volume. A run shorter than one beat reports the beat it is in.
+        time = traces["time"]
+        complete = int(np.floor(time[-1] / PERIOD + 1e-9))
+        beat = max(complete - 1, 0)
+        in_beat = (time > beat * PERIOD + 1e-9) & (time <= (beat + 1) * PERIOD + 1e-9)
+        label = f"beat {beat + 1}" + ("" if complete > 0 else " (incomplete)")
         for name in ("LV", "RV"):
-            V_beat = traces[f"V_{name}"][last]
-            EDV, ESV = float(V_beat.max()), float(V_beat.min())
+            phase = traces[f"phase_{name}"][in_beat]
+            V_beat = traces[f"V_{name}"][in_beat]
+            volumes = {}
+            for key, value in (
+                ("EDV", cycle.Phase.ISOVOLUMIC_CONTRACTION),
+                ("ESV", cycle.Phase.ISOVOLUMIC_RELAXATION),
+            ):
+                hits = np.flatnonzero(phase == int(value))
+                if hits.size:
+                    volumes[key] = float(V_beat[hits[0]])
+            peak = float(traces[f"p_{name}"][in_beat].max())
+            if len(volumes) < 2:
+                missing = {"EDV", "ESV"} - set(volumes)
+                logger.info(
+                    f"{name}, {label}: no {' or '.join(sorted(missing))} "
+                    f"(the beat never reached that phase); peak {peak:.1f} mmHg",
+                )
+                continue
+            EDV, ESV = volumes["EDV"], volumes["ESV"]
             logger.info(
-                f"{name}: EDV {EDV:.1f} mL, ESV {ESV:.1f} mL, "
-                f"EF {100 * (1 - ESV / EDV):.1f}%, "
-                f"peak {traces[f'p_{name}'][last].max():.1f} mmHg",
+                f"{name}, {label}: EDV {EDV:.1f} mL, ESV {ESV:.1f} mL, "
+                f"EF {100 * (1 - ESV / EDV):.1f}%, peak {peak:.1f} mmHg",
             )
 
 # ## A whole beat
