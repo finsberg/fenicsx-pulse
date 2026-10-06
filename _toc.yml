@@ -33,6 +33,7 @@ parts:
       sections:
       - file: "demo/time_dependent/time_dependent_bestel_lv"
       - file: "demo/time_dependent/time_dependent_bestel_biv"
+      - file: "demo/time_dependent/land_circulation_biv"
       - file: "demo/time_dependent/complete_cycle"
       - file: "demo/time_dependent/monolithic_3d0d.py"
       - file: "demo/time_dependent/monolithic_3d0d_biv.py"
