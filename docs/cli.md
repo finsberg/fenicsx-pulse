@@ -322,8 +322,8 @@ reads `results.bp` (which can happen later, on any number of ranks, independent 
 the run itself used) and writes into `post/`. The config given to `pulse post` must describe the
 same physics as the run that wrote `results.bp` — the same check as for `--restart` (below),
 against the hash in `restart.json`, or, if the run stopped before writing its first checkpoint,
-against `config.resolved.toml`. Only `[output]`, `[postprocess]` and the run length may differ;
-anything else (e.g. an edited `geometry.nx`) is refused with a `ConfigError` naming
+against `config.resolved.toml`. Only `[output]`, `[postprocess]`, `[solver]` and the run length may
+differ; anything else (e.g. an edited `geometry.nx`) is refused with a `ConfigError` naming
 `config.resolved.toml` to compare with, rather than crashing or silently producing wrong results.
 
 ```text
