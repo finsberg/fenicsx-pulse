@@ -28,7 +28,7 @@ import numpy as np
 
 __all__ = ["FrameRecorder", "base_normal", "render", "save_pv_figure"]
 
-CHAMBER_COLOURS = {"LV": "#c81e3c", "RV": "#2a6fb0"}
+CHAMBER_COLOURS = {"LV": "#c81e3c", "RV": "#2a6fb0", "SEPTUM": "#7a4fa3"}
 
 
 class FrameRecorder:
@@ -344,6 +344,33 @@ def render(
     return out_path
 
 
+#: Background shades for the five `pulse.cycle.Phase` values, in order.
+PHASE_SHADES = ("#f2f2f2", "#fde3c8", "#fbd0d0", "#d9e7f7", "#dff0d8")
+PHASE_LABELS = ("preload", "IVC", "ejection", "IVR", "filling")
+
+
+def _shade_phases(axis, time: np.ndarray, phase: np.ndarray) -> None:
+    """Shade each run of equal phase behind the traces on `axis`, with a legend.
+
+    `phase[k]` is the phase step k was solved under, covering (time[k-1], time[k]].
+    """
+    if len(time) < 2:
+        return
+    edges = np.concatenate(([time[0] - (time[1] - time[0])], time))
+    start = 0
+    seen = set()
+    for k in range(1, len(phase) + 1):
+        if k == len(phase) or phase[k] != phase[start]:
+            value = int(phase[start])
+            axis.axvspan(
+                edges[start], edges[k], color=PHASE_SHADES[value], linewidth=0, zorder=0,
+                label=None if value in seen else PHASE_LABELS[value],
+            )
+            seen.add(value)
+            start = k
+    axis.legend(frameon=False, fontsize="x-small", loc="upper right")
+
+
 def save_pv_figure(
     traces_path: Path | str,
     out_path: Path | str,
@@ -357,13 +384,16 @@ def save_pv_figure(
     import matplotlib.pyplot as plt
 
     traces = dict(np.load(traces_path))
-    fig, (loop, trace) = plt.subplots(
+    regions = sorted(k[len("Ta_") :] for k in traces if k.startswith("Ta_"))
+    ncols = 3 if regions else 2
+    fig, axes = plt.subplots(
         1,
-        2,
-        figsize=(11, 4.2),
+        ncols,
+        figsize=(11 if ncols == 2 else 15, 4.2),
         layout="constrained",
-        width_ratios=(1.0, 1.3),
+        width_ratios=(1.0, 1.3) if ncols == 2 else (1.0, 1.3, 1.1),
     )
+    loop, trace = axes[0], axes[1]
     for chamber in chambers:
         colour = CHAMBER_COLOURS.get(chamber, "#444444")
         loop.plot(
@@ -374,15 +404,30 @@ def save_pv_figure(
             traces["time"], traces[f"p_{chamber}"], color=colour,
             linewidth=1.3, label=f"p {chamber}",
         )
+    phase_key = f"phase_{chambers[0]}"
+    if phase_key in traces:
+        _shade_phases(trace, traces["time"], traces[phase_key])
     loop.set_xlabel("volume [mL]")
     loop.set_ylabel("pressure [mmHg]")
     loop.set_title(title or "Pressure-volume loop")
     trace.set_xlabel("time [s]")
     trace.set_ylabel("pressure [mmHg]")
     trace.set_title("Pressure over the beat")
-    for axis in (loop, trace):
+    if regions:
+        ta = axes[2]
+        for region in regions:
+            ta.plot(
+                traces["time"], traces[f"Ta_{region}"],
+                color=CHAMBER_COLOURS.get(region, None), linewidth=1.3, label=region,
+            )
+        ta.set_xlabel("time [s]")
+        ta.set_ylabel("active tension [kPa]")
+        ta.set_title("Active tension")
+        ta.legend(frameon=False, fontsize="small")
+    for axis in axes:
         axis.spines[["top", "right"]].set_visible(False)
-        if len(chambers) > 1:
+    if len(chambers) > 1:
+        for axis in (loop, trace):
             axis.legend(frameon=False, fontsize="small")
 
     out_path = Path(out_path)
