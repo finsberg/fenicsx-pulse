@@ -4,3 +4,4 @@ This section contains "how to" guides for how to do specific tasks in FEniCSx-Pu
 This section currently includes
 
 - [How to define spatially varying material properties](spatial_material.py)
+- [How to restart a simulation from a checkpoint](restart.py)

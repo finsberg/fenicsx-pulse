@@ -24,6 +24,7 @@ parts:
     - file: "demo/howto/README"
       sections:
       - file: "demo/howto/spatial_material"
+      - file: "demo/howto/restart"
     - file: "demo/prestress/README"
       sections:
       - file: "demo/prestress/prestress_biv"
