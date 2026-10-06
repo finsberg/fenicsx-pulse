@@ -35,9 +35,12 @@ through the peripheral resistance once the cavity has ejected at least once.
 
 from __future__ import annotations
 
+import dataclasses
 import enum
 import logging
+from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Any, TypeVar
 
 from mpi4py import MPI
 from petsc4py import PETSc
@@ -193,6 +196,22 @@ class CavityRecord:
     P: float
     P_c: float
     Q: float
+
+
+#: How each field type of `CavityCycle`/`CavityRecord` goes to JSON and back. The
+#: annotations are strings here (``from __future__ import annotations``).
+_TO_JSON = {"Phase": int, "int": int, "float": float, "bool": bool}
+_FROM_JSON = {"Phase": Phase, "int": int, "float": float, "bool": bool}
+
+_Fields = TypeVar("_Fields", CavityCycle, CavityRecord)
+
+
+def _fields_to_json(obj: CavityCycle | CavityRecord) -> dict[str, Any]:
+    return {f.name: _TO_JSON[str(f.type)](getattr(obj, f.name)) for f in dataclasses.fields(obj)}
+
+
+def _fields_from_json(cls: type[_Fields], data: Mapping[str, Any]) -> _Fields:
+    return cls(**{f.name: _FROM_JSON[str(f.type)](data[f.name]) for f in dataclasses.fields(cls)})
 
 
 def _preload_pressure(cyc: CavityCycle, params: CycleParams, t: float) -> float:
@@ -392,6 +411,48 @@ class CycleController:
             )
             for name, cyc in self.cycles.items()
         }
+
+    def state_dict(self) -> dict[str, Any]:
+        """Everything `step` carries from one call to the next, JSON-able.
+
+        ``{"initialized", "refresh_pending", "cycles", "records"}``, with each
+        `CavityCycle` and `CavityRecord` as a dict of its fields and the phase
+        as an int. It survives ``json.loads(json.dumps(...))`` unchanged.
+        """
+        return {
+            "initialized": self._initialized,
+            "refresh_pending": self._refresh_pending,
+            "cycles": {name: _fields_to_json(cyc) for name, cyc in self.cycles.items()},
+            "records": {name: _fields_to_json(rec) for name, rec in self.records.items()},
+        }
+
+    def load_state_dict(self, state: Mapping[str, Any]) -> None:
+        """Restore what `state_dict` returned, for the same cavities.
+
+        Raises `KeyError`, changing nothing, naming every cavity that is in
+        only one of `state` and this controller. A pending preconditioner
+        refresh is never cleared: a fresh solver has no factorization to
+        reuse, and a rolled-back failure keeps its refresh pending.
+        """
+        names = set(state["cycles"]) | set(state["records"])
+        mismatch = sorted(names ^ set(self.params))
+        if mismatch:
+            raise KeyError(
+                f"Cavities {mismatch} are in only one of the state "
+                f"({sorted(names)}) and this controller ({sorted(self.params)})",
+            )
+        cycles = {
+            name: _fields_from_json(CavityCycle, state["cycles"][name]) for name in self.params
+        }
+        records = {
+            name: _fields_from_json(CavityRecord, state["records"][name])
+            for name in self.params
+            if name in state["records"]
+        }
+        self.cycles = cycles
+        self.records = records
+        self._initialized = bool(state["initialized"])
+        self._refresh_pending = self._refresh_pending or bool(state["refresh_pending"])
 
     def _solve_once(self) -> bool:
         """One Newton solve, refreshing the preconditioner first if one is pending.
