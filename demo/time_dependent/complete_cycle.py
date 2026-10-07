@@ -294,10 +294,12 @@ lv_params = cycle.CycleParams(
     filling=cycle.PrescribedInflow(rate=0.104 * mL / 1e-3),
 )
 
-# The right ventricle pumps into the pulmonary circulation, which has a much
-# lower resistance and a higher compliance than the systemic one, and it fills
-# at a lower pressure. We have tuned these values by hand on this mesh; they
-# are not taken from a reference. `p_init` is tuned so that the first beat
+# The right ventricle pumps into the pulmonary circulation, which has a lower
+# resistance (0.5 against 1.1 mmHg s/mL) and a higher compliance than the
+# systemic one, and it fills at a lower pressure. We have tuned these values by
+# hand on this mesh; they are not taken from a reference. In particular, $R_p$
+# was raised from 0.15 to 0.5 mmHg s/mL to give a right ventricular systolic
+# pressure of about 24 mmHg. `p_init` is tuned so that the first beat
 # opens the pulmonary valve at about the pressure the compliance has drained to
 # by the second beat (2.50 against 2.33 kPa), so the two beats peak at 24.7 and
 # 23.6 mmHg.
@@ -338,11 +340,11 @@ params = {"LV": lv_params, "RV": rv_params}
 #
 # We put `t_sys` at the end of PRELOAD, so that the tension starts to build
 # as soon as the ventricles stop being loaded, and `t_dias` 280 ms later. We
-# integrate one beat of the model once, here, scale it to a unit peak and
-# repeat it every `PERIOD`, as $T_a(t) = T_{\max}\,\tilde{a}(t \bmod
-# \text{PERIOD})$, the same in every element of both ventricles. The tension
-# is above a tenth of its peak from 0.143 s to 0.477 s of each beat and peaks
-# at 0.395 s. It has died out long before the next beat starts. We tuned
+# integrate one beat of the model once, here, scale $\tau$ to a unit peak and
+# repeat it every `PERIOD`, as $T_a(t) = T_{\max}\,\tilde{\tau}(t \bmod
+# \text{PERIOD})$, with $\tilde{\tau} = \tau / \max\tau$, the same in every
+# element of both ventricles. The tension is above a tenth of its peak from
+# 0.143 s to 0.477 s of each beat and peaks at 0.395 s. It has died out long before the next beat starts. We tuned
 # `T_MAX` by hand, for a left ventricular peak pressure of about 100 mmHg at an
 # ejection fraction of about 50 %. As the tension builds slowly, the left
 # ventricle spends 69 ms of the second beat in isovolumic contraction before

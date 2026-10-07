@@ -305,7 +305,7 @@ def sliding_base(V: dolfinx.fem.FunctionSpace) -> list[dolfinx.fem.DirichletBC]:
 # The spring must stay soft. It resists any growth of the two ventricles
 # together, just as a tight pericardium does, so a stiff spring couples their
 # filling. With 1e6 Pa/m, the left ventricle, which fills after the right
-# one, pushed the right ventricular pressure up by as much as its own. The
+# one, pushed the right ventricular pressure up by more than its own. The
 # tricuspid valve then closed, and the right ventricle stopped filling for the
 # last half of diastole while its pressure climbed. At 5e4 Pa/m, the right
 # ventricle almost stops filling for about 0.1 s while the left one fills, and
@@ -614,7 +614,7 @@ if comm.rank == 0:
 # 10 mmHg and the right 6 mmHg. The earlier beats drift while the closed loop
 # settles from its initial state: the left ventricular peak falls from 117 to
 # 103 mmHg, and the right ventricular end-diastolic volume grows from 89 to
-# 104 mL. In the last beat both loops close to within 2 mL.
+# 104 mL. In the last beat both loops close to within about 2 mL.
 # ```
 #
 # <video width="720" controls loop autoplay muted>
