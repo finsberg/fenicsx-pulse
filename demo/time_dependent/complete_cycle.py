@@ -256,10 +256,18 @@ logger.info(
 # Outside ejection the valve is shut, and once a cavity has ejected, its $P_c$
 # drains through $R_p$.
 #
-# For the left ventricle we use the parameters that `pulse`'s own tests run
-# the cycle with. Note that everything in `pulse.cycle` is SI. We write the
-# circuit-side values in millilitres and mmHg, and `mL` and `mmHg` convert
-# them.
+# For the left ventricle we use the timings and the Windkessel that `pulse`'s
+# own tests run the cycle with. Note that everything in `pulse.cycle` is SI. We
+# write the circuit-side values in millilitres and mmHg, and `mL` and `mmHg`
+# convert them.
+#
+# The filling rate is our own. Filling at a prescribed rate knows nothing of
+# the next beat, whose PRELOAD starts again from `preload_pressure`. A faster
+# rate fills the ventricle past the volume it has at that pressure, and the
+# pressure then drops as PRELOAD takes over. We set each ventricle's rate so
+# that it is back at about that volume when the next beat starts: the left
+# ventricle holds 96.2 mL at 500 Pa and fills to 98.9 mL by the end of the
+# first beat; the right holds 69.3 mL at 200 Pa and fills to 69.3 mL.
 
 lv_params = cycle.CycleParams(
     t_zero=0.05,
@@ -274,13 +282,16 @@ lv_params = cycle.CycleParams(
         resistance=1.1 * mmHg / mL,
         characteristic_impedance=0.03 * mmHg / mL,
     ),
-    filling=cycle.PrescribedInflow(rate=0.046 * mL / 1e-3),
+    filling=cycle.PrescribedInflow(rate=0.040 * mL / 1e-3),
 )
 
 # The right ventricle pumps into the pulmonary circulation, which has a much
 # lower resistance and a higher compliance than the systemic one, and it fills
-# at a lower pressure. We have tuned these values by hand, to give a plausible
-# loop on this mesh; they are not taken from a reference.
+# at a lower pressure. We have tuned these values by hand on this mesh; they
+# are not taken from a reference. `p_init` is tuned so that the first beat
+# opens the pulmonary valve at about the pressure the compliance has drained to
+# by the second beat (0.60 against 0.47 kPa), so both beats peak just under
+# 40 mmHg, at 38.2 and 38.0 mmHg.
 
 rv_params = cycle.CycleParams(
     t_zero=0.05,
@@ -290,12 +301,12 @@ rv_params = cycle.CycleParams(
     p_fill=200.0,
     period=PERIOD,
     windkessel=cycle.Windkessel(
-        p_init=1600.0,
+        p_init=600.0,
         compliance=4.0 * mL / mmHg,
         resistance=0.15 * mmHg / mL,
         characteristic_impedance=0.01 * mmHg / mL,
     ),
-    filling=cycle.PrescribedInflow(rate=0.046 * mL / 1e-3),
+    filling=cycle.PrescribedInflow(rate=0.042 * mL / 1e-3),
 )
 params = {"LV": lv_params, "RV": rv_params}
 
@@ -304,9 +315,11 @@ params = {"LV": lv_params, "RV": rv_params}
 # We use a simple twitch as the active tension, the same in every element of
 # both ventricles. It starts 5 ms after end diastole, peaks 20 ms later at
 # `T_MAX`, and then decays with an e-folding time of 20 ms. By the start of the
-# next beat it is negligible, so we can repeat it every `PERIOD`.
+# next beat it is negligible, so we can repeat it every `PERIOD`. We tuned
+# `T_MAX` by hand, for a left ventricular ejection fraction above 35 % at a
+# peak pressure below 140 mmHg.
 
-T_MAX = 60.0  # kPa, uniform over both ventricles
+T_MAX = 90.0  # kPa, uniform over both ventricles
 
 
 def activation(t: float) -> float:
@@ -671,7 +684,13 @@ if comm.rank == 0:
 # ---
 # name: pv_loop_complete_cycle
 # ---
-# Both ventricles over two beats. <!-- filled in Task 5 -->
+# Both ventricles over two beats. In the second beat the left ventricle ejects
+# 42 mL (EF 38%) against a peak of 131 mmHg, and the right 35 mL (EF 46%)
+# against 38 mmHg. Each loop closes through PRELOAD, which ramps the pressure
+# back up to end diastole. The first left ventricular loop ends systole at
+# 74.5 mL rather than 69.1 mL, since its Windkessel starts from `p_init`
+# rather than from the pressure it has drained to. The run stops at 1.6 s,
+# partway through the second beat's filling.
 # ```
 #
 # <video width="720" controls loop autoplay muted>
@@ -683,10 +702,11 @@ if comm.rank == 0:
 # ## Where to go next
 #
 # Here the active tension is a prescribed twitch and each ventricle ejects
-# into its own Windkessel. [](land_circulation_biv.py) drives the same mesh
-# with a crossbridge model and a different strength per region, coupled to a
-# full closed-loop circulation, and [](monolithic_3d0d_biv.py) solves the
-# mechanics and a closed-loop circulation together in a single Newton system.
+# into its own Windkessel. [](land_circulation_biv.py) drives a biventricular
+# ellipsoid with a crossbridge model and a different strength per region,
+# coupled to a full closed-loop circulation, and [](monolithic_3d0d_biv.py)
+# solves this mesh and a closed-loop circulation together in a single Newton
+# system.
 
 # ## References
 # ```{bibliography}

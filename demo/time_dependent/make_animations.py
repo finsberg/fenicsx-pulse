@@ -5,6 +5,8 @@ Run by hand after a full simulation, never as part of the documentation build:
     cd demo/time_dependent
     PULSE_DYNAMIC=1 python3 monolithic_3d0d.py        # writes frames + traces
     PULSE_DYNAMIC=0 python3 monolithic_3d0d_biv.py
+    python3 complete_cycle.py
+    python3 land_circulation_biv.py
     python3 make_animations.py
 
 Each demo records the moving geometry every few steps as it runs, alongside the
@@ -47,6 +49,22 @@ ASSETS = {
         "chambers": ("LV", "RV"),
         "title": "UKB biventricular mesh, monolithic 3D-0D",
         "zoom": 1.1,
+    },
+    "complete_cycle": {
+        "results": HERE / "results_biv_complete_cycle",
+        "frames": "frames.npz",
+        "traces": "traces.npz",
+        "chambers": ("LV", "RV"),
+        "title": "UKB biventricular mesh, five-phase cycle",
+        "zoom": 1.1,
+    },
+    "land_circulation_biv": {
+        "results": HERE / "results_land_circulation_biv",
+        "frames": "frames.npz",
+        "traces": "traces.npz",
+        "chambers": ("LV", "RV"),
+        "title": "BiV ellipsoid, Land crossbridges in a closed loop",
+        "zoom": 1.0,
     },
 }
 
