@@ -5,6 +5,8 @@ Run by hand after a full simulation, never as part of the documentation build:
     cd demo/time_dependent
     PULSE_DYNAMIC=1 python3 monolithic_3d0d.py        # writes frames + traces
     PULSE_DYNAMIC=0 python3 monolithic_3d0d_biv.py
+    python3 complete_cycle.py
+    python3 land_circulation_biv.py
     python3 make_animations.py
 
 Each demo records the moving geometry every few steps as it runs, alongside the
@@ -21,6 +23,8 @@ from __future__ import annotations
 import argparse
 import logging
 from pathlib import Path
+
+import numpy as np
 
 import animation
 
@@ -48,7 +52,51 @@ ASSETS = {
         "title": "UKB biventricular mesh, monolithic 3D-0D",
         "zoom": 1.1,
     },
+    "complete_cycle": {
+        "results": HERE / "results_biv_complete_cycle",
+        "frames": "frames.npz",
+        "traces": "traces.npz",
+        "chambers": ("LV", "RV"),
+        "title": "UKB biventricular mesh, five-phase cycle",
+        "zoom": 1.1,
+        "period": 0.8,
+    },
+    "land_circulation_biv": {
+        "results": HERE / "results_land_circulation_biv",
+        "frames": "frames.npz",
+        "traces": "traces.npz",
+        "chambers": ("LV", "RV"),
+        "title": "BiV ellipsoid, Land crossbridges in a closed loop",
+        "zoom": 1.0,
+        "period": 1.0,
+        # The demo stamps each step with its start time, (n)*DT for n in range(N).
+        "time_at_step_start": True,
+    },
 }
+
+
+def run_mismatch(frames: Path, traces: Path) -> str | None:
+    """Describe how the frames and traces disagree, or None if they fit.
+
+    The demos record nothing under CI, so an old full-run `frames.npz` can sit
+    next to the fresh two-step `traces.npz`. `animation.render` pairs each frame
+    with a trace index by `searchsorted(...).clip(...)`, which hides that, so
+    we compare the end times here. They agree to within one trace step when both
+    files come from the same run.
+    """
+    frame_time = np.load(frames)["time"]
+    trace_time = np.load(traces)["time"]
+    if frame_time.size == 0 or trace_time.size == 0:
+        return f"{frames.name} or {traces.name} holds no time steps"
+    step = float(np.median(np.diff(trace_time))) if trace_time.size > 1 else 0.0
+    frames_end, traces_end = float(frame_time[-1]), float(trace_time[-1])
+    if frames_end > traces_end + step:
+        return (
+            f"{frames.name} ends at t = {frames_end:.4g} s but {traces.name} ends at "
+            f"t = {traces_end:.4g} s: frames.npz and traces.npz come from different "
+            f"runs -- rerun the demo in full"
+        )
+    return None
 
 
 def main():
@@ -73,6 +121,10 @@ def main():
                 f"run the demo for a full beat first (see this module's docstring)",
             )
             continue
+        mismatch = run_mismatch(frames, traces)
+        if mismatch:
+            logger.warning(f"{name}: {mismatch}")
+            continue
         if args.check:
             logger.info(f"{name}: ready ({frames.name}, {traces.name})")
             continue
@@ -82,6 +134,8 @@ def main():
             STATIC / f"pv_loop_{name}.png",
             chambers=spec["chambers"],
             title=spec["title"],
+            period=spec.get("period"),
+            time_at_step_start=spec.get("time_at_step_start", False),
         )
         logger.info(f"{name}: wrote {figure.relative_to(STATIC.parent)}")
 

@@ -29,25 +29,19 @@ These examples implement the cardiac elastodynamics benchmarks described in {cit
 * **[BiV Benchmark](time_dependent_bestel_biv.py)**:
     Extends the benchmark to a Bi-Ventricular (BiV) geometry. This involves applying distinct pressure loads to the LV and RV cavities while handling the complex geometry of the septum and free walls.
 
-## Multiscale Coupling (Circulation & Cell Models)
+## Coupling to a circulation
 
-These examples demonstrate a more physiological setup where the 3D mechanics model is coupled to 0D lumped-parameter models for the circulation and cellular electrophysiology. Note also that these examples
-uses a quasi-static formulation (neglecting inertia), so no time integration scheme is required.
+In these examples the 3D mechanics model takes the place of the ventricles in a 0D model of the circulation, and the two exchange cavity volumes and pressures. They differ in how the 0D side is advanced:
 
-**Coupling Strategy:**
-* **Electrophysiology**: A 0D cell model (e.g., **TorOrd** {cite}`tomek2019development`-**Land** {cite}`land2017model`) computes the intracellular calcium transient and cross-bridge dynamics to determine the active tension $T_a(t)$.
-* **Circulation**: A closed-loop 0D circulation model (e.g., **Regazzoni** {cite}`regazzoni2022cardiac`) computes the flow and volume changes in the cardiovascular system.
-* **Mechanics**: The 3D finite element model replaces the 0D ventricular chamber in the circulation loop. It solves for the cavity pressure required to match the volume computed by the circulation model (or vice-versa).
+| Style | How the 0D side is advanced | Demo | Pick it when |
+| --- | --- | --- | --- |
+| Five-phase cycle | `pulse.cycle.CycleController`, a Windkessel per cavity | [complete_cycle](complete_cycle.py) | you want the classic phase-driven cycle without a closed loop |
+| Split loop | any 0D code, called each step | [land_circulation_biv](land_circulation_biv.py) | the circulation is an external solver |
+| Monolithic | `GotranxCirculation`, 0D states inside Newton | [monolithic_3d0d](monolithic_3d0d.py), [monolithic_3d0d_biv](monolithic_3d0d_biv.py) | the circuit is a `.ode` file and you want one Newton system |
 
-**Demos:**
+The closed loop in the last two is the circulation model of Regazzoni et al. {cite}`regazzoni2022cardiac`. Each demo also chooses its own activation: [complete_cycle](complete_cycle.py) and the monolithic demos use the Bestel model {cite}`bestel2001biomechanical`, and [land_circulation_biv](land_circulation_biv.py) runs the Land crossbridge model {cite}`land2017model` at every quadrature point. [complete_cycle](complete_cycle.py) solves the dynamic problem, [land_circulation_biv](land_circulation_biv.py) the quasi-static one, which needs no time integration scheme, and the monolithic demos can run either.
 
-* **[LV Multiscale Coupling](time_dependent_land_circ_lv.py)**:
-    Couples the LV ellipsoid model with the Regazzoni circulation model and TorOrd-Land cell model. It demonstrates a volume-based coupling strategy where the 3D model acts as a "pressure calculator" for the circulation loop.
-
-* **[BiV Multiscale Coupling](time_dependent_land_circ_biv.py)**:
-    Extends the multiscale framework to a Bi-Ventricular geometry. The coupling interface handles two separate cavities (LV and RV), exchanging volumes and pressures for both ventricles simultaneously with the circulation model.
-
-See also the [Isometric Twitch Experiments & the Frank-Starling Mechanism](../crossbridge/README.md) section, which uses the same quasi-static coupling style as above but focuses on cellular-scale active tension models rather than a full circulation loop.
+See also the [Isometric Twitch Experiments & the Frank-Starling Mechanism](../crossbridge/README.md) section, which uses the same quasi-static formulation as [land_circulation_biv](land_circulation_biv.py) but focuses on cellular-scale active tension models rather than a full circulation loop.
 
 ## References
 
