@@ -51,7 +51,7 @@ logging.getLogger("scifem").setLevel(logging.WARNING)
 
 # ## Geometry
 #
-# We use pulse's own LV ellipsoid, in metres. `lv_ellipsoid` writes the mesh,
+# We use the LV ellipsoid from cardiac-geometries that pulse's tests use, in metres. `lv_ellipsoid` writes the mesh,
 # markers and fibres to `geometry.bp` in the output folder, so a rerun of this
 # demo reuses that file instead of meshing again.
 

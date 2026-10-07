@@ -155,9 +155,10 @@ else:
             cmap=[animation.CHAMBER_COLOURS[REGION_NAMES[r]] for r in (LV, RV, SEPTUM)],
             scalar_bar_args={"title": "1 = LV, 2 = RV, 3 = septum"},
         )
-        if pyvista.OFF_SCREEN:
+        if not pyvista.OFF_SCREEN:
+            plotter.show()
+        else:
             plotter.screenshot(outdir / "regions.png")
-        plotter.show()
 
 # LDRB works from Laplace solutions, which do not change when the mesh is
 # scaled, so we split the regions first and only then scale the mesh by

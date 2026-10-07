@@ -24,6 +24,8 @@ import argparse
 import logging
 from pathlib import Path
 
+import numpy as np
+
 import animation
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -69,6 +71,30 @@ ASSETS = {
 }
 
 
+def run_mismatch(frames: Path, traces: Path) -> str | None:
+    """Describe how the frames and traces disagree, or None if they fit.
+
+    The demos record nothing under CI, so an old full-run `frames.npz` can sit
+    next to the fresh two-step `traces.npz`. `animation.render` pairs each frame
+    with a trace index by `searchsorted(...).clip(...)`, which hides that, so
+    we compare the end times here. They agree to within one trace step when both
+    files come from the same run.
+    """
+    frame_time = np.load(frames)["time"]
+    trace_time = np.load(traces)["time"]
+    if frame_time.size == 0 or trace_time.size == 0:
+        return f"{frames.name} or {traces.name} holds no time steps"
+    step = float(np.median(np.diff(trace_time))) if trace_time.size > 1 else 0.0
+    frames_end, traces_end = float(frame_time[-1]), float(trace_time[-1])
+    if frames_end > traces_end + step:
+        return (
+            f"{frames.name} ends at t = {frames_end:.4g} s but {traces.name} ends at "
+            f"t = {traces_end:.4g} s: frames.npz and traces.npz come from different "
+            f"runs -- rerun the demo in full"
+        )
+    return None
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("names", nargs="*", default=None, help="assets to build")
@@ -90,6 +116,10 @@ def main():
                 f"{name}: missing {', '.join(p.name for p in missing)} -- "
                 f"run the demo for a full beat first (see this module's docstring)",
             )
+            continue
+        mismatch = run_mismatch(frames, traces)
+        if mismatch:
+            logger.warning(f"{name}: {mismatch}")
             continue
         if args.check:
             logger.info(f"{name}: ready ({frames.name}, {traces.name})")

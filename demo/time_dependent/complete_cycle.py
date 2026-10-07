@@ -314,10 +314,10 @@ params = {"LV": lv_params, "RV": rv_params}
 #
 # We use a simple twitch as the active tension, the same in every element of
 # both ventricles. It starts 5 ms after end diastole, peaks 20 ms later at
-# `T_MAX`, and then decays with an e-folding time of 20 ms. By the start of the
-# next beat it is negligible, so we can repeat it every `PERIOD`. We tuned
-# `T_MAX` by hand, for a left ventricular ejection fraction above 35 % at a
-# peak pressure below 140 mmHg.
+# `T_MAX`, and then decays as $e^{-\tau/20\,\text{ms}}$, with $\tau$ the time
+# since the onset. It has died out long before the start of the next beat, so
+# we can repeat it every `PERIOD`. We tuned `T_MAX` by hand, for a left
+# ventricular ejection fraction above 35 % at a peak pressure below 140 mmHg.
 
 T_MAX = 90.0  # kPa, uniform over both ventricles
 
@@ -549,9 +549,10 @@ controller.initialize(t0=0.0)
 # pressure `P_c` and outflow `Q`, all in SI units.
 #
 # We also keep the moving geometry every few steps so that `make_animations.py`
-# can render it afterwards. Nothing is recorded under CI, where the run is two
-# steps rather than two beats, so the video on the page comes from a saved run
-# instead.
+# can render it afterwards. `FrameRecorder` keeps each rank's part of the mesh
+# separately, so we only record frames in serial runs, and never under CI,
+# where the run is two steps rather than two beats. The video on the page comes
+# from a saved run instead.
 
 history: dict[str, list[float]] = {
     k: []
@@ -560,7 +561,9 @@ history: dict[str, list[float]] = {
         "Q_LV", "Q_RV", "phase_LV", "phase_RV", "Ta_LV",
     )
 }
-recorder = animation.FrameRecorder(geometry.mesh, every=5, enabled=not IN_CI, up=up)
+recorder = animation.FrameRecorder(
+    geometry.mesh, every=5, enabled=not IN_CI and comm.size == 1, up=up,
+)
 vtx = dolfinx.io.VTXWriter(comm, outdir / "displacement.bp", [problem.u], engine="BP4")
 
 logger.info(f"Running {max_steps} steps of {DT * 1e3:.0f} ms...")
@@ -686,8 +689,9 @@ if comm.rank == 0:
 # ---
 # Both ventricles over two beats. In the second beat the left ventricle ejects
 # 42 mL (EF 38%) against a peak of 131 mmHg, and the right 35 mL (EF 46%)
-# against 38 mmHg. Each loop closes through PRELOAD, which ramps the pressure
-# back up to end diastole. The first left ventricular loop ends systole at
+# against 38 mmHg. The first loop closes through PRELOAD, which ramps the pressure
+# back up to end diastole; the second stays open because the run stops at
+# 1.6 s, partway through filling. The first left ventricular loop ends systole at
 # 74.5 mL rather than 69.1 mL, since its Windkessel starts from `p_init`
 # rather than from the pressure it has drained to. The run stops at 1.6 s,
 # partway through the second beat's filling.
