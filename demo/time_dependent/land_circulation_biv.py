@@ -252,7 +252,7 @@ SL0 = cell.p["SL0"]  # um, the sarcomere length at zero fibre strain
 # The passive material is the transversely isotropic Holzapfel-Ogden model,
 # with the compressible penalty `Compressible2`. The active stress is
 # `StabilizedActiveStress`, which reads Ta and Ka in kilopascals, as Land
-# returns them. The epicardium and the base rest on springs.
+# returns them.
 
 material_params = pulse.HolzapfelOgden.transversely_isotropic_parameters()
 material = pulse.HolzapfelOgden(f0=geo.f0, s0=geo.s0, **material_params)
@@ -268,15 +268,54 @@ model = pulse.CardiacModel(
     compressibility=pulse.compressibility.Compressible2(),
 )
 
+# ### A sliding base
+#
+# The base may slide in its own plane but not leave it. A spring on the base
+# is not enough: with a stiffness of 1e5 Pa/m, parts of the base rose by up
+# to 2 cm along the long axis. Clamping the base instead would also stop it
+# from moving inwards and outwards with the wall, which it does in a real
+# heart. So we hold only the displacement component along the base normal at
+# zero, as [](complete_cycle.py) does.
+#
+# That condition holds a single displacement component, so we check that the
+# base normal is the z axis, as `biv_ellipsoid` builds it: the base is the
+# plane at the top of the mesh. We keep the normal to stand the mesh upright
+# in the video.
+
+up = animation.base_normal(geometry, "BASE")
+if up[2] < 0.99:
+    raise RuntimeError(
+        f"the base normal is {up.round(3)}, not the z axis the sliding-base condition assumes",
+    )
+
+
+def sliding_base(V: dolfinx.fem.FunctionSpace) -> list[dolfinx.fem.DirichletBC]:
+    facets = geometry.facet_tags.find(geometry.markers["BASE"][0])
+    dofs = dolfinx.fem.locate_dofs_topological(V.sub(2), 2, facets)
+    return [dolfinx.fem.dirichletbc(0.0, dofs, V.sub(2))]
+
+
+# The epicardium rests on a spring, as it would on the pericardium. A
+# `RobinBC` spring acts along the surface normal only, so a spring on the base
+# would push on exactly the component that the sliding base already holds at
+# zero, and add nothing. We therefore put no spring on the base. Since the
+# epicardium is curved, its spring also keeps the ventricles from drifting
+# sideways in the base plane.
+#
+# The spring must stay soft. It resists any growth of the two ventricles
+# together, just as a tight pericardium does, so a stiff spring couples their
+# filling. With 1e6 Pa/m, the left ventricle, which fills after the right
+# one, pushed the right ventricular pressure up by as much as its own. The
+# tricuspid valve then closed, and the right ventricle stopped filling for the
+# last half of diastole while its pressure climbed. At 5e4 Pa/m, the right
+# ventricle almost stops filling for about 0.1 s while the left one fills, and
+# then fills on until the next beat.
+
 alpha_epi = pulse.Variable(
-    dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(1e6)), "Pa / m",
+    dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(5e4)), "Pa / m",
 )
 robin_epi = pulse.RobinBC(value=alpha_epi, marker=geometry.markers["EPI"][0])
-alpha_base = pulse.Variable(
-    dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(1e5)), "Pa / m",
-)
-robin_base = pulse.RobinBC(value=alpha_base, marker=geometry.markers["BASE"][0])
-bcs = pulse.BoundaryConditions(robin=(robin_epi, robin_base))
+bcs = pulse.BoundaryConditions(robin=(robin_epi,), dirichlet=(sliding_base,))
 
 # Each cavity's volume is prescribed by a `Constant`, in cubic metres, and its
 # pressure is the Lagrange multiplier of that constraint. We start them at the
@@ -372,12 +411,21 @@ def p_BiV(V_LV: float, V_RV: float, t: float) -> tuple[float, float]:
 # `Regazzoni2020` calls `p_BiV` for the ventricular pressures, and its own
 # time-varying elastances for the atria. We set its heart rate to `1 / BCL`,
 # so the atria beat with the same period as the calcium transient. They
-# contract 0.9 s into each beat, shortly before the next transient starts. The
-# two ventricular volumes start at the unloaded volumes of the mesh, and every
-# other state at the model's defaults. Those defaults suit the model's own 0D
-# ventricles, not this mesh, so the first beats move blood between the
-# compartments until the closed loop settles; this is why we run four beats
-# and judge the last.
+# contract 0.9 s into each beat, shortly before the next transient starts.
+#
+# ### Less blood than the defaults
+#
+# The default initial state of `Regazzoni2020` suits its own 0D ventricles,
+# not this mesh. Its right ventricle holds 166 mL at a pressure of a few
+# mmHg; the 3D right ventricle is much stiffer, and is unloaded at 66 mL. With
+# the default blood volume, the blood the ventricles cannot take backs up into
+# the atria and veins, and the filling pressures climb well above normal. So
+# the two ventricular volumes start at the unloaded volumes of the mesh, and
+# the atria, the veins and the pulmonary arteries start at 60% of their
+# default volumes and pressures. All other states keep their defaults. That
+# leaves 1030 mL in the circuit, 588 mL less than the defaults. Even so, the
+# first beats move blood between the compartments until the closed loop
+# settles; this is why we run four beats and judge the last.
 #
 # `Regazzoni2020` has its own `solve`, but we do not use it: the loop below
 # is the whole time stepping. Building the model does not call `p_BiV`, so
@@ -391,18 +439,41 @@ def p_BiV(V_LV: float, V_RV: float, t: float) -> tuple[float, float]:
 # The circuit's elastances repeat every beat on their own, so we pass them
 # the global time, as we do for the calcium transient.
 
+FILL = 0.6  # the fraction of the default atrial volumes and vessel pressures we keep
+defaults = {k: v.magnitude for k, v in Regazzoni2020.default_initial_conditions().items()}
+initial_state = {
+    **defaults,  # mL, mmHg and mL/s
+    "V_LV": float(lv_volume.value) / mL,
+    "V_RV": float(rv_volume.value) / mL,
+    **{k: FILL * defaults[k] for k in ("V_LA", "V_RA", "p_VEN_SYS", "p_VEN_PUL", "p_AR_PUL")},
+}
 circ = Regazzoni2020(
     add_units=False,
     p_BiV=p_BiV,
     parameters={"HR": 1.0 / BCL},
-    initial_state={
-        "V_LV": float(lv_volume.value) / mL,
-        "V_RV": float(rv_volume.value) / mL,
-    },
+    initial_state=initial_state,
     outdir=outdir,
     comm=comm,
 )
 names = list(circ.state_names())
+
+# The volume the circuit holds is that of the four chambers plus, for each
+# vessel, its compliance times its pressure. The circuit conserves it, so we
+# can compare the two initial states by it.
+
+
+def circuit_volume(states: dict[str, float]) -> float:
+    vessels = circ.parameters["circulation"]
+    return sum(states[f"V_{c}"] for c in ("LA", "LV", "RA", "RV")) + sum(
+        vessels[side]["C_AR"] * states[f"p_AR_{side}"] + vessels[side]["C_VEN"] * states[f"p_VEN_{side}"]
+        for side in ("SYS", "PUL")
+    )
+
+
+logger.info(
+    f"The circuit holds {circuit_volume(initial_state):.0f} mL, "
+    f"{circuit_volume(defaults) - circuit_volume(initial_state):.0f} mL less than with the defaults",
+)
 y = np.asarray(circ.state, dtype=float).copy()
 
 # At each step we record the states $y_n$ together with the pressures
@@ -428,7 +499,6 @@ history: dict[str, list[float]] = {
         *names,
     )
 }
-up = animation.base_normal(geometry, "BASE")
 recorder = animation.FrameRecorder(
     geometry.mesh, every=10, enabled=not IN_CI and comm.size == 1, up=up,
 )
@@ -537,12 +607,14 @@ if comm.rank == 0:
 # ---
 # name: pv_loop_land_circulation_biv
 # ---
-# Both ventricles over four beats. In the last beat the left ventricle ejects
-# 54 mL (EF 36%) against a peak of 95 mmHg, and the right 55 mL (EF 51%)
-# against 25 mmHg. The earlier beats drift while the closed loop settles from
-# its default initial state: the left ventricular peak falls from 113 to
-# 95 mmHg, and its end-diastolic volume from 162 to 153 mL. In the last beat
-# both loops close to within 1 mL.
+# Both ventricles over four beats, the last one drawn solid and the earlier
+# ones faded. In the last beat the left ventricle ejects 70 mL (EF 43%)
+# against a peak of 103 mmHg, and the right 63 mL (EF 61%) against 18 mmHg.
+# Just before the calcium transient starts, the left ventricular pressure is
+# 10 mmHg and the right 6 mmHg. The earlier beats drift while the closed loop
+# settles from its initial state: the left ventricular peak falls from 117 to
+# 103 mmHg, and the right ventricular end-diastolic volume grows from 89 to
+# 104 mL. In the last beat both loops close to within 2 mL.
 # ```
 #
 # <video width="720" controls loop autoplay muted>
