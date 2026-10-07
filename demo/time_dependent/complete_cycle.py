@@ -24,6 +24,9 @@
 #    back to the imaged shape.
 # 4. **Beats.** From there the controller takes both ventricles through
 #    contraction, ejection, relaxation and filling, and on into the next beat.
+#    The active tension follows the Bestel activation model of the
+#    `circulation` package, which we integrate once with `scipy`, so this demo
+#    needs both of them besides `pulse` (the `demo` extra installs them).
 #
 # A run like this one takes a while. [](../howto/restart.py) shows how to write
 # a checkpoint of a `CycleController` run and carry on from it later.
@@ -42,6 +45,8 @@ import io4dolfinx
 import ldrb
 import matplotlib.pyplot as plt
 import numpy as np
+from circulation import bestel
+from scipy.integrate import solve_ivp
 
 import cardiac_geometries
 import cardiac_geometries.geometry
@@ -75,7 +80,7 @@ logger = logging.getLogger("pulse")
 logging.getLogger("scifem").setLevel(logging.WARNING)
 logging.getLogger("matplotlib").setLevel(logging.WARNING)
 
-# We run two beats of 0.8 s with a time step of 2 ms. Under CI, where this
+# We run two beats of 0.8 s with a time step of 1 ms. Under CI, where this
 # page is built, the run is cut to two steps. Setting `PULSE_MAX_STEPS` to a
 # positive number cuts it to that many steps instead, which is a convenient way
 # to check the first part of a beat without running the whole thing.
@@ -84,7 +89,7 @@ _ci = os.getenv("CI", "").strip().lower()
 IN_CI = _ci not in ("", "0", "false", "no", "off")
 PERIOD = 0.8  # s
 NUM_BEATS = 2
-DT = 2e-3  # s
+DT = 1e-3  # s
 max_steps = 2 if IN_CI else int(round(NUM_BEATS * PERIOD / DT))
 MAX_STEPS = int(os.getenv("PULSE_MAX_STEPS", "0"))
 if MAX_STEPS > 0:
@@ -264,10 +269,14 @@ logger.info(
 # The filling rate is our own. Filling at a prescribed rate knows nothing of
 # the next beat, whose PRELOAD starts again from `preload_pressure`. A faster
 # rate fills the ventricle past the volume it has at that pressure, and the
-# pressure then drops as PRELOAD takes over. We set each ventricle's rate so
-# that it is back at about that volume when the next beat starts: the left
-# ventricle holds 96.2 mL at 500 Pa and fills to 98.9 mL by the end of the
-# first beat; the right holds 69.3 mL at 200 Pa and fills to 69.3 mL.
+# pressure then drops as PRELOAD takes over; a slower one leaves it short, and
+# the pressure jumps. We set each ventricle's rate so that its pressure at the
+# end of filling is close to `preload_pressure`: when the second beat's
+# PRELOAD starts, the left ventricle holds 96.1 mL at 3.41 mmHg
+# (`preload_pressure` is 500 Pa, 3.75 mmHg), and the right 67.1 mL at
+# 1.53 mmHg (200 Pa, 1.50 mmHg). A constant rate is slower than the wall
+# recoils early in filling, so the cavity pressure first dips below zero, to
+# about -2.5 mmHg in the left ventricle and -2.3 mmHg in the right.
 
 lv_params = cycle.CycleParams(
     t_zero=0.05,
@@ -282,7 +291,7 @@ lv_params = cycle.CycleParams(
         resistance=1.1 * mmHg / mL,
         characteristic_impedance=0.03 * mmHg / mL,
     ),
-    filling=cycle.PrescribedInflow(rate=0.040 * mL / 1e-3),
+    filling=cycle.PrescribedInflow(rate=0.104 * mL / 1e-3),
 )
 
 # The right ventricle pumps into the pulmonary circulation, which has a much
@@ -290,8 +299,8 @@ lv_params = cycle.CycleParams(
 # at a lower pressure. We have tuned these values by hand on this mesh; they
 # are not taken from a reference. `p_init` is tuned so that the first beat
 # opens the pulmonary valve at about the pressure the compliance has drained to
-# by the second beat (0.60 against 0.47 kPa), so both beats peak just under
-# 40 mmHg, at 38.2 and 38.0 mmHg.
+# by the second beat (2.50 against 2.33 kPa), so the two beats peak at 24.7 and
+# 23.6 mmHg.
 
 rv_params = cycle.CycleParams(
     t_zero=0.05,
@@ -301,32 +310,75 @@ rv_params = cycle.CycleParams(
     p_fill=200.0,
     period=PERIOD,
     windkessel=cycle.Windkessel(
-        p_init=600.0,
+        p_init=2500.0,
         compliance=4.0 * mL / mmHg,
-        resistance=0.15 * mmHg / mL,
+        resistance=0.5 * mmHg / mL,
         characteristic_impedance=0.01 * mmHg / mL,
     ),
-    filling=cycle.PrescribedInflow(rate=0.042 * mL / 1e-3),
+    filling=cycle.PrescribedInflow(rate=0.057 * mL / 1e-3),
 )
 params = {"LV": lv_params, "RV": rv_params}
 
 # ## Activation
 #
-# We use a simple twitch as the active tension, the same in every element of
-# both ventricles. It starts 5 ms after end diastole, peaks 20 ms later at
-# `T_MAX`, and then decays as $e^{-\tau/20\,\text{ms}}$, with $\tau$ the time
-# since the onset. It has died out long before the start of the next beat, so
-# we can repeat it every `PERIOD`. We tuned `T_MAX` by hand, for a left
-# ventricular ejection fraction above 35 % at a peak pressure below 140 mmHg.
+# The active tension follows the activation model of
+# {cite}`bestel2001biomechanical`, the same one that drives
+# [](time_dependent_bestel_lv.py) and [](monolithic_3d0d.py). The tension
+# $\tau$ obeys
+#
+# $$
+# \dot{\tau} = -|a(t)|\,\tau + \sigma_0 \max(a(t), 0),
+# $$
+#
+# where the rate $a(t)$ switches smoothly from $a_{\min} = -30\,\text{s}^{-1}$
+# to $a_{\max} = 5\,\text{s}^{-1}$ at `t_sys` and back at `t_dias`. In
+# between, $\tau$ rises towards $\sigma_0$ with a time constant of
+# $1/a_{\max}$ = 200 ms, and afterwards it decays with one of
+# $1/|a_{\min}|$ ≈ 33 ms.
+#
+# We put `t_sys` at the end of PRELOAD, so that the tension starts to build
+# as soon as the ventricles stop being loaded, and `t_dias` 280 ms later. We
+# integrate one beat of the model once, here, scale it to a unit peak and
+# repeat it every `PERIOD`, as $T_a(t) = T_{\max}\,\tilde{a}(t \bmod
+# \text{PERIOD})$, the same in every element of both ventricles. The tension
+# is above a tenth of its peak from 0.143 s to 0.477 s of each beat and peaks
+# at 0.395 s. It has died out long before the next beat starts. We tuned
+# `T_MAX` by hand, for a left ventricular peak pressure of about 100 mmHg at an
+# ejection fraction of about 50 %. As the tension builds slowly, the left
+# ventricle spends 69 ms of the second beat in isovolumic contraction before
+# its pressure exceeds the compliance pressure $P_c$, and it then ejects for
+# 210 ms, until just after the tension peaks.
 
-T_MAX = 90.0  # kPa, uniform over both ventricles
+T_MAX = 100.0  # kPa, uniform over both ventricles
+
+activation_model = bestel.BestelActivation(
+    parameters={
+        "t_sys": lv_params.t_end_diastole,
+        "t_dias": lv_params.t_end_diastole + 0.28,
+    },
+)
+beat_times = np.arange(0.0, PERIOD + DT / 2, DT)
+# `max_step` keeps the solver from stepping over the switch at `t_sys`, where
+# the right-hand side is still zero.
+activation_shape = solve_ivp(
+    activation_model,
+    [0.0, PERIOD],
+    [0.0],
+    t_eval=beat_times,
+    method="Radau",
+    max_step=DT,
+).y[0]
+activation_shape /= activation_shape.max()
+above = beat_times[activation_shape > 0.1]
+logger.info(
+    f"Activation peaks at {beat_times[activation_shape.argmax()]:.3f} s and is "
+    f"above 10% of its peak from {above[0]:.3f} s to {above[-1]:.3f} s",
+)
 
 
 def activation(t: float) -> float:
-    """The twitch of tests/test_cycle.py, repeated every beat from end diastole."""
-    onset = lv_params.t_end_diastole
-    tau = max((t % PERIOD) - onset - 0.005, 0.0)
-    return T_MAX * (tau / 0.02) * np.exp(1.0 - tau / 0.02)
+    """Active tension in kPa at time t, repeating every beat."""
+    return T_MAX * float(np.interp(t % PERIOD, beat_times, activation_shape))
 
 
 # [](land_circulation_biv.py) replaces this prescribed shape with a
@@ -345,6 +397,14 @@ def activation(t: float) -> float:
 # smoothly through relaxation. The viscous term acts on the strain rate, which
 # only the dynamic problem has, so it plays no part in the static prestressing
 # solve below.
+#
+# The viscous term resists how fast the wall deforms, but not how fast the
+# ventricles move as a whole on the elastic springs of the epicardium and the
+# base. We therefore add a dashpot on the epicardium as well, a Robin
+# condition with `damping=True`, as in [](monolithic_3d0d.py).
+# It resists the normal velocity of the epicardium with 5e3 Pa s/m, much as
+# the pericardium and the surrounding tissue do. Like the viscous term, it
+# acts on a velocity, so the static prestressing solve ignores it.
 
 
 def setup_problem(geometry, f0, s0, material_params):
@@ -374,7 +434,15 @@ def setup_problem(geometry, f0, s0, material_params):
     )
     robin_base = pulse.RobinBC(value=alpha_base, marker=geometry.markers["BASE"][0])
 
-    robin = [robin_epi, robin_base]
+    beta_epi = pulse.Variable(
+        dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(5e3)),
+        "Pa s / m",
+    )
+    damping_epi = pulse.RobinBC(
+        value=beta_epi, marker=geometry.markers["EPI"][0], damping=True,
+    )
+
+    robin = [robin_epi, robin_base, damping_epi]
 
     # Dirichlet BC: Sliding Base (ux=0)
     def dirichlet_bc(V: dolfinx.fem.FunctionSpace):
@@ -687,14 +755,14 @@ if comm.rank == 0:
 # ---
 # name: pv_loop_complete_cycle
 # ---
-# Both ventricles over two beats. In the second beat the left ventricle ejects
-# 42 mL (EF 38%) against a peak of 131 mmHg, and the right 35 mL (EF 46%)
-# against 38 mmHg. The first loop closes through PRELOAD, which ramps the pressure
-# back up to end diastole; the second stays open because the run stops at
-# 1.6 s, partway through filling. The first left ventricular loop ends systole at
-# 74.5 mL rather than 69.1 mL, since its Windkessel starts from `p_init`
-# rather than from the pressure it has drained to. The run stops at 1.6 s,
-# partway through the second beat's filling.
+# Both ventricles over two beats, the second solid and the first faded. In
+# the second beat the left ventricle ejects 55.4 mL (EF 50%) over 210 ms
+# against a peak of 97.6 mmHg, and the right 28.7 mL (EF 40%) against
+# 23.6 mmHg. The first beat peaks a little higher, at 99.2 and 24.7 mmHg,
+# since its Windkessels start from `p_init` rather than from the pressures
+# they have drained to. The first loops close through PRELOAD, which ramps the
+# pressure back up to end diastole; the second ones stay open because the run
+# stops at 1.6 s, partway through filling.
 # ```
 #
 # <video width="720" controls loop autoplay muted>
@@ -705,12 +773,12 @@ if comm.rank == 0:
 #
 # ## Where to go next
 #
-# Here the active tension is a prescribed twitch and each ventricle ejects
-# into its own Windkessel. [](land_circulation_biv.py) drives a biventricular
-# ellipsoid with a crossbridge model and a different strength per region,
-# coupled to a full closed-loop circulation, and [](monolithic_3d0d_biv.py)
-# solves this mesh and a closed-loop circulation together in a single Newton
-# system.
+# Here the active tension is a prescribed waveform, the same everywhere, and
+# each ventricle ejects into its own Windkessel. [](land_circulation_biv.py)
+# drives a biventricular ellipsoid with a crossbridge model and a different
+# strength per region, coupled to a full closed-loop circulation, and
+# [](monolithic_3d0d_biv.py) solves this mesh and a closed-loop circulation
+# together in a single Newton system.
 
 # ## References
 # ```{bibliography}
