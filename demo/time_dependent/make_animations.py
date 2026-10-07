@@ -69,6 +69,8 @@ ASSETS = {
         "title": "BiV ellipsoid, Land crossbridges in a closed loop",
         "zoom": 1.0,
         "period": 1.0,
+        # The demo stamps each step with its start time, (n)*DT for n in range(N).
+        "time_at_step_start": True,
     },
 }
 
@@ -133,6 +135,7 @@ def main():
             chambers=spec["chambers"],
             title=spec["title"],
             period=spec.get("period"),
+            time_at_step_start=spec.get("time_at_step_start", False),
         )
         logger.info(f"{name}: wrote {figure.relative_to(STATIC.parent)}")
 

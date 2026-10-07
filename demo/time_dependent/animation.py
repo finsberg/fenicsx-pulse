@@ -350,7 +350,7 @@ PHASE_LABELS = ("preload", "IVC", "ejection", "IVR", "filling")
 
 
 def _shade_phases(axis, time: np.ndarray, phase: np.ndarray) -> None:
-    """Shade each run of equal phase behind the traces on `axis`, with a legend.
+    """Shade each run of equal phase behind the traces on `axis`, labelled for its legend.
 
     `phase[k]` is the phase step k was solved under, covering (time[k-1], time[k]].
     """
@@ -368,10 +368,6 @@ def _shade_phases(axis, time: np.ndarray, phase: np.ndarray) -> None:
             )
             seen.add(value)
             start = k
-    axis.legend(
-        frameon=True, framealpha=0.85, facecolor="white", edgecolor="none",
-        fontsize="x-small", loc="upper right",
-    )
 
 
 #: How the beats before (and after) the one in focus are drawn in the loop panel,
@@ -379,7 +375,9 @@ def _shade_phases(axis, time: np.ndarray, phase: np.ndarray) -> None:
 FADED = {"alpha": 0.25, "linewidth": 0.8}
 
 
-def _beat_slices(time: np.ndarray, period: float) -> tuple[slice, slice, slice] | None:
+def _beat_slices(
+    time: np.ndarray, period: float, time_at_step_start: bool = False,
+) -> tuple[slice, slice, slice] | None:
     """Split the samples into (before, last complete beat, after), or None.
 
     The last complete beat is t in [(n-1)*period, n*period) with
@@ -387,10 +385,16 @@ def _beat_slices(time: np.ndarray, period: float) -> tuple[slice, slice, slice] 
     its final sample is included, so the loop closes. Returns None when the
     traces do not span more than one period, in which case nothing is faded.
     Neighbouring slices overlap by one sample so the lines stay connected.
+
+    Some demos stamp each step with the time it started at rather than the time
+    it ended at. Then the last stamp is one step short of where the run
+    actually stops, so `time_at_step_start=True` adds that step to the end of
+    the run for both the beat count and the boundary test.
     """
     tol = 1e-6 * period
-    t_end = float(time[-1])
-    n = int(np.floor(t_end / period + 1e-9))
+    step = float(np.median(np.diff(time))) if time_at_step_start and len(time) > 1 else 0.0
+    t_end = float(time[-1]) + step
+    n = int(np.floor((t_end + tol) / period))
     if n < 1 or t_end - float(time[0]) <= period + tol:
         return None
     lo, hi = (n - 1) * period, n * period
@@ -412,6 +416,7 @@ def save_pv_figure(
     chambers: Sequence[str] = ("LV",),
     title: str | None = None,
     period: float | None = None,
+    time_at_step_start: bool = False,
 ) -> Path:
     """The finished loop as a still, to show beside the video.
 
@@ -419,6 +424,7 @@ def save_pv_figure(
     last complete beat solid and everything else faded, so the start-up from
     the unloaded state and any settling beats stay visible without cluttering
     the picture. Without `period` every sample is drawn at full strength.
+    `time_at_step_start` says the time stamps are step starts, not step ends.
     """
     import matplotlib
 
@@ -436,7 +442,7 @@ def save_pv_figure(
         width_ratios=(1.0, 1.3) if ncols == 2 else (1.0, 1.3, 1.1),
     )
     loop, trace = axes[0], axes[1]
-    slices = _beat_slices(traces["time"], period) if period else None
+    slices = _beat_slices(traces["time"], period, time_at_step_start) if period else None
     for chamber in chambers:
         colour = CHAMBER_COLOURS.get(chamber, "#444444")
         V, p = traces[f"V_{chamber}"], traces[f"p_{chamber}"]
@@ -474,8 +480,15 @@ def save_pv_figure(
     for axis in axes:
         axis.spines[["top", "right"]].set_visible(False)
     if len(chambers) > 1:
-        for axis in (loop, trace):
-            axis.legend(frameon=False, fontsize="small")
+        loop.legend(frameon=False, fontsize="small")
+    if phase_key in traces:
+        # One legend for the traces and the phase shades, outside the axes so it
+        # hides no data.
+        trace.legend(
+            frameon=False, fontsize="small", loc="center left", bbox_to_anchor=(1.02, 0.5),
+        )
+    elif len(chambers) > 1:
+        trace.legend(frameon=False, fontsize="small")
 
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
