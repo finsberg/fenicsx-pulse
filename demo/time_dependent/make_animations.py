@@ -59,6 +59,7 @@ ASSETS = {
         "chambers": ("LV", "RV"),
         "title": "UKB biventricular mesh, five-phase cycle",
         "zoom": 1.1,
+        "period": 0.8,
     },
     "land_circulation_biv": {
         "results": HERE / "results_land_circulation_biv",
@@ -67,6 +68,7 @@ ASSETS = {
         "chambers": ("LV", "RV"),
         "title": "BiV ellipsoid, Land crossbridges in a closed loop",
         "zoom": 1.0,
+        "period": 1.0,
     },
 }
 
@@ -130,6 +132,7 @@ def main():
             STATIC / f"pv_loop_{name}.png",
             chambers=spec["chambers"],
             title=spec["title"],
+            period=spec.get("period"),
         )
         logger.info(f"{name}: wrote {figure.relative_to(STATIC.parent)}")
 

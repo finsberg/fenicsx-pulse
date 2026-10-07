@@ -345,7 +345,7 @@ def render(
 
 
 #: Background shades for the five `pulse.cycle.Phase` values, in order.
-PHASE_SHADES = ("#f2f2f2", "#fde3c8", "#fbd0d0", "#d9e7f7", "#dff0d8")
+PHASE_SHADES = ("#f2f2f2", "#fde3c8", "#fbd0d0", "#d9e7f7", "#c5e3b8")
 PHASE_LABELS = ("preload", "IVC", "ejection", "IVR", "filling")
 
 
@@ -368,7 +368,42 @@ def _shade_phases(axis, time: np.ndarray, phase: np.ndarray) -> None:
             )
             seen.add(value)
             start = k
-    axis.legend(frameon=False, fontsize="x-small", loc="upper right")
+    axis.legend(
+        frameon=True, framealpha=0.85, facecolor="white", edgecolor="none",
+        fontsize="x-small", loc="upper right",
+    )
+
+
+#: How the beats before (and after) the one in focus are drawn in the loop panel,
+#: matching the faint full-loop outline `render` puts behind the moving trace.
+FADED = {"alpha": 0.25, "linewidth": 0.8}
+
+
+def _beat_slices(time: np.ndarray, period: float) -> tuple[slice, slice, slice] | None:
+    """Split the samples into (before, last complete beat, after), or None.
+
+    The last complete beat is t in [(n-1)*period, n*period) with
+    n = floor(t_end/period + 1e-9); when the run ends exactly on a beat boundary
+    its final sample is included, so the loop closes. Returns None when the
+    traces do not span more than one period, in which case nothing is faded.
+    Neighbouring slices overlap by one sample so the lines stay connected.
+    """
+    tol = 1e-6 * period
+    t_end = float(time[-1])
+    n = int(np.floor(t_end / period + 1e-9))
+    if n < 1 or t_end - float(time[0]) <= period + tol:
+        return None
+    lo, hi = (n - 1) * period, n * period
+    on_boundary = abs(t_end - hi) < tol
+    first = int(np.searchsorted(time, lo - tol, side="left"))
+    last = int(np.searchsorted(time, hi + tol if on_boundary else hi - tol, side="left"))
+    if last <= first:
+        return None
+    return (
+        slice(0, first + 1),
+        slice(first, last),
+        slice(max(last - 1, 0), len(time)),
+    )
 
 
 def save_pv_figure(
@@ -376,8 +411,15 @@ def save_pv_figure(
     out_path: Path | str,
     chambers: Sequence[str] = ("LV",),
     title: str | None = None,
+    period: float | None = None,
 ) -> Path:
-    """The finished loop as a still, to show beside the video."""
+    """The finished loop as a still, to show beside the video.
+
+    With `period` and a run longer than one period, the loop panel draws the
+    last complete beat solid and everything else faded, so the start-up from
+    the unloaded state and any settling beats stay visible without cluttering
+    the picture. Without `period` every sample is drawn at full strength.
+    """
     import matplotlib
 
     matplotlib.use("Agg")
@@ -394,12 +436,17 @@ def save_pv_figure(
         width_ratios=(1.0, 1.3) if ncols == 2 else (1.0, 1.3, 1.1),
     )
     loop, trace = axes[0], axes[1]
+    slices = _beat_slices(traces["time"], period) if period else None
     for chamber in chambers:
         colour = CHAMBER_COLOURS.get(chamber, "#444444")
-        loop.plot(
-            traces[f"V_{chamber}"], traces[f"p_{chamber}"], color=colour,
-            linewidth=1.3, label=chamber,
-        )
+        V, p = traces[f"V_{chamber}"], traces[f"p_{chamber}"]
+        if slices is None:
+            loop.plot(V, p, color=colour, linewidth=1.3, label=chamber)
+        else:
+            before, current, after = slices
+            for part in (before, after):
+                loop.plot(V[part], p[part], color=colour, zorder=1, **FADED)
+            loop.plot(V[current], p[current], color=colour, linewidth=1.3, label=chamber, zorder=2)
         trace.plot(
             traces["time"], traces[f"p_{chamber}"], color=colour,
             linewidth=1.3, label=f"p {chamber}",
@@ -412,7 +459,7 @@ def save_pv_figure(
     loop.set_title(title or "Pressure-volume loop")
     trace.set_xlabel("time [s]")
     trace.set_ylabel("pressure [mmHg]")
-    trace.set_title("Pressure over the beat")
+    trace.set_title("Pressure" + (f" (phases of {chambers[0]})" if phase_key in traces else ""))
     if regions:
         ta = axes[2]
         for region in regions:
