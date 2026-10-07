@@ -313,3 +313,24 @@ def test_performance_summary_is_saved_on_failure(tmp_path, monkeypatch):
     with pytest.raises(SolverFailure):
         run(conf)
     assert (conf.output.folder / "performance.json").is_file()
+
+
+def test_failed_performance_summary_write_does_not_mask_outcome(tmp_path, monkeypatch, caplog):
+    from pulse.telemetry import PerformanceMonitor
+
+    def fail(self, path):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(PerformanceMonitor, "save_summary", fail)
+    conf = load_config(write_cfg(tmp_path, output={"performance": True}), environ={})
+    out = run(conf)
+    assert json.loads((out / RUN_META).read_text())["status"] == "finished"
+    assert "disk full" in caplog.text
+
+    conf = load_config(
+        write_cfg(tmp_path, output={"performance": True}, solver={"max_halvings": 0}),
+        environ={},
+    )
+    monkeypatch.setattr(pulse.StaticProblem, "solve", lambda self, *a, **k: False)
+    with pytest.raises(SolverFailure, match="(?i)newton|converge|fail"):
+        run(conf, overwrite=True)

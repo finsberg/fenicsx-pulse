@@ -8,8 +8,8 @@ Output folder layout (``conf.output.folder``)::
     results.bp             io4dolfinx: ``u`` (+ ``p`` if incompressible) every output.save_every
     loads.csv              t [s], every load [Pa], volume_<marker> [m^3] for cavity markers
     restart.bp             io4dolfinx: the ``mechanics_*`` state functions
-    restart.json           {"mechanics": {t, step, physics_hash, functions}} of the latest
-                           checkpoint
+    restart.json           {"mechanics": {t, step, physics_hash, functions, problem}} of the
+                           latest checkpoint (``problem``: the problem's restart_metadata())
     output.log             log file (``output_all_cpus.log`` too when running on >1 rank)
 
 io4dolfinx *appends* a function written at an already existing timestamp, and ``read_function``
@@ -456,13 +456,7 @@ class MechanicsSimulation:
 
     def restart_functions(self) -> list[tuple[str, dolfinx.fem.Function]]:
         """The state a restart needs, under ``mechanics_*`` names (composable with beat's)."""
-        p = self.problem
-        out = [("mechanics_u", p.u), ("mechanics_u_old", p.u_old)]
-        if p.is_incompressible:
-            out += [("mechanics_p", p.p), ("mechanics_p_old", p.p_old)]
-        if isinstance(p, pulse.DynamicProblem):
-            out += [("mechanics_v_old", p.v_old), ("mechanics_a_old", p.a_old)]
-        return out
+        return self.problem.restart_functions()
 
     def checkpoint(self) -> None:
         """Write the state at ``t`` to restart.bp and point restart.json at it.
@@ -492,6 +486,7 @@ class MechanicsSimulation:
                 "step": self.step_index,
                 "physics_hash": physics_hash(self.conf),
                 "functions": [name for name, _ in functions],
+                "problem": self.problem.restart_metadata(),
             },
         }
         # Written last (and atomically): restart.json only ever names a complete checkpoint.
@@ -531,6 +526,8 @@ class MechanicsSimulation:
         for name, f in functions:
             io4dolfinx.read_function(folder / RESTART, f, time=t_file, name=name)
             f.x.scatter_forward()
+        # pulse 0.11.0's restart.json has no "problem" entry; its problems had no metadata.
+        self.problem.load_restart_metadata(meta.get("problem", {}))
         # Only checkpoints whose every function is present may be reused instead of rewritten.
         complete = stored
         for name in names[1:]:
@@ -659,7 +656,11 @@ def _run(sim: MechanicsSimulation, comm, restart: bool) -> Path:
         # Also on failure: the timings up to a solver failure are what one wants to look at.
         if isinstance(sim.monitor, PerformanceMonitor):
             sim.monitor.display_summary()
-            _on_rank0(comm, OSError, lambda: sim.monitor.save_summary(folder / PERFORMANCE))
+            try:
+                _on_rank0(comm, OSError, lambda: sim.monitor.save_summary(folder / PERFORMANCE))
+            except OSError as e:
+                # Never let the timings mask the run's own outcome (or its original error).
+                logger.warning(f"Could not write {folder / PERFORMANCE}: {e}")
     record["status"] = "finished"
     record["end"] = datetime.datetime.now().isoformat()
     _write_json(folder / RUN_META, record, comm)

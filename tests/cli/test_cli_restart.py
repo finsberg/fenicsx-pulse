@@ -12,15 +12,20 @@ from pulse.cli.overrides import load_config
 from pulse.cli.runner import LOADS, RESTART_META, RESULTS, build_simulation, read_result_times, run
 
 
-def _final_u(conf):
+def _final_state(conf):
     sim = build_simulation(conf)
     sim.restore()
-    return sim.problem.u.x.array.copy()
+    return {name: f.x.array.copy() for name, f in sim.restart_functions()}
 
 
+@pytest.mark.parametrize("rigid_body_constraint", [False, True])
 @pytest.mark.parametrize("problem_type", ["static", "dynamic"])
-def test_restart_matches_continuous_run(tmp_path, problem_type):
-    problem = {"type": problem_type, "u_space": "P_1"}
+def test_restart_matches_continuous_run(tmp_path, problem_type, rigid_body_constraint):
+    problem = {
+        "type": problem_type,
+        "u_space": "P_1",
+        "rigid_body_constraint": rigid_body_constraint,
+    }
     full = load_config(
         write_cfg(tmp_path / "a", problem=problem, time={"end_time": "0.6 s", "dt": "0.1 s"}),
         environ={},
@@ -37,7 +42,11 @@ def test_restart_matches_continuous_run(tmp_path, problem_type):
         environ={},
     )
     run(second, restart=True)
-    np.testing.assert_allclose(_final_u(second), _final_u(full), rtol=1e-8, atol=1e-12)
+    restarted, continuous = _final_state(second), _final_state(full)
+    assert ("mechanics_r" in continuous) == rigid_body_constraint
+    assert list(restarted) == list(continuous)
+    for name, values in continuous.items():
+        assert np.array_equal(restarted[name], values), name  # bit for bit
     times = read_result_times(second.output.folder / RESULTS, MPI.COMM_WORLD)
     np.testing.assert_allclose(times, np.arange(7) * 0.1)
     with open(second.output.folder / LOADS) as f:
@@ -52,6 +61,22 @@ def test_restart_json_is_namespaced(tmp_path):
     assert set(meta) == {"mechanics"}
     assert meta["mechanics"]["step"] == 3
     assert meta["mechanics"]["functions"][0] == "mechanics_u"
+    assert meta["mechanics"]["problem"] == {}  # no circulation, so nothing beyond the Functions
+
+
+def test_restart_accepts_a_checkpoint_without_problem_metadata(tmp_path):
+    """pulse 0.11.0 wrote restart.json without the "problem" entry; those still restore."""
+    conf = load_config(write_cfg(tmp_path), environ={})
+    run(conf)
+    folder = conf.output.folder
+    if MPI.COMM_WORLD.rank == 0:
+        meta = json.loads((folder / RESTART_META).read_text())
+        del meta["mechanics"]["problem"]
+        (folder / RESTART_META).write_text(json.dumps(meta))
+    MPI.COMM_WORLD.barrier()
+    longer = load_config(write_cfg(tmp_path), sets=['time.end_time="0.5 s"'], environ={})
+    run(longer, restart=True)
+    np.testing.assert_allclose(_loads_times(folder), [0.0, 0.1, 0.2, 0.3, 0.4, 0.5])
 
 
 def test_restart_rejects_changed_physics(tmp_path):
@@ -152,6 +177,7 @@ def test_restart_with_empty_loads_csv_rewrites_header(tmp_path):
     folder = conf.output.folder
     with open(folder / LOADS) as f:
         header = f.readline()
+    MPI.COMM_WORLD.barrier()  # every rank has read the header before rank 0 empties the file
     if MPI.COMM_WORLD.rank == 0:
         (folder / LOADS).write_text("")
     MPI.COMM_WORLD.barrier()

@@ -21,6 +21,7 @@ exactly the enclosed volume) -- fast enough to not need `@pytest.mark.slow`.
 from __future__ import annotations
 
 import dataclasses
+import json
 import math
 
 from mpi4py import MPI
@@ -317,6 +318,159 @@ def test_preconditioner_lag_is_refreshed_then_restored_and_not_leaked(cube_geome
         assert calls == expected_calls, t
         assert controller.cycles["ENDO"].phase == expected_phase, t
         assert key not in PETSc.Options()
+
+
+# --- Restart: the problem's restart Functions and metadata, and the controller's state. ---
+
+
+def test_restart_function_names_of_a_controlled_cavity_problem(cube_geometry):
+    """The cube is compressible, with one controlled cavity: no ``p``, no rigid
+    body, no circuit. The Functions are the problem's own, not copies, since a
+    restart writes into them in place.
+    """
+    problem = _cube_dynamic_problem(cube_geometry)
+
+    functions = problem.restart_functions()
+
+    assert [name for name, _ in functions] == [
+        "mechanics_u",
+        "mechanics_u_old",
+        "mechanics_cavity_pressure_ENDO",
+        "mechanics_cavity_pressure_ENDO_old",
+        "mechanics_v_old",
+        "mechanics_a_old",
+    ]
+    expected = [
+        problem.u,
+        problem.u_old,
+        problem.cavity_pressures[0],
+        problem.cavity_pressures_old[0],
+        problem.v_old,
+        problem.a_old,
+    ]
+    assert all(f is g for (_, f), g in zip(functions, expected))
+    assert problem.restart_metadata() == {}
+
+
+def test_load_restart_metadata_refuses_a_circulation_the_problem_lacks(cube_geometry):
+    problem = _cube_dynamic_problem(cube_geometry)
+    with pytest.raises(ValueError, match="circulation"):
+        problem.load_restart_metadata({"circulation_steps": 2})
+
+
+def test_cycle_restart_is_bit_identical(cube_geometry):
+    """Restoring into a fresh problem and controller and stepping on must match
+    stepping on uninterrupted, bit for bit.
+
+    PRELOAD is shortened to two steps, so the restart point is the switch into
+    IVC: the saved phase is not the initial one, and the steps after the
+    restart run under a different constraint from the steps before it.
+    """
+    params = {"ENDO": dataclasses.replace(lv_cycle_params(), t_zero=2e-3, t_end_diastole=4e-3)}
+    dt = 2e-3
+
+    a = _cube_dynamic_problem(cube_geometry)
+    a_ctl = cycle.CycleController(a, params)
+    a_ctl.initialize(0.0)
+    t = _take_converged_steps(a_ctl, 2, dt=dt)
+    assert a_ctl.cycles["ENDO"].phase == cycle.Phase.ISOVOLUMIC_CONTRACTION
+
+    arrays = [f.x.array.copy() for _, f in a.restart_functions()]
+    saved = json.loads(json.dumps(a_ctl.state_dict()))
+    metadata = json.loads(json.dumps(a.restart_metadata()))
+
+    b = _cube_dynamic_problem(cube_geometry)
+    b_ctl = cycle.CycleController(b, params)
+    b_ctl.initialize(0.0)
+    for (_, f), values in zip(b.restart_functions(), arrays):
+        f.x.array[:] = values
+    b_ctl.load_state_dict(saved)
+    b.load_restart_metadata(metadata)
+    # Everything was loaded, records included: the steps below recompute
+    # those, so only here can a load that kept b's own be seen.
+    assert saved["refresh_pending"] is True
+    assert b_ctl.state_dict() == saved
+
+    for _ in range(2):
+        t += dt
+        assert a_ctl.step(t=t, dt=dt) is True
+        assert b_ctl.step(t=t, dt=dt) is True
+
+    for (name, f), (_, g) in zip(a.restart_functions(), b.restart_functions()):
+        assert np.any(f.x.array != 0.0), name
+        assert np.array_equal(f.x.array, g.x.array), name
+    assert a_ctl.state_dict() == b_ctl.state_dict()
+
+
+def test_state_dict_is_json_and_covers_every_field(cube_geometry):
+    """Every `CavityCycle`/`CavityRecord` field, the phase as an int, and a JSON
+    round trip that changes nothing: floats stay floats, ints stay ints."""
+    problem = _cube_dynamic_problem(cube_geometry)
+    controller = cycle.CycleController(problem, {"ENDO": lv_cycle_params()})
+    controller.initialize(0.0)
+    _take_converged_steps(controller, 1)
+
+    state = controller.state_dict()
+
+    assert set(state) == {"initialized", "refresh_pending", "cycles", "records"}
+    cyc, record = state["cycles"]["ENDO"], state["records"]["ENDO"]
+    assert set(cyc) == {f.name for f in dataclasses.fields(cycle.CavityCycle)}
+    assert set(record) == {f.name for f in dataclasses.fields(cycle.CavityRecord)}
+    assert type(cyc["phase"]) is int and type(record["phase"]) is int
+    assert type(cyc["last_phase_change"]) is float
+    assert type(cyc["n_beats"]) is int
+    assert type(cyc["has_ejected"]) is bool
+
+    round_tripped = json.loads(json.dumps(state))
+    assert round_tripped == state
+    assert all(type(round_tripped["cycles"]["ENDO"][k]) is type(v) for k, v in cyc.items())
+
+    controller.load_state_dict(round_tripped)
+    assert controller.cycles["ENDO"].phase is cycle.Phase.PRELOAD
+    assert isinstance(controller.records["ENDO"], cycle.CavityRecord)
+    assert controller.records["ENDO"].phase is cycle.Phase.PRELOAD
+    assert controller.state_dict() == state
+
+
+def test_load_state_dict_refuses_other_cavities(cube_geometry):
+    problem = _cube_dynamic_problem(cube_geometry)
+    controller = cycle.CycleController(problem, {"ENDO": lv_cycle_params()})
+    controller.initialize(0.0)
+    before = controller.state_dict()
+
+    other = json.loads(json.dumps(before))
+    other["cycles"] = {"LV": other["cycles"].pop("ENDO")}
+    other["records"] = {"LV": other["records"].pop("ENDO")}
+
+    with pytest.raises(KeyError, match=r"\['ENDO', 'LV'\]"):
+        controller.load_state_dict(other)
+    # Refused before anything was changed.
+    assert controller.state_dict() == before
+
+
+def test_load_state_dict_keeps_a_pending_refresh(cube_geometry):
+    """A pending refresh is never cleared by a load: a fresh solver has no
+    factorization to reuse. A pending refresh in the loaded state is kept too.
+
+    The fresh controller is never initialized, as on a restart: the load
+    alone must leave it initialized, with the saved records, and able to step.
+    """
+    problem = _cube_dynamic_problem(cube_geometry)
+    controller = cycle.CycleController(problem, {"ENDO": lv_cycle_params()})
+    controller.initialize(0.0)
+    t = _take_converged_steps(controller, 1)
+    settled = controller.state_dict()
+    assert settled["refresh_pending"] is False
+
+    fresh = cycle.CycleController(_cube_dynamic_problem(cube_geometry), {"ENDO": lv_cycle_params()})
+    assert fresh.state_dict()["refresh_pending"] is True
+    assert fresh.state_dict()["initialized"] is False
+    fresh.load_state_dict(settled)
+    assert fresh.state_dict() == {**settled, "refresh_pending": True}
+    assert fresh.step(t=t + 2e-3, dt=2e-3) is True
+
+    controller.load_state_dict({**settled, "refresh_pending": True})
+    assert controller.state_dict()["refresh_pending"] is True
 
 
 # --- The real gate: a full LV cycle on pulse's own ellipsoid. ---
