@@ -71,10 +71,32 @@ def check_markers(geo: CLIGeometry, names: Iterable[str], what: str) -> None:
 
 def _geometry_hash(conf: GeometryConfig) -> str:
     # unit/scale/quadrature_degree don't change the generated mesh files; folder is the cache
-    # location itself. fibers stays in: it drives create_fibers.
+    # location itself. fibers stays in: it drives create_fibers. ldrb (added after 0.11) is
+    # left out while unset, so that existing caches keep their hash.
     exclude = {"folder", "unit", "scale", "quadrature_degree"}
-    blob = json.dumps(conf.model_dump(mode="json", exclude=exclude), sort_keys=True)
+    data = conf.model_dump(mode="json", exclude=exclude)
+    if data.get("ldrb", 0) is None:
+        data.pop("ldrb")
+    blob = json.dumps(data, sort_keys=True)
     return hashlib.sha256(blob.encode()).hexdigest()
+
+
+def ldrb_fibers(g: Any, angles: Any, fiber_space: str, clipped: bool) -> Any:
+    """``g`` (a cardiac_geometries Geometry) with f0/s0/n0 from per-ventricle LDRB angles."""
+    import dataclasses
+
+    import ldrb  # type: ignore[import-untyped]
+
+    from cardiac_geometries.mesh import transform_markers
+
+    system = ldrb.dolfinx_ldrb(
+        mesh=g.mesh,
+        ffun=g.ffun,
+        markers=transform_markers(g.markers, clipped=clipped),
+        fiber_space=fiber_space,
+        **angles.model_dump(),
+    )
+    return dataclasses.replace(g, f0=system.f0, s0=system.s0, n0=system.n0)
 
 
 def _needs_regeneration(meta: Path, current_hash: str) -> tuple[bool, str | None]:
@@ -161,6 +183,9 @@ def ensure_generated(conf: GeometryConfig, comm: MPI.Intracomm) -> Path:
     kwargs = conf.generator_kwargs()
     kwargs["create_fibers"] = conf.fibers.type == "from_geometry"
     rotate = getattr(conf, "rotate_base_normal", None)
+    angles = getattr(conf, "ldrb", None)
+    if angles is not None:
+        kwargs["create_fibers"] = False  # ldrb_fibers computes them below
 
     def generate() -> None:
         # Generated in serial on rank 0 (every rank later reads the cached files, redistributed):
@@ -168,11 +193,20 @@ def ensure_generated(conf: GeometryConfig, comm: MPI.Intracomm) -> Path:
         # one rank while another still writes it) and its mesh rotation is serial-only.
         target.parent.mkdir(parents=True, exist_ok=True)
         try:
-            if rotate is None:
+            if rotate is None and angles is None:
                 generator(outdir=tmp, comm=MPI.COMM_SELF, **kwargs)
             else:
                 g = generator(outdir=raw, comm=MPI.COMM_SELF, **kwargs)
-                g.rotate(target_normal=list(rotate), base_marker="BASE").save_folder(folder=tmp)
+                if rotate is not None:
+                    g = g.rotate(target_normal=list(rotate), base_marker="BASE")
+                if angles is not None:
+                    g = ldrb_fibers(
+                        g,
+                        angles,
+                        fiber_space=getattr(conf, "fiber_space", "P_1"),
+                        clipped=bool(getattr(conf, "clipped", False)),
+                    )
+                g.save_folder(folder=tmp)
         except ImportError as e:
             # e.g. BiV/UKB fibres need fenicsx-ldrb, UKB meshes need ukb-atlas.
             raise ConfigError(

@@ -118,6 +118,7 @@ cardiac_geometries.mesh.cylinder_D_shaped.
 | `char_length_min` | float | `5.0` |  |
 | `clipped` | bool | `False` |  |
 | `rotate_base_normal` | list[float] (optional) | – | If set, rotate the mesh so the BASE normal points this way (before caching) |
+| `ldrb` | LDRBAngles (optional) | – | Per-ventricle LDRB angles; replaces fiber_angle_endo/fiber_angle_epi (computed after rotate_base_normal, before caching) |
 
 ## `[geometry.fibers]`
 

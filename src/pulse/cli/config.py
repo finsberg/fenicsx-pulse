@@ -140,7 +140,7 @@ class _GeometryBase(_Base):
 
     def generator_kwargs(self) -> dict[str, Any]:
         exclude = {"type", "unit", "folder", "fibers", "scale", "quadrature_degree"}
-        exclude |= {"rotate_base_normal"}
+        exclude |= {"rotate_base_normal", "ldrb"}
         return self.model_dump(exclude=exclude)
 
 
@@ -202,6 +202,22 @@ class CylinderGeometry(_FiberAngles):
     char_length: float = 10.0
 
 
+class LDRBAngles(_Base):
+    """Per-ventricle LDRB fibre angles in degrees (ldrb.dolfinx_ldrb's keywords).
+
+    The defaults are those of demo/time_dependent/complete_cycle.py (after Doste et al. 2019).
+    """
+
+    alpha_endo_lv: float = 60.0
+    alpha_epi_lv: float = -60.0
+    alpha_endo_rv: float = 90.0
+    alpha_epi_rv: float = -25.0
+    beta_endo_lv: float = -20.0
+    beta_epi_lv: float = 20.0
+    beta_endo_rv: float = 0.0
+    beta_epi_rv: float = 20.0
+
+
 class UKBGeometry(_FiberAngles):
     type: Literal["ukb"] = "ukb"
     mode: int = -1
@@ -215,6 +231,11 @@ class UKBGeometry(_FiberAngles):
         min_length=3,
         max_length=3,
         description="If set, rotate the mesh so the BASE normal points this way (before caching)",
+    )
+    ldrb: LDRBAngles | None = Field(
+        default=None,
+        description="Per-ventricle LDRB angles; replaces fiber_angle_endo/fiber_angle_epi "
+        "(computed after rotate_base_normal, before caching)",
     )
 
 

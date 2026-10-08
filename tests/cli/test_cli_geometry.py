@@ -3,8 +3,16 @@ from mpi4py import MPI
 import numpy as np
 import pytest
 
-from pulse.cli.config import BoxGeometry, ConfigError, LVEllipsoidGeometry
-from pulse.cli.geometry import build_geometry, cache_folder, check_markers
+from pulse.cli import TEMPLATES_DIR
+from pulse.cli.config import BoxGeometry, ConfigError, LDRBAngles, LVEllipsoidGeometry, UKBGeometry
+from pulse.cli.geometry import (
+    _geometry_hash,
+    build_geometry,
+    cache_folder,
+    check_markers,
+    ldrb_fibers,
+)
+from pulse.cli.overrides import load_config
 
 
 def test_box_markers_fibres_and_scale():
@@ -63,3 +71,33 @@ def test_missing_folder_is_config_error(tmp_path):
 
     with pytest.raises(ConfigError, match="does not exist"):
         build_geometry(FolderGeometry(folder=tmp_path / "nope"))
+
+
+UKB_BCS_GEOMETRY_HASH = "cf99cab62d1dc2f4a1c4d7605f61b7c33583750491bc9510702e22254cce76ef"
+
+
+def test_ldrb_angles_are_part_of_the_geometry_hash():
+    plain = UKBGeometry()
+    angled = UKBGeometry(ldrb=LDRBAngles())
+    assert _geometry_hash(plain) != _geometry_hash(angled)
+    assert "ldrb" not in plain.generator_kwargs()
+    conf = load_config(TEMPLATES_DIR / "ukb_bcs" / "config.toml", environ={})
+    assert _geometry_hash(conf.geometry) == UKB_BCS_GEOMETRY_HASH  # unchanged without ldrb
+
+
+@pytest.mark.skip_in_parallel
+def test_ldrb_fibers_on_a_biv_ellipsoid_survive_save_and_load(tmp_path):
+    pytest.importorskip("ldrb")
+    import cardiac_geometries as cg
+
+    g = cg.mesh.biv_ellipsoid(
+        outdir=tmp_path / "raw",
+        char_length=1.5,
+        create_fibers=False,
+        comm=MPI.COMM_SELF,
+    )
+    angled = ldrb_fibers(g, LDRBAngles(), fiber_space="Quadrature_4", clipped=False)
+    assert angled.f0 is not None and angled.f0 is not g.f0
+    angled.save_folder(folder=tmp_path / "saved")
+    back = cg.geometry.Geometry.from_folder(comm=MPI.COMM_SELF, folder=tmp_path / "saved")
+    np.testing.assert_allclose(np.sort(back.f0.x.array), np.sort(angled.f0.x.array))

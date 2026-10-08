@@ -250,6 +250,8 @@ def physics_hash(conf: Config) -> str:
                 dumped["profile"].pop(key)
     if data["geometry"].get("type") != "folder":
         data["geometry"].pop("folder", None)
+    if data["geometry"].get("ldrb", 0) is None:  # added after 0.11: keep old hashes
+        data["geometry"].pop("ldrb")
     # Sections and fields added after pulse 0.11 are dropped while they hold their defaults,
     # so that checkpoints written before they existed keep the same hash and still restart.
     if conf.circulation.type == "none":
