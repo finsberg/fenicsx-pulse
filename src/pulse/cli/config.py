@@ -234,8 +234,8 @@ class UKBGeometry(_FiberAngles):
     )
     ldrb: LDRBAngles | None = Field(
         default=None,
-        description="Per-ventricle LDRB angles; replaces fiber_angle_endo/fiber_angle_epi "
-        "(computed after rotate_base_normal, before caching)",
+        description="Per-ventricle LDRB angles; replaces fiber_angle_endo/fiber_angle_epi, "
+        "which are then ignored (computed after rotate_base_normal, before caching)",
     )
 
 

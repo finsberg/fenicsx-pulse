@@ -101,3 +101,49 @@ def test_ldrb_fibers_on_a_biv_ellipsoid_survive_save_and_load(tmp_path):
     angled.save_folder(folder=tmp_path / "saved")
     back = cg.geometry.Geometry.from_folder(comm=MPI.COMM_SELF, folder=tmp_path / "saved")
     np.testing.assert_allclose(np.sort(back.f0.x.array), np.sort(angled.f0.x.array))
+
+
+@pytest.mark.skip_in_parallel
+def test_ensure_generated_runs_ldrb_after_rotation_without_generator_fibers(tmp_path, monkeypatch):
+    import cardiac_geometries as cg
+    import pulse.cli.geometry as geo_mod
+
+    calls: list[str] = []
+    seen: dict = {}
+
+    class FakeGeometry:
+        def rotate(self, **kwargs):
+            calls.append("rotate")
+            return self
+
+        def save_folder(self, folder):
+            calls.append("save")
+            folder.mkdir(parents=True)
+            (folder / "dummy.txt").write_text("x")
+
+    def fake_ukb(**kwargs):
+        calls.append("generate")
+        seen["generator"] = kwargs
+        return FakeGeometry()
+
+    def fake_ldrb(g, angles, fiber_space, clipped):
+        calls.append("ldrb")
+        seen["ldrb"] = {"angles": angles, "fiber_space": fiber_space, "clipped": clipped}
+        return g
+
+    monkeypatch.setattr(cg.mesh, "ukb", fake_ukb)
+    monkeypatch.setattr(geo_mod, "ldrb_fibers", fake_ldrb)
+    conf = UKBGeometry(
+        ldrb=LDRBAngles(),
+        rotate_base_normal=[1.0, 0.0, 0.0],
+        folder=tmp_path,
+        fiber_space="Quadrature_4",
+        clipped=True,
+    )
+    target = geo_mod.ensure_generated(conf, MPI.COMM_SELF)
+    assert (target / "dummy.txt").exists()
+    assert seen["generator"]["create_fibers"] is False
+    assert calls == ["generate", "rotate", "ldrb", "save"]
+    assert seen["ldrb"]["fiber_space"] == "Quadrature_4"
+    assert seen["ldrb"]["clipped"] is True
+    assert seen["ldrb"]["angles"] == conf.ldrb
