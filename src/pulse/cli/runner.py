@@ -560,6 +560,11 @@ class MechanicsSimulation:
                 "physics_hash": physics_hash(self.conf),
                 "functions": [name for name, _ in functions],
                 "problem": self.problem.restart_metadata(),
+                "coupling": {
+                    "type": type(self.coupling).__name__,
+                    "state": self.coupling.state_dict(),
+                },
+                "hooks": [hook.state_dict() for hook in self.hooks],
             },
         }
         # Written last (and atomically): restart.json only ever names a complete checkpoint.
@@ -575,6 +580,33 @@ class MechanicsSimulation:
             ),
             dtype=float,
         )
+
+    def _restore_coupling(self, meta: dict[str, Any]) -> None:
+        """Load the coupling's and the hooks' state of a checkpoint, after its Functions."""
+        kind = type(self.coupling).__name__
+        stored = meta.get("coupling")
+        if stored is None:
+            # pulse <= 0.11 checkpoints carry no coupling: they are plain mechanics runs.
+            if type(self.coupling) is not NoCoupling:
+                raise ConfigError(
+                    f"Cannot restart: the checkpoint has no coupling state, but this run "
+                    f"needs {kind}",
+                )
+        else:
+            if stored["type"] != kind:
+                raise ConfigError(
+                    f"Cannot restart: the checkpoint holds a {stored['type']} coupling, this "
+                    f"run has {kind}",
+                )
+            self.coupling.load_state_dict(stored["state"])
+        hooks = meta.get("hooks", [])
+        if len(hooks) != len(self.hooks):
+            raise ConfigError(
+                f"Cannot restart: the checkpoint holds {len(hooks)} step hook(s), this run "
+                f"has {len(self.hooks)}",
+            )
+        for hook, state in zip(self.hooks, hooks):
+            hook.load_state_dict(state)
 
     def restore(self) -> None:
         """Load the latest checkpoint (restart.json) into the problem and set ``t``/``step``."""
@@ -601,6 +633,7 @@ class MechanicsSimulation:
             f.x.scatter_forward()
         # pulse 0.11.0's restart.json has no "problem" entry; its problems had no metadata.
         self.problem.load_restart_metadata(meta.get("problem", {}))
+        self._restore_coupling(meta)
         # Only checkpoints whose every function is present may be reused instead of rewritten.
         complete = stored
         for name in names[1:]:

@@ -1,13 +1,16 @@
 """MechanicsSimulation drives a coupling and step hooks; halving and rollback cover both."""
 
+import json
+
 import dolfinx
 import numpy as np
 import pytest
-from cli_helpers import write_cfg
+from cli_helpers import write_cfg, write_file
 
+from pulse.cli.config import ConfigError
 from pulse.cli.geometry import build_geometry
 from pulse.cli.overrides import load_config
-from pulse.cli.runner import SolverFailure, build_simulation
+from pulse.cli.runner import RESTART_META, SolverFailure, build_simulation, run
 from pulse.coupling import NoCoupling, StepHook
 
 
@@ -116,3 +119,47 @@ def test_failed_step_rolls_back_coupling_hook_and_converged_substeps(tmp_path):
     assert coupling.commits == commits  # the converged half's commit is gone too
     np.testing.assert_array_equal(sim.problem.u.x.array, u)
     assert sim.t == pytest.approx(0.1) and sim.step_index == 1
+
+
+def test_checkpoint_restores_coupling_and_hook(tmp_path):
+    sim, hook = _sim(tmp_path, FlakyCoupling())
+    sim.step(0.1)
+    sim.step(0.1)
+    sim.checkpoint()
+    meta = json.loads((sim.folder / RESTART_META).read_text())["mechanics"]
+    assert meta["coupling"] == {"type": "FlakyCoupling", "state": {"commits": 2}}
+    assert meta["hooks"] == [{"committed": 2}]
+    assert "hook_f" in meta["functions"]
+
+    geo = build_geometry(sim.conf.geometry)
+    other_hook, other_coupling = CountingHook(geo.mesh), FlakyCoupling()
+    other = build_simulation(sim.conf, geometry=geo, coupling=other_coupling, hooks=[other_hook])
+    other.restore()
+    assert other_hook.committed == 2 and other_coupling.commits == 2
+    np.testing.assert_array_equal(other_hook.f.x.array, hook.f.x.array)
+    assert other.t == pytest.approx(0.2)
+
+
+def test_restore_refuses_another_coupling_type(tmp_path):
+    sim, _ = _sim(tmp_path, FlakyCoupling())
+    sim.step(0.1)
+    sim.checkpoint()
+    geo = build_geometry(sim.conf.geometry)
+    other = build_simulation(sim.conf, geometry=geo, hooks=[CountingHook(geo.mesh)])
+    with pytest.raises(ConfigError, match="FlakyCoupling"):
+        other.restore()
+
+
+def test_v1_checkpoint_restores_into_no_coupling(tmp_path):
+    conf = load_config(write_cfg(tmp_path), environ={})
+    run(conf)
+    path = conf.output.folder / RESTART_META
+    data = json.loads(path.read_text())
+    del data["mechanics"]["coupling"], data["mechanics"]["hooks"]
+    write_file(path, json.dumps(data))
+    sim = build_simulation(conf)
+    sim.restore()
+    assert sim.t == pytest.approx(0.3)
+
+    with pytest.raises(ConfigError, match="no coupling state"):
+        build_simulation(conf, coupling=FlakyCoupling()).restore()
