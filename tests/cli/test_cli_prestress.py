@@ -174,3 +174,10 @@ def test_restart_does_not_reinflate(tmp_path, lv_folder, monkeypatch):
 
     monkeypatch.setattr("pulse.cli.runner.inflate", no_inflation)
     run(_inflated_conf(tmp_path, lv_folder, end_time="4 ms"), restart=True)
+
+
+def test_failed_reinflation_is_a_solver_failure(tmp_path, lv_folder, monkeypatch):
+    conf = _inflated_conf(tmp_path, lv_folder)
+    monkeypatch.setattr(pulse.StaticProblem, "solve", lambda self, *a, **k: False)
+    with pytest.raises(SolverFailure, match="Re-inflation failed at 0.12"):
+        build_simulation(conf, fresh=True)

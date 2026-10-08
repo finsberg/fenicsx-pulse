@@ -275,14 +275,36 @@ def inflate(
     Must run *before* the run's problem is built: `CardiacModel` registers ``u``/``p`` with the
     problem built last, and that must be the run's.
     """
-    from .runner import SolverFailure, problem_parameters
+    from .runner import SolverFailure
+
+    state, failed_at = _ramp_to_imaged(conf, geo, model, bcs, result, markers, monitor)
+    if state is None:
+        raise SolverFailure(
+            f"Re-inflation failed at {failed_at:.2f} of the way to the imaged volumes; try "
+            "more prestress.inflate_steps",
+        )
+    return state
+
+
+def _ramp_to_imaged(
+    conf: Config,
+    geo: CLIGeometry,
+    model: Any,
+    bcs: Any,
+    result: PrestressResult,
+    markers: list[str],
+    monitor: Any,
+) -> tuple[InflationState | None, float]:
+    """Run the ramp; return ``(state, 1.0)`` or ``(None, failed_fraction)``. The problem is
+    freed on every rank before returning, so no exception frame ever holds it."""
+    from .runner import problem_parameters
 
     assert conf.prestress is not None
     unloaded = {m: cavity_volume(conf, geo, m) for m in markers}
     volumes = {
         m: dolfinx.fem.Constant(geo.mesh, dolfinx.default_scalar_type(unloaded[m])) for m in markers
     }
-    problem = pulse.StaticProblem(
+    problem: Any = pulse.StaticProblem(
         model=model,
         geometry=geo.geometry,
         bcs=bcs,
@@ -290,6 +312,8 @@ def inflate(
         parameters=problem_parameters(conf),
         monitor=monitor if monitor is not None else pulse.telemetry.NullMonitor(),
     )
+    state: InflationState | None = None
+    failed_at = 1.0
     n = conf.prestress.inflate_steps
     for k in range(1, n + 1):
         fraction = k / n
@@ -298,24 +322,23 @@ def inflate(
                 result.imaged_volumes[m] - unloaded[m]
             )
         if not problem.solve():
-            raise SolverFailure(
-                f"Re-inflation failed at {fraction:.2f} of the way to the imaged volumes; try "
-                "more prestress.inflate_steps",
-            )
-    state = InflationState(
-        u=problem.u.x.array.copy(),
-        p=problem.p.x.array.copy() if problem.is_incompressible else None,
-        cavity_pressures={
-            m: float(p.x.array[0]) for m, p in zip(markers, problem.cavity_pressures)
-        },
-    )
-    for m in markers:
-        logger.info(
-            f"{m}: re-inflated to {result.imaged_volumes[m] / mL:.2f} mL at "
-            f"{state.cavity_pressures[m] / 1e3:.3f} kPa",
+            failed_at = fraction
+            break
+    else:
+        state = InflationState(
+            u=problem.u.x.array.copy(),
+            p=problem.p.x.array.copy() if problem.is_incompressible else None,
+            cavity_pressures={
+                m: float(p.x.array[0]) for m, p in zip(markers, problem.cavity_pressures)
+            },
         )
+        for m in markers:
+            logger.info(
+                f"{m}: re-inflated to {result.imaged_volumes[m] / mL:.2f} mL at "
+                f"{state.cavity_pressures[m] / 1e3:.3f} kPa",
+            )
     # PETSc's destructors are collective: free the problem on every rank at the same point.
-    del problem
+    problem = None
     gc.collect()
     geo.mesh.comm.barrier()
-    return state
+    return state, failed_at
