@@ -7,7 +7,7 @@
 #   crossbridge.Land2017 at every quadrature point through StabilizedActiveStress and a
 #   regional Tref (LV and septum 160 kPa, RV 90 kPa). Land and a regional Tref are left to
 #   simcardemsx. `peak` was tuned by hand on this mesh for a plausible left-ventricular loop;
-#   it is not from a reference.
+#   it is not from a reference (tuned by hand: first beat LV peak 112 mmHg, EF 42 %).
 # - Circuit: regazzoni2020.ode (from the circulation package) with its timing, LV and RV
 #   components dropped. HR = 1/s: RR = 1 s, and the atrial onsets re-reduced modulo RR
 #   (tC_eff/tR_eff, as circulation.regazzoni2020.flat_ode_parameters computes them; change
@@ -54,7 +54,7 @@ target = "activation"
 [load.profile]
 type = "bestel_activation"
 period = "1 s"
-peak = "120 kPa"
+peak = "85 kPa"
 [load.profile.parameters]
 t_sys = "0.1 s"
 t_dias = "0.4 s"
