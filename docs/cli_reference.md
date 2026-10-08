@@ -399,6 +399,7 @@ One time axis: pseudo-time for static problems, physical time for dynamic ones.
 |---|---|---|---|
 | `max_halvings` | int | `4` | On Newton failure, split the step in two, at most this many times deep |
 | `petsc_options` | dict[str, str \| int \| float \| bool] | `{}` | Merged over pulse's defaults |
+| `preconditioner_lag` | int (optional) | – | circulation.type = 'cycle' only: the steady-state snes_lag_preconditioner (refreshed after every phase change) |
 
 ## `[output]`
 

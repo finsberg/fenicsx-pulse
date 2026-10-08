@@ -23,6 +23,9 @@ Time = Annotated[Quantity, PydanticPintQuantity("s")]
 Pressure = Annotated[Quantity, PydanticPintQuantity("kPa")]
 Density = Annotated[Quantity, PydanticPintQuantity("kg/m**3")]
 Viscosity = Annotated[Quantity, PydanticPintQuantity("Pa*s")]
+Compliance = Annotated[Quantity, PydanticPintQuantity("m**3/Pa")]
+Resistance = Annotated[Quantity, PydanticPintQuantity("Pa*s/m**3")]
+FlowRate = Annotated[Quantity, PydanticPintQuantity("m**3/s")]
 
 
 class ConfigError(ValueError):
@@ -662,6 +665,191 @@ class SolverConfig(_Base):
         default_factory=dict,
         description="Merged over pulse's defaults",
     )
+    preconditioner_lag: int | None = Field(
+        default=None,
+        ge=1,
+        description="circulation.type = 'cycle' only: the steady-state snes_lag_preconditioner "
+        "(refreshed after every phase change)",
+    )
+
+
+# --- circulation ------------------------------------------------------------------------
+
+
+class WindkesselConfig(_Base):
+    """A three-element Windkessel (pulse.cycle.Windkessel)."""
+
+    p_init: Pressure
+    compliance: Compliance
+    resistance: Resistance
+    characteristic_impedance: Resistance = Field(default_factory=lambda: _q("0 Pa*s/m**3"))
+
+
+class CycleCavityConfig(_Base):
+    """One cavity of the five-phase cycle (pulse.cycle.CycleParams)."""
+
+    marker: str
+    period: Time
+    t_zero: Time
+    t_end_diastole: Time
+    preload_pressure: Pressure
+    p_end_diastole: Pressure = Field(description="PRELOAD ends here; also the prestress target")
+    p_fill: Pressure
+    filling_rate: FlowRate
+    min_ejection_duration: Time = Field(default_factory=lambda: _q("10 ms"))
+    windkessel: WindkesselConfig
+
+    @model_validator(mode="after")
+    def _timing(self) -> "CycleCavityConfig":
+        if not 0 < si(self.t_zero) <= si(self.t_end_diastole) < si(self.period):
+            raise ValueError("circulation.cavity: need 0 < t_zero <= t_end_diastole < period")
+        return self
+
+
+class NoCirculation(_Base):
+    type: Literal["none"] = "none"
+
+
+class CycleCirculation(_Base):
+    """CycleController: one CavityControl and Windkessel per cavity."""
+
+    type: Literal["cycle"] = "cycle"
+    cavity: list[CycleCavityConfig] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _unique(self) -> "CycleCirculation":
+        markers = [c.marker for c in self.cavity]
+        if len(set(markers)) != len(markers):
+            raise ValueError(f"circulation.cavity markers must be unique, got {markers}")
+        return self
+
+
+class ChamberConfig(_Base):
+    """Ties a cavity (facet marker) to a chamber of the .ode circuit."""
+
+    marker: str
+    volume_state: str = Field(description="The circuit state holding the chamber volume (mL)")
+    pressure_missing: str = Field(description="The missing variable the chamber pressure feeds")
+
+
+class PhaseInputConfig(_Base):
+    """A time-derived missing variable: t mod period (e.g. Regazzoni's beat_phase)."""
+
+    type: Literal["phase"] = "phase"
+    period: Time
+
+    @model_validator(mode="after")
+    def _positive(self) -> "PhaseInputConfig":
+        if self.period.magnitude <= 0:
+            raise ValueError("circulation.inputs: period must be positive")
+        return self
+
+
+class _OdeCirculation(_Base):
+    ode_file: Path = Field(
+        description="gotranx .ode file (relative to the config); the physics hash covers its "
+        "contents",
+    )
+    drop_components: list[str] = Field(default_factory=list)
+    parameters: dict[str, float] = Field(
+        default_factory=dict,
+        description="Parameter overrides by name, in the .ode file's own units (plain numbers)",
+    )
+    initial_state: dict[str, float] = Field(
+        default_factory=dict,
+        description="Initial values by state name, in the .ode file's own units; coupled "
+        "chamber volumes always come from the mesh",
+    )
+    record: list[str] = Field(
+        default_factory=list,
+        description="Monitored expressions of the .ode file to add to loads.csv",
+    )
+    chamber: list[ChamberConfig] = Field(min_length=1)
+    inputs: dict[str, PhaseInputConfig] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _names(self) -> "_OdeCirculation":
+        for what in ("marker", "volume_state", "pressure_missing"):
+            values = [getattr(c, what) for c in self.chamber]
+            if len(set(values)) != len(values):
+                raise ValueError(f"circulation.chamber {what}s must be unique, got {values}")
+        volumes = sorted(set(self.initial_state) & {c.volume_state for c in self.chamber})
+        if volumes:
+            raise ValueError(
+                f"circulation.initial_state must not set coupled chamber volumes {volumes}: "
+                "they come from the mesh",
+            )
+        clash = sorted(set(self.inputs) & {c.pressure_missing for c in self.chamber})
+        if clash:
+            raise ValueError(f"circulation.inputs {clash} are chamber pressures already")
+        if len(set(self.record)) != len(self.record):
+            raise ValueError("circulation.record names must be unique")
+        return self
+
+
+class SplitCirculation(_OdeCirculation):
+    """The .ode circuit stepped by forward Euler, one mechanics solve per step."""
+
+    type: Literal["split"] = "split"
+
+
+class MonolithicCirculation(_OdeCirculation):
+    """The .ode circuit's states solved in the mechanics' own Newton system."""
+
+    type: Literal["monolithic"] = "monolithic"
+    scheme: Literal["backward_euler", "bdf2"] = "backward_euler"
+
+
+CirculationConfig = Annotated[
+    Union[NoCirculation, CycleCirculation, SplitCirculation, MonolithicCirculation],
+    Field(discriminator="type"),
+]
+
+
+def coupled_markers(circulation: Any) -> list[str]:
+    """Facet markers whose cavity the circulation couples."""
+    if circulation.type == "cycle":
+        return [c.marker for c in circulation.cavity]
+    if circulation.type in ("split", "monolithic"):
+        return [c.marker for c in circulation.chamber]
+    return []
+
+
+# --- prestress ----------------------------------------------------------------------------
+
+
+class PrestressTarget(_Base):
+    marker: str
+    pressure: Pressure
+
+
+class PrestressConfig(_Base):
+    """Recover the unloaded reference configuration before the run (PrestressProblem)."""
+
+    ramp_steps: int = Field(default=20, ge=1)
+    cache_folder: Path = Field(
+        default=Path("prestress"),
+        description="Cache root (relative to the config); each result in its own <hash>/ "
+        "subfolder; never deleted by --overwrite",
+    )
+    inflate_steps: int = Field(
+        default=0,
+        ge=0,
+        description="> 0: ramp the chamber volumes back to the imaged ones in this many static "
+        "steps before the run (split/monolithic only)",
+    )
+    target: list[PrestressTarget] = Field(
+        default_factory=list,
+        description="Cavity pressures of the imaged mesh; not allowed with circulation.type = "
+        "'cycle', whose targets are p_end_diastole",
+    )
+
+    @model_validator(mode="after")
+    def _unique(self) -> "PrestressConfig":
+        markers = [t.marker for t in self.target]
+        if len(set(markers)) != len(markers):
+            raise ValueError(f"prestress.target markers must be unique, got {markers}")
+        return self
 
 
 # --- output / postprocess ---------------------------------------------------------------
@@ -713,6 +901,8 @@ class Config(_Base):
     viscoelasticity: ViscoelasticityConfig = Field(default_factory=NoViscoelasticity)
     bcs: BCsConfig = Field(default_factory=BCsConfig)
     load: list[LoadConfig] = Field(default_factory=list)
+    circulation: CirculationConfig = Field(default_factory=NoCirculation)
+    prestress: PrestressConfig | None = None
     time: TimeConfig
     problem: ProblemConfig = Field(default_factory=ProblemConfig)
     solver: SolverConfig = Field(default_factory=SolverConfig)
@@ -755,6 +945,56 @@ class Config(_Base):
         duplicates = sorted({n for n in names if names.count(n) > 1})
         if duplicates:
             raise ValueError(f"load: duplicate loads {duplicates} (one per target and marker)")
+        circulation = self.circulation
+        coupled = coupled_markers(circulation)
+        if coupled and self.geometry.unit != "m":
+            raise ValueError(
+                f"circulation.type = {circulation.type!r} needs geometry.unit = 'm' (cavity "
+                f"volumes and pressures are SI), got {self.geometry.unit!r}",
+            )
+        if circulation.type == "cycle" and self.time.start_s() != 0.0:
+            raise ValueError("circulation.type = 'cycle' needs time.start_time = 0 s")
+        if circulation.type == "split" and self.problem.type != "static":
+            raise ValueError(
+                "circulation.type = 'split' needs problem.type = 'static' (its initial solve "
+                "at t0 would otherwise be a spurious dynamic step)",
+            )
+        if self.solver.preconditioner_lag is not None and circulation.type != "cycle":
+            raise ValueError("solver.preconditioner_lag only applies to circulation.type = 'cycle'")
+        loaded = sorted({load.marker for load in self.load if load.marker in coupled})
+        if loaded:
+            raise ValueError(
+                f"load: pressure loads on coupled cavity markers {loaded}; the wall load there "
+                "comes from the cavity's pressure unknown",
+            )
+        prestress = self.prestress
+        if prestress is not None:
+            targets = {t.marker for t in prestress.target}
+            if circulation.type == "cycle" and targets:
+                raise ValueError(
+                    "prestress.target is not allowed with circulation.type = 'cycle': the "
+                    "targets are each cavity's p_end_diastole",
+                )
+            if circulation.type != "cycle" and not targets:
+                raise ValueError("prestress needs at least one [[prestress.target]]")
+            if prestress.inflate_steps > 0:
+                if circulation.type not in ("split", "monolithic"):
+                    raise ValueError(
+                        "prestress.inflate_steps > 0 needs circulation.type = 'split' or "
+                        "'monolithic'",
+                    )
+                missing = sorted(set(coupled) - targets)
+                if missing:
+                    raise ValueError(
+                        f"prestress.inflate_steps > 0: chamber markers {missing} need a "
+                        "[[prestress.target]] (re-inflation goes back to their imaged volumes)",
+                    )
+            if self.problem.rigid_body_constraint:
+                raise ValueError(
+                    "prestress cannot be combined with problem.rigid_body_constraint = true",
+                )
+            if self.geometry.type == "box":
+                raise ValueError("prestress needs a cardiac geometry, not geometry.type = 'box'")
         return self
 
 
