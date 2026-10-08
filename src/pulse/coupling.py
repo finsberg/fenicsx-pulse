@@ -19,13 +19,17 @@ from a config, and simcardemsx can build them itself.
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
+from mpi4py import MPI
+
 import dolfinx
+import numpy as np
 
 from . import cycle
+from .circulation import ChamberCoupling, CirculationModel, mL, mmHg
 from .problem import Cavity, CavityControl
 
 logger = logging.getLogger(__name__)
@@ -35,6 +39,7 @@ __all__ = [
     "CycleCoupling",
     "NoCoupling",
     "Phase",
+    "SplitCoupling",
     "StepHook",
 ]
 
@@ -223,3 +228,147 @@ class CycleCoupling:
     def load_state_dict(self, state: Mapping[str, Any]) -> None:
         self._controller().load_state_dict(state["controller"])
         self._solved_under = {name: int(p) for name, p in state["solved_under"].items()}
+
+
+def _volume_forms(problem: Any, markers: Sequence[str]) -> dict[str, Any]:
+    """Compiled volume forms of the deformed cavities, as `CycleController` precompiles them."""
+    geometry = problem.geometry
+    return {
+        marker: dolfinx.fem.form(
+            geometry.volume_form(problem.u) * geometry.ds(geometry.markers[marker][0]),
+        )
+        for marker in markers
+    }
+
+
+def _assemble_volume(problem: Any, form: Any) -> float:
+    comm: MPI.Comm = problem.geometry.mesh.comm
+    return comm.allreduce(dolfinx.fem.assemble_scalar(form), op=MPI.SUM)
+
+
+class SplitCoupling:
+    """A 0D model stepped by forward Euler, one mechanics solve per step.
+
+    Each chamber's volume is prescribed to the mechanics (a `Constant`, in m³), and its pressure
+    is the Lagrange multiplier the solve returns. A step from ``t_n`` to ``t_{n+1}``:
+
+    1. ``y_{n+1} = y_n + dt * rhs(t_n, y_n, m_n)``, where ``m_n`` holds the chamber pressures
+       ``p_n`` of the previous converged solve (mmHg) and the inputs at ``t_n``;
+    2. the chamber volumes of ``y_{n+1}`` (mL -> m³) go into the Constants, and the mechanics is
+       solved, giving ``p_{n+1}``.
+
+    This is the volume sequence of `demo/time_dependent/land_circulation_biv.py`, which solves
+    at ``V_n`` first and then takes the Euler step; here the solve comes last, so that at the end
+    of every step ``u``, ``V``, ``p`` and ``y`` all belong to the same time. `initialize` does the
+    one extra solve at ``t0`` that gives ``p_0``. ``y`` is committed only after a converged
+    solve.
+    """
+
+    def __init__(
+        self,
+        model: CirculationModel,
+        chambers: Sequence[ChamberCoupling],
+        inputs: Mapping[str, Callable[[float], float]] | None = None,
+        initial_state: Mapping[str, float] | None = None,
+        record: Sequence[str] = (),
+    ) -> None:
+        self.model = model
+        self.chambers = list(chambers)
+        self.inputs = dict(inputs or {})
+        self.initial_state = dict(initial_state or {})
+        self.record_names = tuple(record)
+        self._state_index = {name: i for i, name in enumerate(model.state_names)}
+        self._missing_index = {name: i for i, name in enumerate(model.missing_names)}
+        self._volumes: dict[str, dolfinx.fem.Constant] = {}
+        self.problem: Any = None
+        self.y = np.zeros(len(self._state_index))
+        self.p: dict[str, float] = {}
+        self.t = 0.0
+
+    def cavities(self, mesh: dolfinx.mesh.Mesh) -> list[Cavity]:
+        self._volumes = {
+            c.marker: dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(0.0))
+            for c in self.chambers
+        }
+        return [Cavity(marker=marker, volume=v) for marker, v in self._volumes.items()]
+
+    def problem_kwargs(self) -> dict[str, Any]:
+        return {}
+
+    def attach(self, problem: Any) -> None:
+        self.problem = problem
+        self._cavity_index = {cavity.marker: i for i, cavity in enumerate(problem.cavities)}
+        self._forms = _volume_forms(problem, [c.marker for c in self.chambers])
+
+    def _pressures(self) -> dict[str, float]:
+        """Chamber pressures of the current solve, Pa."""
+        return {
+            c.marker: float(self.problem.cavity_pressures[self._cavity_index[c.marker]].x.array[0])
+            for c in self.chambers
+        }
+
+    def _missing(self, t: float, pressures: Mapping[str, float]) -> np.ndarray:
+        values = np.zeros(len(self._missing_index))
+        for c in self.chambers:
+            values[self._missing_index[c.pressure_missing]] = pressures[c.marker] / mmHg
+        for name, fn in self.inputs.items():
+            values[self._missing_index[name]] = fn(t)
+        return values
+
+    def _set_volumes(self, y: np.ndarray) -> None:
+        for c in self.chambers:
+            self._volumes[c.marker].value = y[self._state_index[c.volume_state]] * mL
+
+    def initialize(self, t0: float) -> None:
+        initial = getattr(self.model, "initial_states_with", None)
+        if initial is not None:
+            y = np.asarray(initial(self.initial_state), dtype=float)
+        else:
+            y = np.asarray(self.model.initial_states, dtype=float).copy()
+            for name, value in self.initial_state.items():
+                y[self._state_index[name]] = value
+        for c in self.chambers:
+            y[self._state_index[c.volume_state]] = (
+                _assemble_volume(self.problem, self._forms[c.marker]) / mL
+            )
+        self._set_volumes(y)
+        if not self.problem.solve():
+            self.problem.reset_states()
+            raise RuntimeError(
+                f"The mechanics solve at t={t0} s, at the initial chamber volumes, did not "
+                "converge",
+            )
+        self.y, self.p, self.t = y, self._pressures(), t0
+
+    def advance(self, t: float, dt: float) -> bool:
+        rhs: Any = self.model.rhs  # called with floats here, not UFL expressions
+        y_new = self.y + dt * np.asarray(rhs(t, self.y, self._missing(t, self.p)), dtype=float)
+        self._set_volumes(y_new)
+        if not self.problem.solve():
+            self.problem.reset_states()
+            self._set_volumes(self.y)
+            return False
+        self.y, self.p, self.t = y_new, self._pressures(), t + dt
+        return True
+
+    def record(self) -> dict[str, float]:
+        out: dict[str, float] = {}
+        for c in self.chambers:
+            out[f"volume_{c.marker}"] = float(self.y[self._state_index[c.volume_state]]) * mL
+            out[f"pressure_{c.marker}"] = self.p.get(c.marker, 0.0)
+        for name, i in self._state_index.items():
+            out[f"circ_{name}"] = float(self.y[i])
+        if self.record_names:
+            monitors = self.model.monitor(self.t, self.y, self._missing(self.t, self.p))  # type: ignore[attr-defined]
+            for name in self.record_names:
+                out[f"circ_{name}"] = float(monitors[self.model.monitor_index(name)])  # type: ignore[attr-defined]
+        return out
+
+    def state_dict(self) -> dict[str, Any]:
+        return {"t": self.t, "y": [float(v) for v in self.y], "p": dict(self.p)}
+
+    def load_state_dict(self, state: Mapping[str, Any]) -> None:
+        self.t = float(state["t"])
+        self.y = np.asarray(state["y"], dtype=float)
+        self.p = {k: float(v) for k, v in state["p"].items()}
+        self._set_volumes(self.y)

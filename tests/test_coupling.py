@@ -3,6 +3,7 @@
 import gc
 import json
 import math
+from pathlib import Path
 
 from mpi4py import MPI
 
@@ -12,8 +13,8 @@ import pytest
 
 import pulse
 from pulse import cycle
-from pulse.circulation import mL, mmHg
-from pulse.coupling import Coupling, CycleCoupling, Phase
+from pulse.circulation import ChamberCoupling, mL, mmHg
+from pulse.coupling import Coupling, CycleCoupling, Phase, SplitCoupling
 from pulse.problem import Cavity, CavityControl
 
 cardiac_geometries = pytest.importorskip("cardiac_geometries")
@@ -202,3 +203,150 @@ def test_cycle_coupling_state_round_trips_through_json(lv):
     other, _ = _cycle_coupled(lv)
     other.load_state_dict(state)
     assert _without_solver_hints(other.state_dict()) == _without_solver_hints(coupling.state_dict())
+
+
+WINDKESSEL = Path(__file__).parent / "data" / "windkessel.ode"
+INITIAL = {"p_AR": 70.0}
+
+
+def _static_problem(geometry, model, cavities, **kwargs):
+    parameters = {"base_bc": pulse.problem.BaseBC.fixed, "mesh_unit": "m"}
+    parameters.update(kwargs.pop("parameters", {}))
+    return pulse.problem.StaticProblem(
+        model=model,
+        geometry=geometry,
+        cavities=cavities,
+        parameters=parameters,
+        **kwargs,
+    )
+
+
+def _numpy_circuit():
+    pytest.importorskip("gotranx")
+    from pulse.circulation import GotranxNumpyCirculation
+
+    return GotranxNumpyCirculation(ode_file=WINDKESSEL, drop_components=("timing", "LV"))
+
+
+def _cavity_volume(geometry, u) -> float:
+    return MPI.COMM_WORLD.allreduce(geometry.volume("ENDO", u=u), op=MPI.SUM)
+
+
+def _split_coupled(lv, record=()):
+    geo, geometry = lv
+    coupling = SplitCoupling(
+        _numpy_circuit(),
+        [ChamberCoupling(marker="ENDO", volume_state="V_LV", pressure_missing="p_LV")],
+        inputs={"beat_phase": Phase(1.0)},
+        initial_state=INITIAL,
+        record=record,
+    )
+    problem = _static_problem(
+        geometry,
+        _model(geo),
+        coupling.cavities(geo.mesh),
+        **coupling.problem_kwargs(),
+    )
+    coupling.attach(problem)
+    coupling.initialize(0.0)
+    return coupling, problem
+
+
+def _demo_loop(lv, n):
+    """`land_circulation_biv.py`'s loop, n steps: solve at V_k -> p_k, then
+    y_{k+1} = y_k + dt rhs(t_k, y_k, p_k). Returns y_n."""
+    geo, geometry = lv
+    circuit = _numpy_circuit()
+    volume = dolfinx.fem.Constant(geo.mesh, dolfinx.default_scalar_type(0.0))
+    problem = _static_problem(geometry, _model(geo), [Cavity(marker="ENDO", volume=volume)])
+    i_volume = circuit.state_index("V_LV")
+    y = circuit.initial_states_with(INITIAL)
+    y[i_volume] = _cavity_volume(geometry, None) / mL
+    t = 0.0
+    for _ in range(n):
+        volume.value = y[i_volume] * mL
+        assert problem.solve()
+        missing = np.zeros(len(circuit.missing_names))
+        missing[circuit.missing_index("p_LV")] = (
+            float(problem.cavity_pressures[0].x.array[0]) / mmHg
+        )
+        missing[circuit.missing_index("beat_phase")] = t % 1.0
+        y = y + DT * circuit.rhs(t, y, missing)
+        t += DT
+    return y
+
+
+def test_split_coupling_equals_the_demo_loop(lv):
+    _, geometry = lv
+    coupling, problem = _split_coupled(lv)
+    t = 0.0
+    for _ in range(3):
+        assert coupling.advance(t, DT)
+        t += DT
+    expected = _demo_loop(lv, 3)
+    if MPI.COMM_WORLD.size == 1:
+        np.testing.assert_array_equal(coupling.y, expected)  # bit for bit
+    else:  # MUMPS differs in the last bits between two problem instances under MPI
+        np.testing.assert_allclose(coupling.y, expected, rtol=1e-9, atol=1e-14)
+    record = coupling.record()
+    # The volume rows of the Newton system are in m^3, so the solve is converged to within
+    # `snes_atol` = 1e-6 there (as in the demo loop); a step's volume change can be below it.
+    assert record["volume_ENDO"] == pytest.approx(
+        _cavity_volume(geometry, problem.u),
+        rel=1e-8,
+        abs=1e-6,
+    )
+    assert record["circ_V_LV"] * mL == record["volume_ENDO"]
+
+
+def test_split_coupling_failed_advance_changes_nothing(lv, monkeypatch):
+    coupling, problem = _split_coupled(lv)
+    assert coupling.advance(0.0, DT)
+    y, p, u = coupling.y.copy(), dict(coupling.p), problem.u.x.array.copy()
+    volume = float(problem.cavities[0].volume.value)
+
+    def fail(*args, **kwargs):
+        problem.update_old_states()
+        problem.u.x.array[:] += 1.0
+        return False
+
+    monkeypatch.setattr(problem, "solve", fail)
+    assert coupling.advance(DT, DT) is False
+    assert np.array_equal(coupling.y, y)
+    assert coupling.p == p
+    assert np.array_equal(problem.u.x.array, u)
+    assert float(problem.cavities[0].volume.value) == volume
+
+
+def test_split_coupling_state_round_trips_through_json(lv):
+    coupling, _ = _split_coupled(lv)
+    assert coupling.advance(0.0, DT)
+    state = json.loads(json.dumps(coupling.state_dict()))
+    other, problem = _split_coupled(lv)
+    other.load_state_dict(state)
+    assert np.array_equal(other.y, coupling.y)  # floats survive JSON exactly
+    assert other.p == coupling.p
+    assert other.t == coupling.t
+    i_volume = list(coupling.model.state_names).index("V_LV")
+    assert float(problem.cavities[0].volume.value) == coupling.y[i_volume] * mL
+
+
+def test_split_coupling_records_monitors(lv):
+    coupling, _ = _split_coupled(lv, record=("Q_in", "Q_out"))
+    record = coupling.record()
+    assert {"volume_ENDO", "pressure_ENDO", "circ_V_LV", "circ_p_AR"} <= set(record)
+    assert {"circ_Q_in", "circ_Q_out"} <= set(record)
+
+
+def test_split_coupling_initial_solve_failure_raises(lv, monkeypatch):
+    geo, geometry = lv
+    coupling = SplitCoupling(
+        _numpy_circuit(),
+        [ChamberCoupling(marker="ENDO", volume_state="V_LV", pressure_missing="p_LV")],
+        inputs={"beat_phase": Phase(1.0)},
+    )
+    problem = _static_problem(geometry, _model(geo), coupling.cavities(geo.mesh))
+    coupling.attach(problem)
+    monkeypatch.setattr(problem, "solve", lambda *a, **k: False)
+    with pytest.raises(RuntimeError, match="t=0"):
+        coupling.initialize(0.0)
