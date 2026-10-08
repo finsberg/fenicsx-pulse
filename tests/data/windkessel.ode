@@ -1,0 +1,22 @@
+# A two-state test circuit for pulse's coupling tests: one ventricle (volume V_LV, in mL)
+# filling from a venous pressure that rises over the beat, and ejecting into a Windkessel
+# compliance (pressure p_AR, in mmHg). It is linear, so a monolithic Newton solve converges in
+# a step or two. Drop "LV" to supply p_LV from a 3D model, and "timing" to supply beat_phase.
+
+parameters("circuit", p_VEN = 8.0, R_in = 0.05, R_out = 0.5, C_AR = 1.5, R_p = 1.1, RR = 1.0)
+parameters("LV", E_LV = 0.1, V0_LV = 100.0, p0_LV = 10.0)
+
+states("circuit", V_LV = 120.0, p_AR = 80.0)
+
+expressions("timing")
+beat_phase = Mod(t, RR)
+
+expressions("LV")
+p_LV = p0_LV + E_LV * (V_LV - V0_LV)
+
+expressions("circuit")
+p_ven = p_VEN + 2.0 * beat_phase / RR
+Q_in = (p_ven - p_LV) / R_in
+Q_out = (p_LV - p_AR) / R_out
+dV_LV_dt = Q_in - Q_out
+dp_AR_dt = (Q_out - p_AR / R_p) / C_AR

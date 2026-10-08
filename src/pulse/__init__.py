@@ -40,7 +40,12 @@ from .active_stress import (
 )
 from .boundary_conditions import BoundaryConditions, NeumannBC, RobinBC
 from .cardiac_model import CardiacModel
-from .circulation import ChamberCoupling, CirculationModel, GotranxCirculation
+from .circulation import (
+    ChamberCoupling,
+    CirculationModel,
+    GotranxCirculation,
+    GotranxNumpyCirculation,
+)
 from .compressibility import (
     Compressibility,
     Compressible,
@@ -68,6 +73,7 @@ __all__ = [
     "CirculationModel",
     "ChamberCoupling",
     "GotranxCirculation",
+    "GotranxNumpyCirculation",
     "kinematics",
     "invariants",
     "material_model",
