@@ -41,7 +41,8 @@ from ..coupling import NoCoupling
 from ..telemetry import NullMonitor, PerformanceMonitor
 from ..units import mesh_factor
 from .bcs import build_bcs
-from .config import CAVITY_MARKERS, Config, ConfigError, si
+from .config import CAVITY_MARKERS, Config, ConfigError, coupled_markers, si
+from .coupling import build_coupling
 from .geometry import CLIGeometry, build_geometry, check_markers
 from .loads import LoadSet, build_loads, make_load_variables, require_optional_packages
 from .log import add_logfile_handler, remove_logfile_handlers
@@ -246,6 +247,11 @@ def required_markers(conf: Config) -> dict[str, list[str]]:
     }
     if conf.bcs.base_bc == "fixed":
         out["bcs.base_marker"] = [conf.bcs.base_marker]
+    coupled = coupled_markers(conf.circulation)
+    if coupled:
+        out["circulation"] = coupled
+    if conf.prestress is not None:
+        out["prestress.target"] = [t.marker for t in conf.prestress.target]
     return out
 
 
@@ -304,6 +310,7 @@ def build_problem(
     entry is merged into the problem's parameters).
     """
     coupling = coupling if coupling is not None else NoCoupling()
+    cavities = coupling.cavities(geo.mesh)  # first: problem_kwargs may use what it creates
     extra = dict(coupling.problem_kwargs())
     parameters = problem_parameters(conf)
     parameters.update(extra.pop("parameters", {}))
@@ -311,7 +318,7 @@ def build_problem(
         model=model,
         geometry=geo.geometry,
         bcs=bcs,
-        cavities=coupling.cavities(geo.mesh),
+        cavities=cavities,
         monitor=monitor if monitor is not None else NullMonitor(),
         **extra,
     )
@@ -692,7 +699,7 @@ def build_simulation(
     model = build_model(conf, geo, activation=activation, active_model=active_model)
     pressures = {load.marker: variables[load.name] for load in conf.load if load.marker}
     bcs = build_bcs(conf.bcs, geo, pressures)
-    coupling = coupling if coupling is not None else NoCoupling()
+    coupling = coupling if coupling is not None else build_coupling(conf)
     problem, dt_constant = build_problem(conf, geo, model, bcs, monitor=monitor, coupling=coupling)
     coupling.attach(problem)
     loads = build_loads(conf.load, variables, conf.time)
