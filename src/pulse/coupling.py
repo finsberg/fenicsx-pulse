@@ -66,8 +66,11 @@ class Coupling(Protocol):
         ...
 
     def advance(self, t: float, dt: float) -> bool:
-        """Solve the step from `t` to `t + dt`. On ``False`` the coupling and the problem are
-        exactly as they were before the call."""
+        """Solve the step from `t` to `t + dt`. On ``False`` the problem's state Functions and
+        the coupling's state are as they were before the call, except for (a) per-step inputs
+        the coupling sets from its own state before every solve (cavity controls, volume or
+        input Constants), which may hold the failed attempt's values, and (b) solver hints such
+        as `CycleController`'s pending preconditioner refresh."""
         ...
 
     def record(self) -> dict[str, float]:
@@ -153,9 +156,11 @@ class CycleCoupling:
     """The five-phase cycle of `pulse.cycle`, one `CavityControl` per cavity.
 
     `advance(t, dt)` is `CycleController.step(t + dt, dt)`, which retries a failed solve once
-    and leaves everything as it was if the retry fails too. `record` reports, per cavity, the
-    phase the step was *solved under* (the controller's own records hold the phase for the next
-    step), and the volume, pressure, compliance pressure and outflow of that step, in SI units.
+    and, if the retry fails too, leaves the state as it was apart from the cavity controls
+    and the pending preconditioner refresh (see `Coupling.advance`).
+    `record` reports, per cavity, the phase the step was *solved under* (the controller's own
+    records hold the phase for the next step), and the volume, pressure, compliance pressure and
+    outflow of that step, in SI units.
     """
 
     def __init__(

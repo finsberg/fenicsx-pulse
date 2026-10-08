@@ -122,9 +122,8 @@ def _cycle_coupled(lv):
     return coupling, problem
 
 
-def _durable(state):
-    """`state_dict()` minus the controller's preconditioner-refresh flag, which is a solver-side
-    hint (a failed step or a fresh solver always leaves it pending), not 0D state."""
+def _without_solver_hints(state):
+    """`state_dict()` minus the controller's pending-refresh hint (see `Coupling.advance`)."""
     state = json.loads(json.dumps(state))
     state["controller"].pop("refresh_pending")
     return state
@@ -158,17 +157,22 @@ def test_cycle_coupling_steps_exactly_like_the_controller(lv):
         assert controller.step(t + DT, DT)
         assert coupling.advance(t, DT)
         t += DT
-    # bitwise equal in serial; under MPI the two Newton solves may differ in the last bits
-    np.testing.assert_allclose(problem.u.x.array, direct.u.x.array, rtol=1e-9, atol=1e-14)
     record = coupling.record()
-    assert record["volume_ENDO"] == pytest.approx(controller.records["ENDO"].V, rel=1e-9, abs=1e-14)
-    assert record["pressure_ENDO"] == pytest.approx(
-        controller.records["ENDO"].P,
-        rel=1e-9,
-        abs=1e-14,
-    )
-    assert record["Pc_ENDO"] == pytest.approx(controller.records["ENDO"].P_c, rel=1e-9, abs=1e-14)
-    assert record["Q_ENDO"] == pytest.approx(controller.records["ENDO"].Q, rel=1e-9, abs=1e-14)
+    ref = controller.records["ENDO"]
+    pairs = [
+        ("volume_ENDO", ref.V),
+        ("pressure_ENDO", ref.P),
+        ("Pc_ENDO", ref.P_c),
+        ("Q_ENDO", ref.Q),
+    ]
+    if MPI.COMM_WORLD.size == 1:
+        assert np.array_equal(problem.u.x.array, direct.u.x.array)
+        for key, value in pairs:
+            assert record[key] == value
+    else:  # two independent Newton solves may differ in the last bits under MPI
+        np.testing.assert_allclose(problem.u.x.array, direct.u.x.array, rtol=1e-9, atol=1e-14)
+        for key, value in pairs:
+            assert record[key] == pytest.approx(value, rel=1e-9, abs=1e-14)
     assert record["phase_ENDO"] == phases[-1]  # the phase the last step was solved under
     assert set(record) == {"phase_ENDO", "volume_ENDO", "pressure_ENDO", "Pc_ENDO", "Q_ENDO"}
 
@@ -176,7 +180,7 @@ def test_cycle_coupling_steps_exactly_like_the_controller(lv):
 def test_cycle_coupling_failed_advance_changes_nothing(lv, monkeypatch):
     coupling, problem = _cycle_coupled(lv)
     assert coupling.advance(0.0, DT)
-    before_state = _durable(coupling.state_dict())
+    before_state = _without_solver_hints(coupling.state_dict())
     before_u = problem.u.x.array.copy()
 
     def fail(*args, **kwargs):
@@ -186,7 +190,8 @@ def test_cycle_coupling_failed_advance_changes_nothing(lv, monkeypatch):
 
     monkeypatch.setattr(problem, "solve", fail)
     assert coupling.advance(DT, DT) is False
-    assert _durable(coupling.state_dict()) == before_state
+    assert coupling.state_dict()["controller"]["refresh_pending"] is True
+    assert _without_solver_hints(coupling.state_dict()) == before_state
     assert np.array_equal(problem.u.x.array, before_u)
 
 
@@ -196,4 +201,4 @@ def test_cycle_coupling_state_round_trips_through_json(lv):
     state = json.loads(json.dumps(coupling.state_dict()))
     other, _ = _cycle_coupled(lv)
     other.load_state_dict(state)
-    assert _durable(other.state_dict()) == _durable(coupling.state_dict())
+    assert _without_solver_hints(other.state_dict()) == _without_solver_hints(coupling.state_dict())
