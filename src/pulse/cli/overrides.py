@@ -245,6 +245,9 @@ def physics_hash(conf: Config) -> str:
         profile = load.profile
         if isinstance(profile, TableProfile) and profile.file is not None:
             dumped["profile"]["file"] = file_hash(profile.file)
+        for key in ("period", "peak"):  # added after 0.11: keep old hashes while unset
+            if dumped["profile"].get(key, 0) is None and not isinstance(profile, TableProfile):
+                dumped["profile"].pop(key)
     if data["geometry"].get("type") != "folder":
         data["geometry"].pop("folder", None)
     # Sections and fields added after pulse 0.11 are dropped while they hold their defaults,

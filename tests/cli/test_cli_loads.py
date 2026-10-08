@@ -3,7 +3,7 @@ from mpi4py import MPI
 import dolfinx
 import numpy as np
 import pytest
-from cli_helpers import write_file
+from cli_helpers import write_cfg, write_file
 
 from pulse.cli.config import (
     BestelActivationProfile,
@@ -21,6 +21,7 @@ from pulse.cli.loads import (
     make_load_variables,
     require_optional_packages,
 )
+from pulse.cli.overrides import load_config
 
 
 def test_constant_profile_is_si():
@@ -133,3 +134,40 @@ def test_bestel_prefix_independent_of_end_time():
     long = build_profile(BestelActivationProfile(), 0.0, 1.0, 0.01)
     for t in np.arange(0.0, 0.4, 0.01):
         assert short(t) == long(t)  # bit-identical: needed for restart == continuous
+
+
+def _bestel_conf(tmp_path, **profile):
+    load = {"target": "activation", "profile": {"type": "bestel_activation", **profile}}
+    return load_config(
+        write_cfg(
+            tmp_path,
+            active={"type": "active_stress"},
+            load=[load],
+            time={"end_time": "2 s", "dt": "10 ms"},
+        ),
+        environ={},
+    )
+
+
+def test_bestel_period_repeats(tmp_path):
+    pytest.importorskip("circulation")
+    pytest.importorskip("scipy")
+    conf = _bestel_conf(tmp_path, period="0.8 s")
+    fn = build_profile(conf.load[0].profile, 0.0, 2.0, conf.time.dt_s())
+    for t in (0.1, 0.3, 0.55):
+        assert fn(t + 0.8) == pytest.approx(fn(t), rel=1e-9, abs=1e-9)
+        assert fn(t + 1.6) == pytest.approx(fn(t), rel=1e-9, abs=1e-9)
+
+
+def test_bestel_peak_normalises(tmp_path):
+    pytest.importorskip("circulation")
+    pytest.importorskip("scipy")
+    conf = _bestel_conf(tmp_path, period="1 s", peak="100 kPa")
+    fn = build_profile(conf.load[0].profile, 0.0, 2.0, conf.time.dt_s())
+    values = [fn(t) for t in np.arange(0.0, 1.0, 0.01)]
+    assert max(values) == pytest.approx(100e3, rel=1e-12)
+
+
+def test_bestel_period_must_fit_the_time_step(tmp_path):
+    with pytest.raises(ConfigError, match="period"):
+        _bestel_conf(tmp_path, period="0.805 s")

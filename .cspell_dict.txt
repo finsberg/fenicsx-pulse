@@ -277,3 +277,5 @@ yjmcc
 ylabel
 Zhou
 substeps
+normalise
+normalises

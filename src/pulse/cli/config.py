@@ -545,6 +545,22 @@ class _BestelBase(_Base):
         default_factory=dict,
         description="Overrides of the circulation.bestel defaults, as quantities",
     )
+    period: Time | None = Field(
+        default=None,
+        description="Integrate one period from t = 0 on the [time] grid, then repeat it",
+    )
+    peak: Pressure | None = Field(
+        default=None,
+        description="Divide the trace by its largest value, then scale it to this",
+    )
+
+    @model_validator(mode="after")
+    def _positive(self) -> "_BestelBase":
+        if self.period is not None and self.period.magnitude <= 0:
+            raise ValueError("Bestel profile: period must be positive")
+        if self.peak is not None and self.peak.magnitude <= 0:
+            raise ValueError("Bestel profile: peak must be positive")
+        return self
 
     @field_validator("parameters")
     @classmethod
@@ -945,6 +961,15 @@ class Config(_Base):
         duplicates = sorted({n for n in names if names.count(n) > 1})
         if duplicates:
             raise ValueError(f"load: duplicate loads {duplicates} (one per target and marker)")
+        for load in self.load:
+            profile = load.profile
+            period = getattr(profile, "period", None)
+            if isinstance(profile, _BestelBase) and period is not None:
+                if not _is_multiple(si(period), dt):
+                    raise ValueError(
+                        f"load {load.name}: the Bestel period ({si(period):g} s) must be an "
+                        f"integer multiple of the time step ({dt:g} s)",
+                    )
         circulation = self.circulation
         coupled = coupled_markers(circulation)
         if coupled and self.geometry.unit != "m":

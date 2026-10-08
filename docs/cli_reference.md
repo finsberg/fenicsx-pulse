@@ -355,6 +355,8 @@ Linear interpolation of a table, held constant outside it; `period` repeats it.
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `parameters` | dict[str, str] | `{}` | Overrides of the circulation.bestel defaults, as quantities |
+| `period` | Quantity (optional) | – | Integrate one period from t = 0 on the [time] grid, then repeat it |
+| `peak` | Quantity (optional) | – | Divide the trace by its largest value, then scale it to this |
 | `type` | 'bestel_pressure' | `'bestel_pressure'` |  |
 
 ### BestelActivationProfile (`bestel_activation`)
@@ -362,6 +364,8 @@ Linear interpolation of a table, held constant outside it; `period` repeats it.
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `parameters` | dict[str, str] | `{}` | Overrides of the circulation.bestel defaults, as quantities |
+| `period` | Quantity (optional) | – | Integrate one period from t = 0 on the [time] grid, then repeat it |
+| `peak` | Quantity (optional) | – | Divide the trace by its largest value, then scale it to this |
 | `type` | 'bestel_activation' | `'bestel_activation'` |  |
 
 ## `[time]`
