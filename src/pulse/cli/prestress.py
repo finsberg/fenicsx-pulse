@@ -9,6 +9,7 @@ deleted by ``--overwrite``.
 """
 
 import dataclasses
+import gc
 import hashlib
 import json
 import logging
@@ -23,6 +24,7 @@ from mpi4py import MPI
 
 import dolfinx
 import io4dolfinx
+import numpy as np
 
 import pulse
 
@@ -232,3 +234,88 @@ def apply_prestress(conf: Config, geo: CLIGeometry, result: PrestressResult) -> 
         unloaded = cavity_volume(conf, geo, marker)
         logger.info(f"{marker}: imaged {imaged / mL:.2f} mL, unloaded {unloaded / mL:.2f} mL")
     return dataclasses.replace(geo, **fibres)
+
+
+@dataclass
+class InflationState:
+    """The re-inflated state, to be copied into the run's problem before it starts."""
+
+    u: np.ndarray
+    p: np.ndarray | None
+    cavity_pressures: dict[str, float]  # marker -> Pa
+
+    def apply(self, problem: Any) -> None:
+        problem.u.x.array[:] = self.u
+        problem.u_old.x.array[:] = self.u
+        if self.p is not None:
+            problem.p.x.array[:] = self.p
+            problem.p_old.x.array[:] = self.p
+        for cavity, pressure, pressure_old in zip(
+            problem.cavities,
+            problem.cavity_pressures,
+            problem.cavity_pressures_old,
+        ):
+            if cavity.marker in self.cavity_pressures:
+                pressure.x.array[:] = self.cavity_pressures[cavity.marker]
+                pressure_old.x.array[:] = self.cavity_pressures[cavity.marker]
+        # v_old and a_old of a dynamic problem stay 0: the run starts from rest.
+
+
+def inflate(
+    conf: Config,
+    geo: CLIGeometry,
+    model: Any,
+    bcs: Any,
+    result: PrestressResult,
+    markers: list[str],
+    monitor: Any = None,
+) -> InflationState:
+    """Ramp each cavity's volume from unloaded back to imaged, in ``inflate_steps`` static solves.
+
+    Must run *before* the run's problem is built: `CardiacModel` registers ``u``/``p`` with the
+    problem built last, and that must be the run's.
+    """
+    from .runner import SolverFailure, problem_parameters
+
+    assert conf.prestress is not None
+    unloaded = {m: cavity_volume(conf, geo, m) for m in markers}
+    volumes = {
+        m: dolfinx.fem.Constant(geo.mesh, dolfinx.default_scalar_type(unloaded[m])) for m in markers
+    }
+    problem = pulse.StaticProblem(
+        model=model,
+        geometry=geo.geometry,
+        bcs=bcs,
+        cavities=[pulse.problem.Cavity(marker=m, volume=v) for m, v in volumes.items()],
+        parameters=problem_parameters(conf),
+        monitor=monitor if monitor is not None else pulse.telemetry.NullMonitor(),
+    )
+    n = conf.prestress.inflate_steps
+    for k in range(1, n + 1):
+        fraction = k / n
+        for m in markers:
+            volumes[m].value[...] = unloaded[m] + fraction * (
+                result.imaged_volumes[m] - unloaded[m]
+            )
+        if not problem.solve():
+            raise SolverFailure(
+                f"Re-inflation failed at {fraction:.2f} of the way to the imaged volumes; try "
+                "more prestress.inflate_steps",
+            )
+    state = InflationState(
+        u=problem.u.x.array.copy(),
+        p=problem.p.x.array.copy() if problem.is_incompressible else None,
+        cavity_pressures={
+            m: float(p.x.array[0]) for m, p in zip(markers, problem.cavity_pressures)
+        },
+    )
+    for m in markers:
+        logger.info(
+            f"{m}: re-inflated to {result.imaged_volumes[m] / mL:.2f} mL at "
+            f"{state.cavity_pressures[m] / 1e3:.3f} kPa",
+        )
+    # PETSc's destructors are collective: free the problem on every rank at the same point.
+    del problem
+    gc.collect()
+    geo.mesh.comm.barrier()
+    return state

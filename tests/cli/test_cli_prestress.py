@@ -1,5 +1,6 @@
 """[prestress]: unload the imaged mesh once, cache it by hash, deform it and remap the fibres."""
 
+import csv
 import json
 import shutil
 
@@ -7,13 +8,13 @@ from mpi4py import MPI
 
 import numpy as np
 import pytest
-from cli_helpers import lv_sections, write_cfg
+from cli_helpers import WINDKESSEL, lv_sections, ode_section, write_cfg, write_file
 
 import pulse
 from pulse.cli.geometry import build_geometry
 from pulse.cli.overrides import load_config
 from pulse.cli.prestress import cavity_volume, prestress_hash
-from pulse.cli.runner import SolverFailure, build_simulation, run
+from pulse.cli.runner import LOADS, SolverFailure, build_simulation, run
 
 pytest.importorskip("cardiac_geometries")
 
@@ -135,3 +136,41 @@ def test_failed_prestress_caches_nothing(tmp_path, lv_folder, monkeypatch):
         build_simulation(conf)
     folder = conf.prestress.cache_folder
     assert not folder.exists() or _entries(conf) == []
+
+
+def _inflated_conf(tmp_path, lv_folder, end_time="2 ms"):
+    pytest.importorskip("gotranx")
+    ode = write_file(tmp_path / "circuit.ode", WINDKESSEL.read_text())
+    sections = lv_sections(
+        lv_folder,
+        circulation=ode_section(ode, "monolithic"),
+        prestress={"target": TARGET, "ramp_steps": 3, "inflate_steps": 8},
+        problem={"u_space": "P_1"},
+        time={"end_time": end_time, "dt": "2 ms"},
+    )
+    return load_config(write_cfg(tmp_path, **sections), environ={})
+
+
+def test_reinflation_returns_to_the_imaged_volume(tmp_path, lv_folder):
+    conf = _inflated_conf(tmp_path, lv_folder)
+    imaged = cavity_volume(conf, build_geometry(conf.geometry), "ENDO")
+    run(conf)
+    with open(conf.output.folder / LOADS) as f:
+        first = next(csv.DictReader(f))
+    assert float(first["volume_ENDO"]) == pytest.approx(imaged, rel=1e-6)
+    assert float(first["circ_V_LV"]) * 1e-6 == pytest.approx(imaged, rel=1e-6)
+    # re-inflating the unloaded mesh to the imaged volume takes about the prestress pressure
+    assert float(first["pressure_ENDO"]) == pytest.approx(1000.0, rel=0.2), (
+        f"measured {first['pressure_ENDO']} Pa, target 1000 Pa"
+    )
+
+
+def test_restart_does_not_reinflate(tmp_path, lv_folder, monkeypatch):
+    conf = _inflated_conf(tmp_path, lv_folder)
+    run(conf)
+
+    def no_inflation(*args, **kwargs):
+        raise AssertionError("a restart re-inflated")
+
+    monkeypatch.setattr("pulse.cli.runner.inflate", no_inflation)
+    run(_inflated_conf(tmp_path, lv_folder, end_time="4 ms"), restart=True)

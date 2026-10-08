@@ -48,7 +48,13 @@ from .loads import LoadSet, build_loads, make_load_variables, require_optional_p
 from .log import add_logfile_handler, remove_logfile_handlers
 from .model import build_model
 from .overrides import dump_config, physics_hash
-from .prestress import PrestressResult, apply_prestress, build_prestress
+from .prestress import (
+    InflationState,
+    PrestressResult,
+    apply_prestress,
+    build_prestress,
+    inflate,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -355,6 +361,7 @@ class MechanicsSimulation:
     coupling: Any = field(default_factory=NoCoupling)
     hooks: list[Any] = field(default_factory=list)
     prestress: Any = None
+    inflation: Any = None
     _last_saved: float = field(default=-np.inf, repr=False)
     _last_row: float = field(default=-np.inf, repr=False)
     _checkpoints: np.ndarray = field(default_factory=lambda: np.zeros(0), repr=False)
@@ -403,6 +410,8 @@ class MechanicsSimulation:
         """Fresh run: set the loads to the start time, initialise the coupling, create the
         output folder and write loads.csv's header."""
         self.loads.update(self.t)
+        if self.inflation is not None:
+            self.inflation.apply(self.problem)
         try:
             self.coupling.initialize(self.t)
         except RuntimeError as e:
@@ -710,10 +719,23 @@ def build_simulation(
     model = build_model(conf, geo, activation=activation, active_model=active_model)
     pressures = {load.marker: variables[load.name] for load in conf.load if load.marker}
     bcs = build_bcs(conf.bcs, geo, pressures)
+    loads = build_loads(conf.load, variables, conf.time)
+    loads.update(conf.time.start_s())  # Ta(t0), for the re-inflation's solves
     coupling = coupling if coupling is not None else build_coupling(conf)
+    inflation: InflationState | None = None
+    if fresh and prestress is not None and conf.prestress and conf.prestress.inflate_steps > 0:
+        with monitor.track_time("inflation"):
+            inflation = inflate(
+                conf,
+                geo,
+                model,
+                bcs,
+                prestress,
+                coupled_markers(conf.circulation),
+                monitor=monitor,
+            )
     problem, dt_constant = build_problem(conf, geo, model, bcs, monitor=monitor, coupling=coupling)
     coupling.attach(problem)
-    loads = build_loads(conf.load, variables, conf.time)
     return MechanicsSimulation(
         conf=conf,
         geo=geo,
@@ -725,6 +747,7 @@ def build_simulation(
         coupling=coupling,
         hooks=list(hooks),
         prestress=prestress,
+        inflation=inflation,
     )
 
 
