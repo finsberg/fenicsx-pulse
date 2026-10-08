@@ -283,3 +283,7 @@ normalising
 normalisation
 Prestressing
 prestressing
+colours
+axvspan
+zorder
+fontsize
