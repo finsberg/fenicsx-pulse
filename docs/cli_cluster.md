@@ -71,7 +71,6 @@ compute a missing entry; the first to finish is installed by an atomic rename an
 it. Run one task (or `pulse run` once with a short `end_time`) first to warm it. `--overwrite`
 never deletes the cache.
 
-
 ## Surviving a wall-time kill: `--restart`
 
 For a run whose simulated time exceeds what a single job's wall-time allows, set a checkpoint

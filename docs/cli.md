@@ -498,9 +498,9 @@ The cavity constraint rows of the plain volume constraint are in m^3 and Newton 
 
 ### `type = "monolithic"`
 
-The same `.ode` keys, plus `scheme` (`"backward_euler"`); the 0D states are unknowns of the
-Newton system of the displacement, so every step is one coupled solve. A `[prestress]` section
-provides the end-diastolic pressures the 0D initial state is consistent with:
+The same `.ode` keys, plus `scheme` (`"backward_euler"`, the default, or `"bdf2"`); the 0D
+states are unknowns of the Newton system of the displacement, so every step is one coupled solve.
+A `[prestress]` section provides the end-diastolic pressures the 0D initial state is consistent with:
 
 ```toml
 [circulation]
@@ -569,15 +569,16 @@ marker = "ENDO"
 pressure = "2.463 kPa"
 ```
 
-- The targets are the pressures the imaged mesh was loaded with. For `type = "cycle"` they are
-  not written: they are each cavity's `p_end_diastole`.
+- The targets are the pressures the imaged mesh was loaded with. For `type = "cycle"` a
+  `[[prestress.target]]` is refused: the targets are each cavity's `p_end_diastole`.
 - The unloaded configuration is cached in `prestress.cache_folder/<hash16>/`, where the hash
   covers the geometry, `[material]`, `[compressibility]`, `[bcs]`, the targets, `ramp_steps` and
   the function spaces: anything that changes the result. Changing `[solver]` or
   `[circulation]` reuses the cache, and so do other runs of the same physics.
-- `inflate_steps` (`split` and `monolithic` only; 0 skips) re-inflates the unloaded cavity to the imaged volume
-  in that many static steps with the activation at its starting value, so the coupling starts
-  from the imaged state. It may need 6 to 8 steps or more; when a step fails, the error names
+- `inflate_steps` (`split` and `monolithic` only; 0 skips) re-inflates the unloaded cavity to
+  the imaged volume in that many static steps with the activation at its starting value, so the
+  coupling starts from the imaged state. It needs a `[[prestress.target]]` for every
+  `[[circulation.chamber]]` marker (the imaged volumes to go back to). It may need 6 to 8 steps or more; when a step fails, the error names
   the fraction of the way reached and says to raise `inflate_steps`.
 
 (cli-library-coupling)=
@@ -607,9 +608,8 @@ sim = build_simulation(conf, coupling=my_coupling, hooks=[my_crossbridge_hook])
 
 `coupling=` replaces the one built from `[circulation]`; `fresh=True` marks a new run (not a
 restart or post-processing), so a missing prestress cache is expected and the chambers are
-re-inflated. A prestress
-applied by `apply_prestress` deforms the geometry in place, so an injected `geometry=` must not
-be reused across builds.
+re-inflated. A prestress applied by `apply_prestress` deforms the geometry in place.
+An injected `geometry=` must therefore not be reused across builds.
 
 ## Using pulse from Python
 
