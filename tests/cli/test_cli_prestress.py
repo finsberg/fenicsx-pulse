@@ -13,7 +13,7 @@ import pulse
 from pulse.cli.geometry import build_geometry
 from pulse.cli.overrides import load_config
 from pulse.cli.prestress import cavity_volume, prestress_hash
-from pulse.cli.runner import build_simulation, run
+from pulse.cli.runner import SolverFailure, build_simulation, run
 
 pytest.importorskip("cardiac_geometries")
 
@@ -110,3 +110,28 @@ def test_restart_recomputes_a_deleted_cache_with_a_warning(tmp_path, lv_folder, 
     else:  # parallel MUMPS is not bit-reproducible: the prestress was solved again
         scale = MPI.COMM_WORLD.allreduce(float(np.max(np.abs(x))), op=MPI.MAX)
         np.testing.assert_allclose(again, x, rtol=0, atol=1e-12 * scale)
+
+
+def test_corrupt_cache_meta_is_recomputed_and_replaced(tmp_path, lv_folder):
+    conf = _conf(tmp_path, lv_folder)
+    build_simulation(conf)
+    meta = conf.prestress.cache_folder / prestress_hash(conf)[:16] / "meta.json"
+    MPI.COMM_WORLD.barrier()
+    if MPI.COMM_WORLD.rank == 0:
+        meta.write_bytes(b"\xff\xfe garbage")
+    MPI.COMM_WORLD.barrier()
+    build_simulation(conf)
+    assert json.loads(meta.read_text())["hash"] == prestress_hash(conf)
+
+
+def test_failed_prestress_caches_nothing(tmp_path, lv_folder, monkeypatch):
+    conf = _conf(tmp_path, lv_folder)
+
+    def fails(self):
+        raise RuntimeError("no convergence")
+
+    monkeypatch.setattr(pulse.unloading.PrestressProblem, "unload", fails)
+    with pytest.raises(SolverFailure):
+        build_simulation(conf)
+    folder = conf.prestress.cache_folder
+    assert not folder.exists() or _entries(conf) == []

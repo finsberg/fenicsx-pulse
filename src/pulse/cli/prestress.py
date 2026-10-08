@@ -23,7 +23,6 @@ from mpi4py import MPI
 
 import dolfinx
 import io4dolfinx
-import numpy as np
 
 import pulse
 
@@ -52,7 +51,9 @@ def prestress_targets(conf: Config) -> dict[str, float]:
     """Target cavity pressures (Pa): each cycle cavity's p_end_diastole, else the targets."""
     assert conf.prestress is not None
     if conf.circulation.type == "cycle":
-        return {c.marker: float(c.p_end_diastole.to("Pa").magnitude) for c in conf.circulation.cavity}
+        return {
+            c.marker: float(c.p_end_diastole.to("Pa").magnitude) for c in conf.circulation.cavity
+        }
     return {t.marker: float(t.pressure.to("Pa").magnitude) for t in conf.prestress.target}
 
 
@@ -84,6 +85,7 @@ def _displacement_space(conf: Config, geo: CLIGeometry) -> Any:
 
 
 def _unload(conf: Config, geo: CLIGeometry, targets: dict[str, float]) -> dolfinx.fem.Function:
+    assert conf.prestress is not None
     from .runner import SolverFailure
 
     model = pulse.CardiacModel(
@@ -93,7 +95,10 @@ def _unload(conf: Config, geo: CLIGeometry, targets: dict[str, float]) -> dolfin
         viscoelasticity=pulse.viscoelasticity.NoneViscoElasticity(),
     )
     pressures = {
-        marker: pulse.Variable(dolfinx.fem.Constant(geo.mesh, dolfinx.default_scalar_type(0.0)), "Pa")
+        marker: pulse.Variable(
+            dolfinx.fem.Constant(geo.mesh, dolfinx.default_scalar_type(0.0)),
+            "Pa",
+        )
         for marker in targets
     }
     bcs = build_bcs(conf.bcs, geo, pressures)
@@ -126,13 +131,18 @@ def _unload(conf: Config, geo: CLIGeometry, targets: dict[str, float]) -> dolfin
 
 
 def _cache_is_valid(folder: Path, h: str) -> bool:
+    """Never raises (it runs on rank 0 only, ahead of a broadcast)."""
     meta = folder / META
-    if not meta.is_file() or not (folder / U_PRE).exists():
+    try:
+        if not meta.is_file() or not (folder / U_PRE).exists():
+            return False
+    except OSError:
         return False
     try:
-        return json.loads(meta.read_text()).get("hash") == h
-    except (OSError, json.JSONDecodeError):
+        data = json.loads(meta.read_text())
+    except (OSError, ValueError):  # unreadable, non-UTF8 or not JSON: recompute and replace
         return False
+    return isinstance(data, dict) and data.get("hash") == h
 
 
 def _install(folder: Path, u_pre: dolfinx.fem.Function, meta: dict[str, Any], comm) -> None:
@@ -165,6 +175,13 @@ def build_prestress(
 ) -> PrestressResult:
     """The unloaded configuration of ``geo`` (still the imaged mesh): cached, or solved now."""
     assert conf.prestress is not None
+    for name in ("f0", "s0", "n0"):
+        f = getattr(geo, name)
+        if f is not None and not isinstance(f, dolfinx.fem.Function):
+            raise ConfigError(
+                f"[prestress] needs fibre fields stored as Functions; geometry {name} is a "
+                f"{type(f).__name__}",
+            )
     targets = prestress_targets(conf)
     h = prestress_hash(conf)
     folder = conf.prestress.cache_folder / h[:16]
@@ -193,18 +210,18 @@ def build_prestress(
 
 
 def apply_prestress(conf: Config, geo: CLIGeometry, result: PrestressResult) -> CLIGeometry:
-    """Move ``geo``'s mesh to the unloaded configuration and map its fibres along."""
+    """Move ``geo``'s mesh to the unloaded configuration and map its fibres along.
+
+    The mesh is deformed in place, so an injected geometry object must not be passed to
+    ``build_simulation`` twice.
+    """
     geo.geometry.deform(result.u_pre)
     fibres: dict[str, Any] = {}
     for name in ("f0", "s0", "n0"):
         f = getattr(geo, name)
         if f is None:
             continue
-        if not isinstance(f, dolfinx.fem.Function):
-            raise ConfigError(
-                f"[prestress] needs fibre fields stored as Functions; geometry {name} is a "
-                f"{type(f).__name__}",
-            )
+        assert isinstance(f, dolfinx.fem.Function)  # checked in build_prestress
         fibres[name] = pulse.utils.map_vector_field(
             f=f,
             u=result.u_pre,
