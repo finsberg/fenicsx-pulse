@@ -59,7 +59,7 @@ def test_unknown_names():
         model.initial_states_with({"nope": 1.0})
 
 
-def test_matches_regazzoni2020_class():
+def test_matches_regazzoni2020_class(tmp_path):
     """The spike behind the spec's `.ode`-only decision, kept as a test."""
     pytest.importorskip("circulation")
     from circulation import base, regazzoni2020
@@ -77,6 +77,7 @@ def test_matches_regazzoni2020_class():
     reference = regazzoni2020.Regazzoni2020(
         parameters={"HR": HR},
         add_units=False,
+        outdir=tmp_path,
         p_BiV=lambda V_LV, V_RV, t: supplied["p"],
     )
     names = regazzoni2020.Regazzoni2020.state_names()
