@@ -2,8 +2,8 @@
 
 Every profile is a pure function of ``t`` (seconds) returning SI base units (Pa), so a restart
 needs no load state. Bestel profiles are integrated once at build time (one period from 0 when
-`period` is set), interval by interval on the ``[time]`` grid, so their values up to ``t`` never
-depend on ``end_time``.
+`period` is set; `peak` normalisation needs it), interval by interval on the ``[time]`` grid, so
+their values up to ``t`` never depend on ``end_time``.
 """
 
 import csv

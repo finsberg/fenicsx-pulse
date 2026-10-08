@@ -551,7 +551,7 @@ class _BestelBase(_Base):
     )
     peak: Pressure | None = Field(
         default=None,
-        description="Divide the trace by its largest value, then scale it to this",
+        description="Divide the trace by its largest value, then scale it to this (needs period)",
     )
 
     @model_validator(mode="after")
@@ -560,6 +560,11 @@ class _BestelBase(_Base):
             raise ValueError("Bestel profile: period must be positive")
         if self.peak is not None and self.peak.magnitude <= 0:
             raise ValueError("Bestel profile: peak must be positive")
+        if self.peak is not None and self.period is None:
+            raise ValueError(
+                "Bestel profile: peak needs period (normalising a non-periodic trace would "
+                "depend on time.end_time)",
+            )
         return self
 
     @field_validator("parameters")

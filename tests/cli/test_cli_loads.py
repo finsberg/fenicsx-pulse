@@ -169,5 +169,10 @@ def test_bestel_peak_normalises(tmp_path):
 
 
 def test_bestel_period_must_fit_the_time_step(tmp_path):
-    with pytest.raises(ConfigError, match="period"):
+    with pytest.raises(ConfigError, match="integer multiple"):
         _bestel_conf(tmp_path, period="0.805 s")
+
+
+def test_bestel_peak_needs_period(tmp_path):
+    with pytest.raises(ConfigError, match="peak needs period"):
+        _bestel_conf(tmp_path, peak="100 kPa")
