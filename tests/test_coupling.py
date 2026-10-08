@@ -123,6 +123,21 @@ def _cycle_coupled(lv):
     return coupling, problem
 
 
+def _restart_state(problem):
+    """Copies of every restart Function's array, by name, and the restart metadata."""
+    arrays = {name: f.x.array.copy() for name, f in problem.restart_functions()}
+    return arrays, json.loads(json.dumps(problem.restart_metadata()))
+
+
+def _assert_same_restart_state(before, after):
+    arrays_before, meta_before = before
+    arrays_after, meta_after = after
+    assert meta_after == meta_before
+    assert arrays_after.keys() == arrays_before.keys()
+    for name, values in arrays_before.items():
+        assert np.array_equal(arrays_after[name], values), name
+
+
 def _without_solver_hints(state):
     """`state_dict()` minus the controller's pending-refresh hint (see `Coupling.advance`)."""
     state = json.loads(json.dumps(state))
@@ -182,7 +197,7 @@ def test_cycle_coupling_failed_advance_changes_nothing(lv, monkeypatch):
     coupling, problem = _cycle_coupled(lv)
     assert coupling.advance(0.0, DT)
     before_state = _without_solver_hints(coupling.state_dict())
-    before_u = problem.u.x.array.copy()
+    before = _restart_state(problem)
 
     def fail(*args, **kwargs):
         problem.update_old_states()
@@ -193,7 +208,7 @@ def test_cycle_coupling_failed_advance_changes_nothing(lv, monkeypatch):
     assert coupling.advance(DT, DT) is False
     assert coupling.state_dict()["controller"]["refresh_pending"] is True
     assert _without_solver_hints(coupling.state_dict()) == before_state
-    assert np.array_equal(problem.u.x.array, before_u)
+    _assert_same_restart_state(before, _restart_state(problem))
 
 
 def test_cycle_coupling_state_round_trips_through_json(lv):
@@ -302,7 +317,11 @@ def test_split_coupling_equals_the_demo_loop(lv):
 def test_split_coupling_failed_advance_changes_nothing(lv, monkeypatch):
     coupling, problem = _split_coupled(lv)
     assert coupling.advance(0.0, DT)
-    y, p, u = coupling.y.copy(), dict(coupling.p), problem.u.x.array.copy()
+    assert coupling.advance(DT, DT)
+    # u_old lags u, so a failed attempt's `update_old_states` would show
+    assert not np.array_equal(problem.u.x.array, problem.u_old.x.array)
+    y, p = coupling.y.copy(), dict(coupling.p)
+    before = _restart_state(problem)
     volume = float(problem.cavities[0].volume.value)
 
     def fail(*args, **kwargs):
@@ -311,10 +330,10 @@ def test_split_coupling_failed_advance_changes_nothing(lv, monkeypatch):
         return False
 
     monkeypatch.setattr(problem, "solve", fail)
-    assert coupling.advance(DT, DT) is False
+    assert coupling.advance(2 * DT, DT) is False
     assert np.array_equal(coupling.y, y)
     assert coupling.p == p
-    assert np.array_equal(problem.u.x.array, u)
+    _assert_same_restart_state(before, _restart_state(problem))
     assert float(problem.cavities[0].volume.value) == volume
 
 
@@ -352,7 +371,7 @@ def test_split_coupling_initial_solve_failure_raises(lv, monkeypatch):
         coupling.initialize(0.0)
 
 
-def _monolithic_coupled(lv, record=()):
+def _monolithic_coupled(lv, record=(), scheme="backward_euler"):
     pytest.importorskip("gotranx")
     from pulse.circulation import GotranxCirculation
 
@@ -364,6 +383,7 @@ def _monolithic_coupled(lv, record=()):
         initial_state={"p_AR": 70.0},
         monitor_model=_numpy_circuit(),
         record=record,
+        scheme=scheme,
     )
     problem = _static_problem(
         geometry,
@@ -386,14 +406,20 @@ def test_monolithic_coupling_holds_the_constraint(lv):
     record = coupling.record()
     assert record["volume_ENDO"] == pytest.approx(_cavity_volume(geometry, problem.u), rel=1e-8)
     assert record["circ_V_LV"] * mL == record["volume_ENDO"]
-    assert "circ_Q_in" in record and coupling.state_dict() == {"t": pytest.approx(3 * DT)}
+    assert "circ_Q_in" in record
+    assert coupling.state_dict() == {"t": pytest.approx(3 * DT), "dt": pytest.approx(DT)}
     assert float(problem.circulation_time.value) == pytest.approx(3 * DT)
 
 
-def test_monolithic_coupling_failed_advance_rolls_back(lv, monkeypatch):
-    coupling, problem = _monolithic_coupled(lv)
+@pytest.mark.parametrize("scheme", ["backward_euler", "bdf2"])
+def test_monolithic_coupling_failed_advance_rolls_back(lv, monkeypatch, scheme):
+    """A failed advance leaves every restart Function and the restart metadata as they were,
+    even when the failed attempt converged (and so shifted the BDF2 history)."""
+    coupling, problem = _monolithic_coupled(lv, scheme=scheme)
     assert coupling.advance(0.0, DT)
-    states = [s.x.array.copy() for s in problem.circulation_states]
+    assert coupling.advance(DT, DT)
+    before = _restart_state(problem)
+    stencil = [float(c.value) for c in problem._circulation_stencil]
     real_solve = problem.solve
 
     def fail(*args, **kwargs):
@@ -401,7 +427,71 @@ def test_monolithic_coupling_failed_advance_rolls_back(lv, monkeypatch):
         return False
 
     monkeypatch.setattr(problem, "solve", fail)
+    assert coupling.advance(2 * DT, DT) is False
+    _assert_same_restart_state(before, _restart_state(problem))
+    assert [float(c.value) for c in problem._circulation_stencil] == stencil
+    assert coupling.state_dict() == {"t": pytest.approx(2 * DT), "dt": pytest.approx(DT)}
+
+
+def test_no_coupling_failed_advance_rolls_back(lv, monkeypatch):
+    geo, geometry = lv
+    volume = dolfinx.fem.Constant(geo.mesh, dolfinx.default_scalar_type(0.0))
+    volume.value = 1.05 * _cavity_volume(geometry, None)
+    coupling = pulse.coupling.NoCoupling()
+    problem = _static_problem(geometry, _model(geo), [Cavity(marker="ENDO", volume=volume)])
+    coupling.attach(problem)
+    assert coupling.advance(0.0, DT)
+    assert not np.array_equal(problem.u.x.array, problem.u_old.x.array)
+    before = _restart_state(problem)
+
+    def fail(*args, **kwargs):
+        problem.update_old_states()
+        problem.u.x.array[:] += 1.0
+        return False
+
+    monkeypatch.setattr(problem, "solve", fail)
     assert coupling.advance(DT, DT) is False
-    for before, s in zip(states, problem.circulation_states):
-        assert np.array_equal(s.x.array, before)
-    assert coupling.state_dict() == {"t": pytest.approx(DT)}
+    _assert_same_restart_state(before, _restart_state(problem))
+
+
+def test_monolithic_bdf2_takes_backward_euler_at_a_new_dt(lv, monkeypatch):
+    """BDF2's fixed stencil assumes a uniform step. A step at a new dt (a halved retry, or the
+    full step after it) is taken as backward Euler, which makes the history uniform again."""
+    coupling, problem = _monolithic_coupled(lv, scheme="bdf2")
+    stencils: list[tuple[float, ...]] = []
+    real_solve = problem.solve
+    fail_next = [False]
+
+    def solve(*args, **kwargs):
+        stencils.append(tuple(float(c.value) for c in problem._circulation_stencil))
+        ok = real_solve(*args, **kwargs)
+        if fail_next[0]:
+            fail_next[0] = False
+            return False
+        return ok
+
+    monkeypatch.setattr(problem, "solve", solve)
+    be, bdf2 = pulse.problem.BACKWARD_EULER_STENCIL, pulse.problem.BDF2_STENCIL
+
+    assert coupling.advance(0.0, 2 * DT)  # first step: one past level only
+    assert coupling.advance(2 * DT, 2 * DT)  # same dt: BDF2
+    fail_next[0] = True
+    assert coupling.advance(4 * DT, 2 * DT) is False  # BDF2 attempt, rolled back
+    assert coupling.advance(4 * DT, DT)  # the halves: a new dt, so backward Euler...
+    assert coupling.advance(5 * DT, DT)  # ...then BDF2 at the uniform dt
+    assert coupling.advance(6 * DT, 2 * DT)  # back to the full step: a new dt again
+    assert coupling.advance(8 * DT, 2 * DT)
+    assert stencils == [be, bdf2, bdf2, be, bdf2, be, bdf2]
+    assert coupling.state_dict() == {"t": pytest.approx(10 * DT), "dt": pytest.approx(2 * DT)}
+
+
+def test_monolithic_coupling_dt_round_trips(lv):
+    coupling, _ = _monolithic_coupled(lv, scheme="bdf2")
+    assert coupling.state_dict() == {"t": 0.0, "dt": None}
+    assert coupling.advance(0.0, DT)
+    state = json.loads(json.dumps(coupling.state_dict()))
+    other, _ = _monolithic_coupled(lv, scheme="bdf2")
+    other.load_state_dict(state)
+    assert other.state_dict() == coupling.state_dict()
+    other.load_state_dict({"t": DT})  # a checkpoint from before "dt" existed
+    assert other.state_dict() == {"t": DT, "dt": None}

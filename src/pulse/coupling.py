@@ -18,8 +18,9 @@ from a config, and simcardemsx can build them itself.
 
 from __future__ import annotations
 
-import logging
+import math
 from collections.abc import Callable, Mapping, Sequence
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
@@ -30,9 +31,7 @@ import numpy as np
 
 from . import cycle
 from .circulation import ChamberCoupling, CirculationModel, mL, mmHg
-from .problem import Cavity, CavityControl
-
-logger = logging.getLogger(__name__)
+from .problem import BACKWARD_EULER_STENCIL, Cavity, CavityControl
 
 __all__ = [
     "Coupling",
@@ -72,8 +71,9 @@ class Coupling(Protocol):
         ...
 
     def advance(self, t: float, dt: float) -> bool:
-        """Solve the step from `t` to `t + dt`. On ``False`` the problem's state Functions and
-        the coupling's state are as they were before the call, except for (a) per-step inputs
+        """Solve the step from `t` to `t + dt`. On ``False`` the problem's restart Functions
+        (states, old states, history), its restart metadata and the coupling's state are as they
+        were before the call, except for (a) per-step inputs
         the coupling sets from its own state before every solve (cavity controls, volume or
         input Constants), which may hold the failed attempt's values, and (b) solver hints such
         as `CycleController`'s pending preconditioner refresh."""
@@ -124,6 +124,30 @@ class Phase:
         return t % self.period
 
 
+_ProblemSnapshot = tuple[list[tuple[dolfinx.fem.Function, np.ndarray]], dict[str, Any]]
+
+
+def _snapshot(problem: Any) -> _ProblemSnapshot:
+    """The values of every restart Function of `problem`, and its restart metadata.
+
+    `reset_states` alone is not a rollback: a failed attempt has already overwritten the old
+    states (`update_old_states` runs before Newton), and one that converged but is rejected has
+    also shifted the history and the step count (`update_fields`).
+    """
+    return (
+        [(f, f.x.array.copy()) for _, f in problem.restart_functions()],
+        deepcopy(problem.restart_metadata()),
+    )
+
+
+def _restore(problem: Any, snapshot: _ProblemSnapshot) -> None:
+    """Put `problem` back to `snapshot`; reselects the circulation stencil too."""
+    arrays, metadata = snapshot
+    for f, values in arrays:
+        f.x.array[:] = values
+    problem.load_restart_metadata(metadata)
+
+
 class NoCoupling:
     """The plain mechanics step: solve, and put the state back if Newton fails."""
 
@@ -143,9 +167,10 @@ class NoCoupling:
         pass
 
     def advance(self, t: float, dt: float) -> bool:
+        snapshot = _snapshot(self.problem)
         ok = self.problem.solve()
         if not ok:
-            self.problem.reset_states()
+            _restore(self.problem, snapshot)
         return ok
 
     def record(self) -> dict[str, float]:
@@ -344,9 +369,10 @@ class SplitCoupling:
     def advance(self, t: float, dt: float) -> bool:
         rhs: Any = self.model.rhs  # called with floats here, not UFL expressions
         y_new = self.y + dt * np.asarray(rhs(t, self.y, self._missing(t, self.p)), dtype=float)
+        snapshot = _snapshot(self.problem)
         self._set_volumes(y_new)
         if not self.problem.solve():
-            self.problem.reset_states()
+            _restore(self.problem, snapshot)
             self._set_volumes(self.y)
             return False
         self.y, self.p, self.t = y_new, self._pressures(), t + dt
@@ -381,7 +407,12 @@ class MonolithicCoupling:
     The problem does the coupling (`pulse.circulation`, `StaticProblem(circulation=...)`); this
     class only sets the circuit's time, step and inputs before each solve, and initializes its
     states. Everything it carries lives in the problem's `restart_functions` and
-    `restart_metadata`, so `state_dict` holds only the current time.
+    `restart_metadata`, so `state_dict` holds only the current time and the last converged
+    step size.
+
+    BDF2's stencil assumes the last two steps were equally long. A step whose `dt` differs from
+    the last converged one (the first step, a halved retry, the full step after the halves) is
+    therefore taken as backward Euler, after which the history is uniform again.
 
     `monitor_model`, a `GotranxNumpyCirculation` of the same `.ode` file, is needed only to
     report the `record` monitor values.
@@ -410,6 +441,7 @@ class MonolithicCoupling:
         self._constants: dict[str, dolfinx.fem.Constant] = {}
         self.problem: Any = None
         self.t = 0.0
+        self.dt: float | None = None  # of the last converged step
 
     def cavities(self, mesh: dolfinx.mesh.Mesh) -> list[Cavity]:
         self._constants = {
@@ -462,13 +494,23 @@ class MonolithicCoupling:
 
     def advance(self, t: float, dt: float) -> bool:
         problem = self.problem
+        snapshot = _snapshot(problem)
         problem.circulation_time.value = t + dt
         problem.circulation_dt.value = dt
         self._set_inputs(t + dt)
+        if self.scheme == "bdf2" and (
+            self.dt is None or not math.isclose(dt, self.dt, rel_tol=1e-12, abs_tol=0.0)
+        ):
+            # BDF2's coefficients hold only for (y_{n+1}, y_n, y_{n-1}) equally spaced in time.
+            # One backward-Euler step at the new dt makes the history uniform again; the
+            # converged solve's `update_fields` reselects BDF2 for the next step, and a failed
+            # one's `_restore` reselects the stencil the snapshot had.
+            problem._set_circulation_stencil(BACKWARD_EULER_STENCIL)
         if not problem.solve():
-            problem.reset_states()
+            _restore(problem, snapshot)
             return False
         self.t = t + dt
+        self.dt = dt
         return True
 
     def _y(self) -> np.ndarray:
@@ -501,8 +543,10 @@ class MonolithicCoupling:
         return out
 
     def state_dict(self) -> dict[str, Any]:
-        return {"t": self.t}
+        return {"t": self.t, "dt": self.dt}
 
     def load_state_dict(self, state: Mapping[str, Any]) -> None:
         self.t = float(state["t"])
+        dt = state.get("dt")  # absent in checkpoints written before it was stored
+        self.dt = None if dt is None else float(dt)
         self._set_inputs(self.t)

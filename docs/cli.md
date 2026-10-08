@@ -500,6 +500,9 @@ The cavity constraint rows of the plain volume constraint are in m^3 and Newton 
 
 The same `.ode` keys, plus `scheme` (`"backward_euler"`, the default, or `"bdf2"`); the 0D
 states are unknowns of the Newton system of the displacement, so every step is one coupled solve.
+`"bdf2"` takes a step as backward Euler whenever its `dt` differs from the last converged step's
+(the first step, the halves of a halved step, and the full step after them), since BDF2's
+coefficients hold only for equally long steps.
 A `[prestress]` section provides the end-diastolic pressures the 0D initial state is consistent with:
 
 ```toml
@@ -589,9 +592,9 @@ drivers can build their own. A `Coupling` is called in this order: `cavities(mes
 `problem_kwargs()` while the problem is built, `attach(problem)` once it exists, then
 `initialize(t0)` on a fresh run *or* `load_state_dict(state)` on a restart (never both), then
 `advance(t, dt)` once per step. `advance` returns `False` when the solve fails; in that case the
-problem's state functions and the coupling's own state are as they were before the call, except
-for per-step inputs (the `Constant`s set before each solve) and solver hints, so the caller can
-retry with a smaller `dt`.
+problem's restart functions and metadata and the coupling's own state are as they were before the
+call, except for per-step inputs (the `Constant`s set before each solve) and solver hints, so the
+caller can retry with a smaller `dt`.
 
 A `StepHook` is state that is not a 0D model but advances with each step: `before_solve`,
 `after_solve` (only after a converged attempt), `state_dict`/`load_state_dict` and
