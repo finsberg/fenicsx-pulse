@@ -48,6 +48,7 @@ from .loads import LoadSet, build_loads, make_load_variables, require_optional_p
 from .log import add_logfile_handler, remove_logfile_handlers
 from .model import build_model
 from .overrides import dump_config, physics_hash
+from .prestress import PrestressResult, apply_prestress, build_prestress
 
 logger = logging.getLogger(__name__)
 
@@ -353,6 +354,7 @@ class MechanicsSimulation:
     monitor: Any = field(default_factory=NullMonitor)
     coupling: Any = field(default_factory=NoCoupling)
     hooks: list[Any] = field(default_factory=list)
+    prestress: Any = None
     _last_saved: float = field(default=-np.inf, repr=False)
     _last_row: float = field(default=-np.inf, repr=False)
     _checkpoints: np.ndarray = field(default_factory=lambda: np.zeros(0), repr=False)
@@ -572,6 +574,7 @@ class MechanicsSimulation:
                     "state": self.coupling.state_dict(),
                 },
                 "hooks": [hook.state_dict() for hook in self.hooks],
+                "prestress": self.prestress.hash if self.prestress is not None else None,
             },
         }
         # Written last (and atomically): restart.json only ever names a complete checkpoint.
@@ -675,15 +678,23 @@ def build_simulation(
     monitor: Any = None,
     coupling: Any = None,
     hooks: Sequence[Any] = (),
+    fresh: bool = False,
 ) -> MechanicsSimulation:
     """Build geometry, model, BCs, loads and problem. ``geometry``/``active_model``/``monitor``
     may be injected (simcardemsx); an injected active model replaces ``[active]``.
     ``coupling`` replaces ``[circulation]``; ``hooks`` are advanced, committed and rolled back
-    with every step (see ``pulse.coupling.StepHook``)."""
+    with every step (see ``pulse.coupling.StepHook``). ``fresh`` marks a new run (not a restart
+    or post-processing): a missing prestress cache is then expected, not warned about, and the
+    chambers are re-inflated (Task 11)."""
     monitor = monitor if monitor is not None else NullMonitor()
     require_optional_packages(conf.load)
     geo = geometry if geometry is not None else build_geometry(conf.geometry, comm)
     check_config_markers(conf, geo)
+    prestress: PrestressResult | None = None
+    if conf.prestress is not None:
+        with monitor.track_time("prestress"):
+            prestress = build_prestress(conf, geo, comm, warn_if_missing=not fresh)
+            geo = apply_prestress(conf, geo, prestress)
     variables = make_load_variables(conf.load, geo.mesh)
     activation = variables.get("activation")
     if activation is not None:
@@ -713,6 +724,7 @@ def build_simulation(
         monitor=monitor,
         coupling=coupling,
         hooks=list(hooks),
+        prestress=prestress,
     )
 
 
@@ -738,7 +750,7 @@ def run(
         else None
     )
     try:
-        sim = build_simulation(conf, comm, monitor=monitor)
+        sim = build_simulation(conf, comm, monitor=monitor, fresh=not restart)
     except (ConfigError, SolverFailure):
         raise
     except Exception as e:

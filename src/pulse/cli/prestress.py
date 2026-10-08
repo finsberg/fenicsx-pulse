@@ -1,0 +1,217 @@
+"""``[prestress]``: recover the unloaded reference configuration of an imaged (loaded) mesh.
+
+The imaged mesh is loaded by the cavity pressures it was imaged at. `PrestressProblem` solves
+the inverse elasticity problem for the displacement ``u_pre`` from the unloaded to the imaged
+configuration; the mesh is then deformed by it (moved to the unloaded configuration) and the
+fibres are mapped along. Results are cached in ``prestress.cache_folder/<hash16>/``, keyed on
+everything that changes them, installed by an atomic rename like the geometry cache, and never
+deleted by ``--overwrite``.
+"""
+
+import dataclasses
+import hashlib
+import json
+import logging
+import os
+import shutil
+import uuid
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+from mpi4py import MPI
+
+import dolfinx
+import io4dolfinx
+import numpy as np
+
+import pulse
+
+from ..circulation import mL
+from ..units import mesh_factor
+from .bcs import _dirichlet, build_bcs
+from .config import Config, ConfigError, DirichletConfig
+from .geometry import CLIGeometry
+from .model import build_compressibility, build_material
+
+logger = logging.getLogger(__name__)
+
+U_PRE = "u_pre.bp"
+META = "meta.json"
+
+
+@dataclass
+class PrestressResult:
+    u_pre: dolfinx.fem.Function  # unloaded -> imaged, on the imaged mesh
+    targets: dict[str, float]  # marker -> Pa
+    imaged_volumes: dict[str, float]  # marker -> m^3
+    hash: str
+
+
+def prestress_targets(conf: Config) -> dict[str, float]:
+    """Target cavity pressures (Pa): each cycle cavity's p_end_diastole, else the targets."""
+    assert conf.prestress is not None
+    if conf.circulation.type == "cycle":
+        return {c.marker: float(c.p_end_diastole.to("Pa").magnitude) for c in conf.circulation.cavity}
+    return {t.marker: float(t.pressure.to("Pa").magnitude) for t in conf.prestress.target}
+
+
+def prestress_hash(conf: Config) -> str:
+    """Hash of everything that changes the unloaded configuration."""
+    assert conf.prestress is not None
+    geometry = conf.geometry.model_dump(mode="json")
+    if geometry.get("type") != "folder":
+        geometry.pop("folder", None)
+    data = {
+        "geometry": geometry,
+        **conf.model_dump(mode="json", include={"material", "compressibility", "bcs"}),
+        "targets": prestress_targets(conf),
+        "ramp_steps": conf.prestress.ramp_steps,
+        "spaces": [conf.problem.u_space, conf.problem.p_space],
+    }
+    return hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()
+
+
+def cavity_volume(conf: Config, geo: CLIGeometry, marker: str, u: Any = None) -> float:
+    """Volume (m^3) of the cavity bounded by ``marker``, summed over ranks."""
+    local = geo.geometry.volume(marker, u=u)
+    return geo.mesh.comm.allreduce(local, op=MPI.SUM) * mesh_factor(conf.geometry.unit) ** 3
+
+
+def _displacement_space(conf: Config, geo: CLIGeometry) -> Any:
+    family, degree = conf.problem.u_space.split("_")
+    return dolfinx.fem.functionspace(geo.mesh, (family, int(degree), (geo.mesh.geometry.dim,)))
+
+
+def _unload(conf: Config, geo: CLIGeometry, targets: dict[str, float]) -> dolfinx.fem.Function:
+    from .runner import SolverFailure
+
+    model = pulse.CardiacModel(
+        material=build_material(conf.material, geo),
+        active=pulse.Passive(),  # Ta = 0 at the imaged state, as in every template
+        compressibility=build_compressibility(conf.compressibility),
+        viscoelasticity=pulse.viscoelasticity.NoneViscoElasticity(),
+    )
+    pressures = {
+        marker: pulse.Variable(dolfinx.fem.Constant(geo.mesh, dolfinx.default_scalar_type(0.0)), "Pa")
+        for marker in targets
+    }
+    bcs = build_bcs(conf.bcs, geo, pressures)
+    if conf.bcs.base_bc == "fixed":  # PrestressProblem ignores parameters["base_bc"]
+        clamp = _dirichlet(geo, DirichletConfig(marker=conf.bcs.base_marker))
+        bcs = bcs._replace(dirichlet=[*bcs.dirichlet, clamp])
+    defaults = pulse.unloading.PrestressProblem.default_parameters()
+    problem = pulse.unloading.PrestressProblem(
+        geometry=geo.geometry,
+        model=model,
+        bcs=bcs,
+        parameters={
+            "u_space": conf.problem.u_space,
+            "p_space": conf.problem.p_space,
+            "mesh_unit": conf.geometry.unit,
+            "petsc_options": {**defaults["petsc_options"], **conf.solver.petsc_options},
+        },
+        targets=[
+            pulse.unloading.TargetPressure(traction=pressures[m], target=p, name=m)
+            for m, p in targets.items()
+        ],
+        ramp_steps=conf.prestress.ramp_steps,
+    )
+    try:
+        return problem.unload()
+    except Exception as e:  # scifem's Newton solver raises when it gives up
+        raise SolverFailure(
+            f"Prestressing to {targets} Pa failed: {e}. Try more prestress.ramp_steps.",
+        ) from e
+
+
+def _cache_is_valid(folder: Path, h: str) -> bool:
+    meta = folder / META
+    if not meta.is_file() or not (folder / U_PRE).exists():
+        return False
+    try:
+        return json.loads(meta.read_text()).get("hash") == h
+    except (OSError, json.JSONDecodeError):
+        return False
+
+
+def _install(folder: Path, u_pre: dolfinx.fem.Function, meta: dict[str, Any], comm) -> None:
+    from .runner import _on_rank0
+
+    name = f".tmp-{folder.name}-{os.getpid()}-{uuid.uuid4().hex[:8]}" if comm.rank == 0 else None
+    tmp = folder.with_name(comm.bcast(name, root=0))
+    _on_rank0(comm, OSError, lambda: tmp.mkdir(parents=True, exist_ok=True))
+    io4dolfinx.write_function_on_input_mesh(tmp / U_PRE, u_pre, time=0.0, name="u_pre")
+
+    def install() -> None:
+        (tmp / META).write_text(json.dumps(meta, indent=2))
+        if folder.exists():  # a stale entry for this hash (e.g. half-written by a killed job)
+            shutil.rmtree(folder)
+        os.rename(tmp, folder)
+
+    try:
+        _on_rank0(comm, OSError, install)
+    finally:
+        if comm.rank == 0:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
+def build_prestress(
+    conf: Config,
+    geo: CLIGeometry,
+    comm=MPI.COMM_WORLD,
+    *,
+    warn_if_missing: bool = False,
+) -> PrestressResult:
+    """The unloaded configuration of ``geo`` (still the imaged mesh): cached, or solved now."""
+    assert conf.prestress is not None
+    targets = prestress_targets(conf)
+    h = prestress_hash(conf)
+    folder = conf.prestress.cache_folder / h[:16]
+    imaged = {marker: cavity_volume(conf, geo, marker) for marker in targets}
+    u_pre = dolfinx.fem.Function(_displacement_space(conf, geo), name="u_pre")
+    cached = comm.bcast(_cache_is_valid(folder, h) if comm.rank == 0 else None, root=0)
+    if cached:
+        logger.info(f"Reusing the unloaded reference configuration cached in {folder}")
+        io4dolfinx.read_function(folder / U_PRE, u_pre, time=0.0, name="u_pre")
+        u_pre.x.scatter_forward()
+    else:
+        message = f"No cached unloaded configuration in {folder}; prestressing to {targets} Pa"
+        if warn_if_missing:
+            logger.warning(f"{message} (recomputing: the run being continued used one)")
+        else:
+            logger.info(message)
+        u_pre.interpolate(_unload(conf, geo, targets))
+        meta = {
+            "hash": h,
+            "targets_Pa": targets,
+            "imaged_volumes_m3": imaged,
+            "pulse": pulse.__version__,
+        }
+        _install(folder, u_pre, meta, comm)
+    return PrestressResult(u_pre=u_pre, targets=targets, imaged_volumes=imaged, hash=h)
+
+
+def apply_prestress(conf: Config, geo: CLIGeometry, result: PrestressResult) -> CLIGeometry:
+    """Move ``geo``'s mesh to the unloaded configuration and map its fibres along."""
+    geo.geometry.deform(result.u_pre)
+    fibres: dict[str, Any] = {}
+    for name in ("f0", "s0", "n0"):
+        f = getattr(geo, name)
+        if f is None:
+            continue
+        if not isinstance(f, dolfinx.fem.Function):
+            raise ConfigError(
+                f"[prestress] needs fibre fields stored as Functions; geometry {name} is a "
+                f"{type(f).__name__}",
+            )
+        fibres[name] = pulse.utils.map_vector_field(
+            f=f,
+            u=result.u_pre,
+            normalize=True,
+            name=f"{name}_unloaded",
+        )
+    for marker, imaged in result.imaged_volumes.items():
+        unloaded = cavity_volume(conf, geo, marker)
+        logger.info(f"{marker}: imaged {imaged / mL:.2f} mL, unloaded {unloaded / mL:.2f} mL")
+    return dataclasses.replace(geo, **fibres)
