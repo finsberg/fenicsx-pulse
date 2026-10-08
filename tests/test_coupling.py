@@ -14,7 +14,7 @@ import pytest
 import pulse
 from pulse import cycle
 from pulse.circulation import ChamberCoupling, mL, mmHg
-from pulse.coupling import Coupling, CycleCoupling, Phase, SplitCoupling
+from pulse.coupling import Coupling, CycleCoupling, MonolithicCoupling, Phase, SplitCoupling
 from pulse.problem import Cavity, CavityControl
 
 cardiac_geometries = pytest.importorskip("cardiac_geometries")
@@ -350,3 +350,58 @@ def test_split_coupling_initial_solve_failure_raises(lv, monkeypatch):
     monkeypatch.setattr(problem, "solve", lambda *a, **k: False)
     with pytest.raises(RuntimeError, match="t=0"):
         coupling.initialize(0.0)
+
+
+def _monolithic_coupled(lv, record=()):
+    pytest.importorskip("gotranx")
+    from pulse.circulation import GotranxCirculation
+
+    geo, geometry = lv
+    coupling = MonolithicCoupling(
+        GotranxCirculation(ode_file=WINDKESSEL, drop_components=("timing", "LV")),
+        [ChamberCoupling(marker="ENDO", volume_state="V_LV", pressure_missing="p_LV")],
+        inputs={"beat_phase": Phase(1.0)},
+        initial_state={"p_AR": 70.0},
+        monitor_model=_numpy_circuit(),
+        record=record,
+    )
+    problem = _static_problem(
+        geometry,
+        _model(geo),
+        coupling.cavities(geo.mesh),
+        **coupling.problem_kwargs(),
+    )
+    coupling.attach(problem)
+    coupling.initialize(0.0)
+    return coupling, problem
+
+
+def test_monolithic_coupling_holds_the_constraint(lv):
+    _, geometry = lv
+    coupling, problem = _monolithic_coupled(lv, record=("Q_in",))
+    t = 0.0
+    for _ in range(3):
+        assert coupling.advance(t, DT)
+        t += DT
+    record = coupling.record()
+    assert record["volume_ENDO"] == pytest.approx(_cavity_volume(geometry, problem.u), rel=1e-8)
+    assert record["circ_V_LV"] * mL == record["volume_ENDO"]
+    assert "circ_Q_in" in record and coupling.state_dict() == {"t": pytest.approx(3 * DT)}
+    assert float(problem.circulation_time.value) == pytest.approx(3 * DT)
+
+
+def test_monolithic_coupling_failed_advance_rolls_back(lv, monkeypatch):
+    coupling, problem = _monolithic_coupled(lv)
+    assert coupling.advance(0.0, DT)
+    states = [s.x.array.copy() for s in problem.circulation_states]
+    real_solve = problem.solve
+
+    def fail(*args, **kwargs):
+        real_solve(*args, **kwargs)
+        return False
+
+    monkeypatch.setattr(problem, "solve", fail)
+    assert coupling.advance(DT, DT) is False
+    for before, s in zip(states, problem.circulation_states):
+        assert np.array_equal(s.x.array, before)
+    assert coupling.state_dict() == {"t": pytest.approx(DT)}

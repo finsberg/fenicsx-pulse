@@ -37,6 +37,7 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "Coupling",
     "CycleCoupling",
+    "MonolithicCoupling",
     "NoCoupling",
     "Phase",
     "SplitCoupling",
@@ -372,3 +373,136 @@ class SplitCoupling:
         self.y = np.asarray(state["y"], dtype=float)
         self.p = {k: float(v) for k, v in state["p"].items()}
         self._set_volumes(self.y)
+
+
+class MonolithicCoupling:
+    """A 0D model in UFL, its states unknowns of the mechanics' own Newton system.
+
+    The problem does the coupling (`pulse.circulation`, `StaticProblem(circulation=...)`); this
+    class only sets the circuit's time, step and inputs before each solve, and initializes its
+    states. Everything it carries lives in the problem's `restart_functions` and
+    `restart_metadata`, so `state_dict` holds only the current time.
+
+    `monitor_model`, a `GotranxNumpyCirculation` of the same `.ode` file, is needed only to
+    report the `record` monitor values.
+    """
+
+    def __init__(
+        self,
+        model: CirculationModel,
+        chambers: Sequence[ChamberCoupling],
+        inputs: Mapping[str, Callable[[float], float]] | None = None,
+        initial_state: Mapping[str, float] | None = None,
+        scheme: str = "backward_euler",
+        monitor_model: Any = None,
+        record: Sequence[str] = (),
+    ) -> None:
+        if record and monitor_model is None:
+            raise ValueError("record needs a monitor_model")
+        self.model = model
+        self.chambers = list(chambers)
+        self.inputs = dict(inputs or {})
+        self.initial_state = dict(initial_state or {})
+        self.scheme = scheme
+        self.monitor_model = monitor_model
+        self.record_names = tuple(record)
+        self._state_index = {name: i for i, name in enumerate(model.state_names)}
+        self._constants: dict[str, dolfinx.fem.Constant] = {}
+        self.problem: Any = None
+        self.t = 0.0
+
+    def cavities(self, mesh: dolfinx.mesh.Mesh) -> list[Cavity]:
+        self._constants = {
+            name: dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(0.0))
+            for name in self.inputs
+        }
+        return [Cavity(marker=c.marker) for c in self.chambers]
+
+    def problem_kwargs(self) -> dict[str, Any]:
+        return {
+            "circulation": self.model,
+            "chambers": self.chambers,
+            "circulation_missing": dict(self._constants),
+            "parameters": {"circulation_scheme": self.scheme},
+        }
+
+    def attach(self, problem: Any) -> None:
+        self.problem = problem
+        self._cavity_index = {cavity.marker: i for i, cavity in enumerate(problem.cavities)}
+        self._forms = _volume_forms(problem, [c.marker for c in self.chambers])
+
+    def _set_inputs(self, t: float) -> None:
+        for name, fn in self.inputs.items():
+            self._constants[name].value = fn(t)  # type: ignore[assignment]
+
+    def initialize(self, t0: float) -> None:
+        initial = getattr(self.model, "initial_states_with", None)
+        y = (
+            np.asarray(initial(self.initial_state), dtype=float)
+            if initial is not None
+            else np.asarray(self.model.initial_states, dtype=float).copy()
+        )
+        for c in self.chambers:
+            y[self._state_index[c.volume_state]] = (
+                _assemble_volume(self.problem, self._forms[c.marker]) / mL
+            )
+        problem = self.problem
+        for value, state, old, prev in zip(
+            y,
+            problem.circulation_states,
+            problem.circulation_states_old,
+            problem.circulation_states_prev,
+        ):
+            state.x.array[:] = value
+            old.x.array[:] = value
+            prev.x.array[:] = value
+        problem.circulation_time.value = t0
+        self._set_inputs(t0)
+        self.t = t0
+
+    def advance(self, t: float, dt: float) -> bool:
+        problem = self.problem
+        problem.circulation_time.value = t + dt
+        problem.circulation_dt.value = dt
+        self._set_inputs(t + dt)
+        if not problem.solve():
+            problem.reset_states()
+            return False
+        self.t = t + dt
+        return True
+
+    def _y(self) -> np.ndarray:
+        return np.array([float(s.x.array[0]) for s in self.problem.circulation_states])
+
+    def record(self) -> dict[str, float]:
+        y = self._y()
+        out: dict[str, float] = {}
+        for c in self.chambers:
+            out[f"volume_{c.marker}"] = float(y[self._state_index[c.volume_state]]) * mL
+            out[f"pressure_{c.marker}"] = float(
+                self.problem.cavity_pressures[self._cavity_index[c.marker]].x.array[0],
+            )
+        for name, i in self._state_index.items():
+            out[f"circ_{name}"] = float(y[i])
+        if self.record_names:
+            monitor = self.monitor_model
+            missing = np.zeros(len(monitor.missing_names))
+            for c in self.chambers:
+                missing[monitor.missing_index(c.pressure_missing)] = (
+                    out[f"pressure_{c.marker}"] / mmHg
+                )
+            for name, fn in self.inputs.items():
+                missing[monitor.missing_index(name)] = fn(self.t)
+            # the numpy model orders its states by its own index, which equals the UFL one
+            # (both come from gotranx's alphabetical ordering of the same reduced model)
+            values = monitor.monitor(self.t, y, missing)
+            for name in self.record_names:
+                out[f"circ_{name}"] = float(values[monitor.monitor_index(name)])
+        return out
+
+    def state_dict(self) -> dict[str, Any]:
+        return {"t": self.t}
+
+    def load_state_dict(self, state: Mapping[str, Any]) -> None:
+        self.t = float(state["t"])
+        self._set_inputs(self.t)
