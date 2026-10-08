@@ -1,4 +1,5 @@
 """Coupled runs from a config: cycle, split and monolithic on a coarse LV ellipsoid."""
+# cspell:ignore outt
 
 import csv
 import json
@@ -135,7 +136,8 @@ def test_unknown_coupled_marker(tmp_path, lv_folder):
     cavity = {**CYCLE_CAVITY, "marker": "NOPE"}
     conf = load_config(
         write_cfg(
-            tmp_path, **lv_sections(lv_folder, circulation={"type": "cycle", "cavity": [cavity]})
+            tmp_path,
+            **lv_sections(lv_folder, circulation={"type": "cycle", "cavity": [cavity]}),
         ),
         environ={},
     )
