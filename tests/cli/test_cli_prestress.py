@@ -12,6 +12,7 @@ import pytest
 from cli_helpers import WINDKESSEL, lv_sections, ode_section, write_cfg, write_file
 
 import pulse
+from pulse.cli.config import ConfigError
 from pulse.cli.geometry import build_geometry
 from pulse.cli.overrides import load_config
 from pulse.cli.prestress import _install, build_prestress, cavity_volume, prestress_hash
@@ -198,3 +199,10 @@ def test_failed_reinflation_is_a_solver_failure(tmp_path, lv_folder, monkeypatch
     monkeypatch.setattr(pulse.StaticProblem, "solve", lambda self, *a, **k: False)
     with pytest.raises(SolverFailure, match="Re-inflation failed at 0.12"):
         build_simulation(conf, fresh=True)
+
+
+def test_start_without_fresh_refuses_to_skip_reinflation(tmp_path, lv_folder):
+    conf = _inflated_conf(tmp_path, lv_folder)
+    sim = build_simulation(conf)  # fresh=False: built as for a restart, not re-inflated
+    with pytest.raises(ConfigError, match=r"fresh=True"):
+        sim.start()

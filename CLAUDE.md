@@ -75,8 +75,9 @@ StaticProblem / DynamicProblem(model, geometry, bcs, parameters)
   flags, `physics_hash`), `geometry.py` (box/folder/generated meshes, hash-keyed cache), `model.py`/
   `bcs.py`/`loads.py` (builders), `coupling.py` (builds `pulse.coupling` from `[circulation]`),
   `prestress.py` (`[prestress]` pre-phase: hash-keyed cache, re-inflation), `runner.py`
-  (`MechanicsSimulation` step API: `step` with adaptive halving, `save`, `checkpoint`, `restore`; `run()` loops over it), `postprocess.py`, `templates/`
-  (one config per demo, shipped as package data; `pulse init --template`). Needs the `cli` extra.
+  (`MechanicsSimulation` step API: `step` with adaptive halving, `save`, `checkpoint`,
+  `restore`; `run()` loops over it), `postprocess.py`, `templates/` (one config per demo,
+  shipped as package data; `pulse init --template`). Needs the `cli` extra.
   `overrides.py`, `log.py`, `_on_rank0`, the output-folder handling and the geometry cache are
   **copied from fenicsx-beat's `beat.cli`** with identical names — keep them in sync until they are
   extracted into a shared package (to be decided when simcardemsx gets its CLI). After changing

@@ -581,8 +581,9 @@ pressure = "2.463 kPa"
 - `inflate_steps` (`split` and `monolithic` only; 0 skips) re-inflates the unloaded cavity to
   the imaged volume in that many static steps with the activation at its starting value, so the
   coupling starts from the imaged state. It needs a `[[prestress.target]]` for every
-  `[[circulation.chamber]]` marker (the imaged volumes to go back to). It may need 6 to 8 steps or more; when a step fails, the error names
-  the fraction of the way reached and says to raise `inflate_steps`.
+  `[[circulation.chamber]]` marker (the imaged volumes to go back to). It may need 6 to 8 steps
+  or more; when a step fails, the error names the fraction of the way reached and says to raise
+  `inflate_steps`.
 
 (cli-library-coupling)=
 ## Coupling from Python
@@ -609,10 +610,19 @@ conf = load_config("config.toml")
 sim = build_simulation(conf, coupling=my_coupling, hooks=[my_crossbridge_hook])
 ```
 
-`coupling=` replaces the one built from `[circulation]`; `fresh=True` marks a new run (not a
-restart or post-processing), so a missing prestress cache is expected and the chambers are
-re-inflated. A prestress applied by `apply_prestress` deforms the geometry in place.
-An injected `geometry=` must therefore not be reused across builds.
+`coupling=` replaces the one built from `[circulation]`. The rules for injected objects:
+
+- Pass `fresh=True` for a new run (and leave it `False` for a restart or post-processing). The
+  re-inflation (`inflate_steps`) and the missing-cache warning depend on it: a missing prestress
+  cache is then expected rather than warned about, and the chambers are re-inflated.
+  `sim.start()` raises a `ConfigError` when `inflate_steps > 0` and the simulation was built
+  without `fresh=True`.
+- `StepHook.before_solve`/`after_solve` must raise on all ranks together, never on one rank
+  alone: the others would wait for it in the next collective call.
+- The re-inflation markers come from `[circulation]`'s chambers, not from the injected coupling:
+  an injected coupling with `[circulation] type = "none"` cannot re-inflate.
+- A prestress applied by `apply_prestress` deforms the geometry in place, so an injected
+  `geometry=` must not be reused across builds.
 
 ## Using pulse from Python
 

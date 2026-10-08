@@ -409,6 +409,13 @@ class MechanicsSimulation:
     def start(self) -> None:
         """Fresh run: set the loads to the start time, initialise the coupling, create the
         output folder and write loads.csv's header."""
+        prestress = self.conf.prestress
+        if prestress is not None and prestress.inflate_steps > 0 and self.inflation is None:
+            raise ConfigError(
+                "[prestress] inflate_steps > 0, but this simulation was not re-inflated: it was "
+                "built as for a restart or post-processing. Call build_simulation(..., "
+                "fresh=True) for a new run (or restore() to continue one)",
+            )
         self.loads.update(self.t)
         if self.inflation is not None:
             self.inflation.apply(self.problem)
@@ -694,7 +701,8 @@ def build_simulation(
     ``coupling`` replaces ``[circulation]``; ``hooks`` are advanced, committed and rolled back
     with every step (see ``pulse.coupling.StepHook``). ``fresh`` marks a new run (not a restart
     or post-processing): a missing prestress cache is then expected, not warned about, and the
-    chambers are re-inflated (Task 11)."""
+    chambers are re-inflated; ``start()`` refuses a run with ``inflate_steps > 0`` built without
+    it."""
     monitor = monitor if monitor is not None else NullMonitor()
     require_optional_packages(conf.load)
     geo = geometry if geometry is not None else build_geometry(conf.geometry, comm)

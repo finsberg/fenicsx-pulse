@@ -108,7 +108,7 @@ def _unload(conf: Config, geo: CLIGeometry, targets: dict[str, float]) -> dolfin
         clamp = _dirichlet(geo, DirichletConfig(marker=conf.bcs.base_marker))
         bcs = bcs._replace(dirichlet=[*bcs.dirichlet, clamp])
     defaults = pulse.unloading.PrestressProblem.default_parameters()
-    problem = pulse.unloading.PrestressProblem(
+    problem: Any = pulse.unloading.PrestressProblem(
         geometry=geo.geometry,
         model=model,
         bcs=bcs,
@@ -124,12 +124,21 @@ def _unload(conf: Config, geo: CLIGeometry, targets: dict[str, float]) -> dolfin
         ],
         ramp_steps=conf.prestress.ramp_steps,
     )
+    error: Exception | None = None
     try:
-        return problem.unload()
+        u_pre = problem.unload()
     except Exception as e:  # scifem's Newton solver raises when it gives up
+        # without its traceback, whose frames would keep the problem alive past the barrier
+        error = e.with_traceback(None)
+    # PETSc's destructors are collective: free the problem on every rank at the same point.
+    problem = None
+    gc.collect()
+    geo.mesh.comm.barrier()
+    if error is not None:
         raise SolverFailure(
-            f"Prestressing to {targets} Pa failed: {e}. Try more prestress.ramp_steps.",
-        ) from e
+            f"Prestressing to {targets} Pa failed: {error}. Try more prestress.ramp_steps.",
+        ) from error
+    return u_pre
 
 
 def _cache_is_valid(folder: Path, h: str) -> bool:
@@ -206,7 +215,7 @@ def build_prestress(
     else:
         message = f"No cached unloaded configuration in {folder}; prestressing to {targets} Pa"
         if warn_if_missing:
-            logger.warning(f"{message} (recomputing: the run being continued used one)")
+            logger.warning(f"{message} (recomputing: the run this belongs to used one)")
         else:
             logger.info(message)
         u_pre.interpolate(_unload(conf, geo, targets))
