@@ -148,6 +148,9 @@ def _cache_is_valid(folder: Path, h: str) -> bool:
 
 
 def _install(folder: Path, u_pre: dolfinx.fem.Function, meta: dict[str, Any], comm) -> None:
+    """Install ``u_pre`` and ``meta`` as the cache entry ``folder``, unless a valid entry for
+    ``meta["hash"]`` is already there (concurrent tasks: the first valid entry wins and the
+    others discard theirs). A stale or invalid entry is replaced."""
     from .runner import _on_rank0
 
     name = f".tmp-{folder.name}-{os.getpid()}-{uuid.uuid4().hex[:8]}" if comm.rank == 0 else None
@@ -156,10 +159,16 @@ def _install(folder: Path, u_pre: dolfinx.fem.Function, meta: dict[str, Any], co
     io4dolfinx.write_function_on_input_mesh(tmp / U_PRE, u_pre, time=0.0, name="u_pre")
 
     def install() -> None:
+        if _cache_is_valid(folder, meta["hash"]):  # another task installed it since we looked
+            return
         (tmp / META).write_text(json.dumps(meta, indent=2))
         if folder.exists():  # a stale entry for this hash (e.g. half-written by a killed job)
             shutil.rmtree(folder)
-        os.rename(tmp, folder)
+        try:
+            os.rename(tmp, folder)
+        except OSError:
+            if not _cache_is_valid(folder, meta["hash"]):  # not lost to a valid entry
+                raise
 
     try:
         _on_rank0(comm, OSError, install)

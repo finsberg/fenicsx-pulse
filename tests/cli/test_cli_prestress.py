@@ -6,6 +6,7 @@ import shutil
 
 from mpi4py import MPI
 
+import dolfinx
 import numpy as np
 import pytest
 from cli_helpers import WINDKESSEL, lv_sections, ode_section, write_cfg, write_file
@@ -13,7 +14,7 @@ from cli_helpers import WINDKESSEL, lv_sections, ode_section, write_cfg, write_f
 import pulse
 from pulse.cli.geometry import build_geometry
 from pulse.cli.overrides import load_config
-from pulse.cli.prestress import cavity_volume, prestress_hash
+from pulse.cli.prestress import _install, build_prestress, cavity_volume, prestress_hash
 from pulse.cli.runner import LOADS, SolverFailure, build_simulation, run
 
 pytest.importorskip("cardiac_geometries")
@@ -123,6 +124,22 @@ def test_corrupt_cache_meta_is_recomputed_and_replaced(tmp_path, lv_folder):
     MPI.COMM_WORLD.barrier()
     build_simulation(conf)
     assert json.loads(meta.read_text())["hash"] == prestress_hash(conf)
+
+
+def test_install_keeps_a_valid_entry(tmp_path, lv_folder):
+    """Concurrent tasks may each compute a missing entry: the first valid one stays."""
+    conf = _conf(tmp_path, lv_folder)
+    first = build_simulation(conf).prestress
+    folder = conf.prestress.cache_folder / first.hash[:16]
+    meta_text = (folder / "meta.json").read_text()
+    late = dolfinx.fem.Function(first.u_pre.function_space, name="u_pre")
+    late.x.array[:] = 2.0 * first.u_pre.x.array
+    _install(folder, late, {"hash": first.hash, "late": True}, MPI.COMM_WORLD)
+    assert (folder / "meta.json").read_text() == meta_text
+    if MPI.COMM_WORLD.rank == 0:  # rank 0 removes its tmp folder before it returns
+        assert [p.name for p in conf.prestress.cache_folder.iterdir()] == [folder.name]
+    cached = build_prestress(conf, build_geometry(conf.geometry))
+    assert np.array_equal(cached.u_pre.x.array, first.u_pre.x.array)
 
 
 def test_failed_prestress_caches_nothing(tmp_path, lv_folder, monkeypatch):

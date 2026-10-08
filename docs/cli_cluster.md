@@ -67,9 +67,11 @@ With `[prestress]` the unloaded reference configuration is computed once and cac
 compressibility, boundary conditions, targets, ramp steps, function spaces), not by `[solver]` or
 `[circulation]`. Runs of the same physics therefore share one entry, so for array jobs put
 `prestress.cache_folder` on shared storage, as for the geometry cache. Concurrent tasks may each
-compute a missing entry; the first to finish is installed by an atomic rename and the others reuse
-it. Run one task (or `pulse run` once with a short `end_time`) first to warm it. `--overwrite`
-never deletes the cache.
+compute a missing entry; the first to finish installs it by an atomic rename, and a valid entry is
+never replaced: the others run with their own result (the same up to round-off), discard it and
+leave the installed entry for later runs and restarts. Only a stale or unreadable entry is
+replaced. Run one task (or `pulse run` once with a short `end_time`) first to warm it.
+`--overwrite` never deletes the cache.
 
 ## Surviving a wall-time kill: `--restart`
 
