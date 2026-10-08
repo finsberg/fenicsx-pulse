@@ -23,10 +23,11 @@ import json
 import logging
 import os
 import shutil
+from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
 from time import perf_counter
-from typing import Any, Callable
+from typing import Any, Callable, Sequence
 
 from mpi4py import MPI
 
@@ -36,6 +37,7 @@ import numpy as np
 
 import pulse
 
+from ..coupling import NoCoupling
 from ..telemetry import NullMonitor, PerformanceMonitor
 from ..units import mesh_factor
 from .bcs import build_bcs
@@ -274,16 +276,10 @@ def check_config_markers(conf: Config, geo: CLIGeometry) -> None:
             )
 
 
-def build_problem(
-    conf: Config,
-    geo: CLIGeometry,
-    model: Any,
-    bcs: Any,
-    monitor: Any = None,
-) -> tuple[Any, Any]:
-    """Return ``(problem, dt_constant)``; ``dt_constant`` is None for a static problem."""
+def problem_parameters(conf: Config) -> dict[str, Any]:
+    """The StaticProblem parameters that the config sections ``[problem]`` etc. set."""
     defaults = pulse.StaticProblem.default_parameters()
-    parameters: dict[str, Any] = {
+    return {
         "u_space": conf.problem.u_space,
         "p_space": conf.problem.p_space,
         "rigid_body_constraint": conf.problem.rigid_body_constraint,
@@ -292,11 +288,32 @@ def build_problem(
         "base_marker": conf.bcs.base_marker,
         "petsc_options": {**defaults["petsc_options"], **conf.solver.petsc_options},
     }
+
+
+def build_problem(
+    conf: Config,
+    geo: CLIGeometry,
+    model: Any,
+    bcs: Any,
+    monitor: Any = None,
+    coupling: Any = None,
+) -> tuple[Any, Any]:
+    """Return ``(problem, dt_constant)``; ``dt_constant`` is None for a static problem.
+
+    The coupling supplies the cavities and any extra keyword arguments (a ``"parameters"``
+    entry is merged into the problem's parameters).
+    """
+    coupling = coupling if coupling is not None else NoCoupling()
+    extra = dict(coupling.problem_kwargs())
+    parameters = problem_parameters(conf)
+    parameters.update(extra.pop("parameters", {}))
     kwargs = dict(
         model=model,
         geometry=geo.geometry,
         bcs=bcs,
+        cavities=coupling.cavities(geo.mesh),
         monitor=monitor if monitor is not None else NullMonitor(),
+        **extra,
     )
     if conf.problem.type == "static":
         return pulse.StaticProblem(parameters=parameters, **kwargs), None
@@ -327,9 +344,15 @@ class MechanicsSimulation:
     step_index: int = 0
     dt_constant: Any = None
     monitor: Any = field(default_factory=NullMonitor)
+    coupling: Any = field(default_factory=NoCoupling)
+    hooks: list[Any] = field(default_factory=list)
     _last_saved: float = field(default=-np.inf, repr=False)
     _last_row: float = field(default=-np.inf, repr=False)
     _checkpoints: np.ndarray = field(default_factory=lambda: np.zeros(0), repr=False)
+
+    def __post_init__(self) -> None:
+        if isinstance(self.coupling, NoCoupling) and self.coupling.problem is None:
+            self.coupling.attach(self.problem)
 
     @property
     def folder(self) -> Path:
@@ -346,7 +369,12 @@ class MechanicsSimulation:
         return [m for m in self.loads.pressure_markers if m in CAVITY_MARKERS]
 
     def csv_fields(self) -> list[str]:
-        return ["t", *self.loads.names, *(f"volume_{m}" for m in self.cavity_markers())]
+        return [
+            "t",
+            *self.loads.names,
+            *(f"volume_{m}" for m in self.cavity_markers()),
+            *self.coupling.record(),
+        ]
 
     def volumes(self) -> dict[str, float]:
         """Cavity volumes in m^3 (summed over ranks: HeartGeometry.volume is rank-local)."""
@@ -360,11 +388,16 @@ class MechanicsSimulation:
     def record(self, t: float) -> dict[str, float]:
         with self.monitor.track_time("volumes"):
             volumes = self.volumes()
-        return {"t": t, **self.loads.values(t), **volumes}
+        return {"t": t, **self.loads.values(t), **volumes, **self.coupling.record()}
 
     def start(self) -> None:
-        """Fresh run: create the output folder, write loads.csv's header and set the loads to the
-        start time."""
+        """Fresh run: set the loads to the start time, initialise the coupling, create the
+        output folder and write loads.csv's header."""
+        self.loads.update(self.t)
+        try:
+            self.coupling.initialize(self.t)
+        except RuntimeError as e:
+            raise SolverFailure(f"Initializing the coupling at t={self.t} s failed: {e}") from e
         fields = self.csv_fields()
         folder = self.folder
 
@@ -373,25 +406,23 @@ class MechanicsSimulation:
             _write_csv_header(folder / LOADS, fields)
 
         _on_rank0(self.comm, OSError, write)
-        self.loads.update(self.t)
 
     def step(self, dt: float) -> None:
         """Advance ``t -> t + dt``, halving the step on Newton failure (``solver.max_halvings``).
 
         Raises :class:`SolverFailure` when the deepest halving fails; the problem (states, old
-        states, loads and the ``dt`` Constant) is then back at ``t``, as it was before this call,
-        even when some halves had already converged, and ``t``/``step_index`` are unchanged. Any
-        other exception raised mid-step (e.g. a PETSc error) rolls back the same way and
-        propagates unchanged.
+        states, restart metadata), the coupling, every hook, the loads and the ``dt`` Constant
+        are then back at ``t``, as they were before this call, even when some halves had
+        already converged, and ``t``/``step_index`` are unchanged. Any other exception raised
+        mid-step (e.g. a PETSc error) rolls back the same way and propagates unchanged.
         """
         t0 = self.t
         with self.monitor.track_time("step"):
-            snapshot = [(f, f.x.array.copy()) for f in self._state_functions()]
+            snapshot = self._snapshot()
             try:
                 self._advance(t0, dt, 0)
             except Exception as e:
-                for f, values in snapshot:
-                    f.x.array[:] = values
+                self._restore_snapshot(snapshot)
                 self.loads.update(t0)
                 if isinstance(e, SolverFailure):
                     raise SolverFailure(f"Step to t={t0 + dt:.6g} s failed: {e}") from e
@@ -404,21 +435,60 @@ class MechanicsSimulation:
         self.monitor.advance_step(t0, self.t)
 
     def _state_functions(self) -> list[Any]:
-        """Every Function a (partly) converged step changes: states, old states, and for a
-        dynamic problem the velocity/acceleration history."""
-        functions = [*self.problem.states, *self.problem.old_states]
-        functions += [getattr(self.problem, name, None) for name in ("v_old", "a_old")]
+        """Every Function a (partly) converged step may change: the restart functions (states,
+        old states, circulation history, velocity/acceleration, hook functions) and the
+        problem's current states (e.g. the rigid-body multiplier)."""
+        functions = [f for _, f in self.restart_functions()] + list(self.problem.states)
         unique = {id(f): f for f in functions if f is not None}
         return list(unique.values())
+
+    def _snapshot(self) -> dict[str, Any]:
+        return {
+            "arrays": [(f, f.x.array.copy()) for f in self._state_functions()],
+            "problem": deepcopy(self.problem.restart_metadata()),
+            "coupling": deepcopy(self.coupling.state_dict()),
+            "hooks": [deepcopy(hook.state_dict()) for hook in self.hooks],
+        }
+
+    def _restore_snapshot(self, snapshot: dict[str, Any]) -> None:
+        for f, values in snapshot["arrays"]:
+            f.x.array[:] = values
+        self.problem.load_restart_metadata(snapshot["problem"])
+        self.coupling.load_state_dict(deepcopy(snapshot["coupling"]))
+        for hook, state in zip(self.hooks, snapshot["hooks"]):
+            hook.load_state_dict(deepcopy(state))
+
+    def _hook_snapshot(self) -> list[tuple[list[tuple[Any, np.ndarray]], dict[str, Any]]]:
+        return [
+            (
+                [(f, f.x.array.copy()) for _, f in hook.restart_functions()],
+                deepcopy(hook.state_dict()),
+            )
+            for hook in self.hooks
+        ]
+
+    def _restore_hooks(self, snapshot) -> None:
+        for hook, (arrays, state) in zip(self.hooks, snapshot):
+            for f, values in arrays:
+                f.x.array[:] = values
+            hook.load_state_dict(state)
 
     def _advance(self, t: float, dt: float, level: int) -> None:
         if self.dt_constant is not None:
             self.dt_constant.value = dt
         with self.monitor.track_time("loads"):
             self.loads.update(t + dt)
-        if self.problem.solve():
+        hooks_before = self._hook_snapshot()
+        for hook in self.hooks:
+            hook.before_solve(t, dt)
+        with self.monitor.track_time("coupling"):
+            ok = self.coupling.advance(t, dt)
+        if ok:
+            for hook in self.hooks:
+                hook.after_solve(t, dt)
             return
-        self.problem.reset_states()
+        # The coupling has already put itself and the problem back (its contract).
+        self._restore_hooks(hooks_before)
         self.loads.update(t)
         max_level = self.conf.solver.max_halvings
         if level >= max_level:
@@ -455,8 +525,11 @@ class MechanicsSimulation:
             self._last_row = t
 
     def restart_functions(self) -> list[tuple[str, dolfinx.fem.Function]]:
-        """The state a restart needs, under ``mechanics_*`` names (composable with beat's)."""
-        return self.problem.restart_functions()
+        """The state a restart needs: the problem's ``mechanics_*`` functions, then each hook's."""
+        out = list(self.problem.restart_functions())
+        for hook in self.hooks:
+            out += list(hook.restart_functions())
+        return out
 
     def checkpoint(self) -> None:
         """Write the state at ``t`` to restart.bp and point restart.json at it.
@@ -560,9 +633,13 @@ def build_simulation(
     geometry: CLIGeometry | None = None,
     active_model: Any = None,
     monitor: Any = None,
+    coupling: Any = None,
+    hooks: Sequence[Any] = (),
 ) -> MechanicsSimulation:
     """Build geometry, model, BCs, loads and problem. ``geometry``/``active_model``/``monitor``
-    may be injected (simcardemsx); an injected active model replaces ``[active]``."""
+    may be injected (simcardemsx); an injected active model replaces ``[active]``.
+    ``coupling`` replaces ``[circulation]``; ``hooks`` are advanced, committed and rolled back
+    with every step (see ``pulse.coupling.StepHook``)."""
     monitor = monitor if monitor is not None else NullMonitor()
     require_optional_packages(conf.load)
     geo = geometry if geometry is not None else build_geometry(conf.geometry, comm)
@@ -582,7 +659,9 @@ def build_simulation(
     model = build_model(conf, geo, activation=activation, active_model=active_model)
     pressures = {load.marker: variables[load.name] for load in conf.load if load.marker}
     bcs = build_bcs(conf.bcs, geo, pressures)
-    problem, dt_constant = build_problem(conf, geo, model, bcs, monitor=monitor)
+    coupling = coupling if coupling is not None else NoCoupling()
+    problem, dt_constant = build_problem(conf, geo, model, bcs, monitor=monitor, coupling=coupling)
+    coupling.attach(problem)
     loads = build_loads(conf.load, variables, conf.time)
     return MechanicsSimulation(
         conf=conf,
@@ -592,6 +671,8 @@ def build_simulation(
         t=conf.time.start_s(),
         dt_constant=dt_constant,
         monitor=monitor,
+        coupling=coupling,
+        hooks=list(hooks),
     )
 
 
