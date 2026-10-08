@@ -288,3 +288,4 @@ colours
 axvspan
 zorder
 fontsize
+kwargs

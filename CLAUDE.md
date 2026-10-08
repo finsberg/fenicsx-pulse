@@ -66,13 +66,15 @@ StaticProblem / DynamicProblem(model, geometry, bcs, parameters)
 - **`units.py`** — `Variable` pairs a raw value (`float`/`dolfinx.fem.Constant`/`dolfinx.fem.Function`) with a `pint` unit and normalizes it to base SI units (`to_base_units()`); `Variable.assign(value)` mutates the underlying dolfinx object in place. Nearly all physical parameters passed into the model (pressures, activations, stiffnesses) are `Variable`s, not raw floats.
 - **`problem.py`** — the biggest module. `StaticProblem` builds the UFL residual from a `CardiacModel` + `Geometry` + `BoundaryConditions`, sets up the (possibly mixed, for incompressible) function space, applies BCs, and drives a Newton solve via `dolfinx.nls.petsc`. `DynamicProblem` extends it with time-dependent/inertial terms. `BaseBC` (`fixed`/`free`) selects how the base is constrained by default. Both classes take a `parameters` dict overriding `default_parameters()`.
 - **`unloading.py`** — `PrestressProblem`/`FixedPointUnloader`/`TargetPressure`: iterative schemes to back out an unloaded reference geometry from a loaded one.
+- **`coupling.py`** — `Coupling`/`StepHook` protocols and the three styles (`CycleCoupling`, `SplitCoupling`, `MonolithicCoupling`, plus `NoCoupling`). The coupling owns the solve of each step; on failure `advance` returns `False` after restoring itself and the problem (except per-step inputs and solver hints). `StepHook` is the same for non-0D state (e.g. a crossbridge model). Neither knows about the CLI; `pulse.cli.coupling` builds them from `[circulation]`.
 - **`kinematics.py` / `invariants.py`** — pure UFL helper functions (deformation gradient, `Cdev`, Piola transforms, invariant computations) used throughout the material/active models; no state, safe to unit-test without a mesh.
 - **`exceptions.py`** — package-specific exceptions (e.g. `MarkerNotFoundError`, `MeshTagNotFoundError`) raised by `Geometry`/`HeartGeometry` lookups.
 - **`telemetry.py`** — `BaseMonitor`/`NullMonitor`/`PerformanceMonitor`, the same interface as fenicsx-beat's `beat.telemetry` plus `record_snes`/`count`. `StaticProblem`/`DynamicProblem` take `monitor=` (default `NullMonitor`) and time every `solve()` (`"newton_solve"`) and record Newton/KSP iterations; the CLI adds its own phases.
 - **`cli/`** — `pulse` console script (`pulse.cli:main`), a TOML-config-driven CLI mirroring `beat`'s:
   `config.py` (pydantic models, no dolfinx import), `overrides.py` (TOML < `PULSE_*` env < `--set` <
   flags, `physics_hash`), `geometry.py` (box/folder/generated meshes, hash-keyed cache), `model.py`/
-  `bcs.py`/`loads.py` (builders), `runner.py` (`MechanicsSimulation` step API: `step` with adaptive
+  `bcs.py`/`loads.py` (builders), `coupling.py` (builds `pulse.coupling` from `[circulation]`),
+  `prestress.py` (`[prestress]` pre-phase: hash-keyed cache, re-inflation), `runner.py` (`MechanicsSimulation` step API: `step` with adaptive
   halving, `save`, `checkpoint`, `restore`; `run()` loops over it), `postprocess.py`, `templates/`
   (one config per demo, shipped as package data; `pulse init --template`). Needs the `cli` extra.
   `overrides.py`, `log.py`, `_on_rank0`, the output-folder handling and the geometry cache are
