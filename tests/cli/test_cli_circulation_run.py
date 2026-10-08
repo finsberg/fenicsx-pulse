@@ -104,9 +104,30 @@ def test_restart_matches_continuous_run(tmp_path, lv_folder, style):
         json.loads((c.output.folder / RESTART_META).read_text())["mechanics"]["coupling"]
         for c in (full, second)
     ]
-    assert meta[0] == meta[1]
+    if MPI.COMM_WORLD.size == 1:
+        assert meta[0] == meta[1]
+    else:
+        # The coupling state holds solve results too (e.g. the cycle's pressure_n), so the
+        # same MUMPS round-off applies.
+        _assert_same_tree(meta[0], meta[1], rel=1e-10)
     t_rows = [float(r["t"]) for r in _rows(second.output.folder)]
     np.testing.assert_allclose(t_rows, np.arange(5) * 0.002)
+
+
+def _assert_same_tree(a, b, rel, path="coupling"):
+    """``a == b`` for nested JSON data, with floats compared to ``rel`` (bools/ints exactly)."""
+    if isinstance(a, dict):
+        assert isinstance(b, dict) and a.keys() == b.keys(), path
+        for key in a:
+            _assert_same_tree(a[key], b[key], rel, f"{path}.{key}")
+    elif isinstance(a, list):
+        assert isinstance(b, list) and len(a) == len(b), path
+        for i, (x, y) in enumerate(zip(a, b)):
+            _assert_same_tree(x, y, rel, f"{path}[{i}]")
+    elif isinstance(a, float) and not isinstance(b, bool):
+        assert b == pytest.approx(a, rel=rel, abs=1e-9), path  # Pa and m^3 entries near zero
+    else:
+        assert a == b, path
 
 
 @pytest.mark.parametrize(
