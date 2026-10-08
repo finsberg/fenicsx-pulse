@@ -145,6 +145,25 @@ No fibre field (isotropic materials only); "isotropic" (beat's name) is an alias
 |---|---|---|---|
 | `type` | 'none' \| 'isotropic' | `'none'` |  |
 
+## `[geometry.ldrb]`
+
+### LDRBAngles
+
+Per-ventricle LDRB fibre angles in degrees (ldrb.dolfinx_ldrb's keywords).
+
+    The defaults are those of demo/time_dependent/complete_cycle.py (after Doste et al. 2019).
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `alpha_endo_lv` | float | `60.0` |  |
+| `alpha_epi_lv` | float | `-60.0` |  |
+| `alpha_endo_rv` | float | `90.0` |  |
+| `alpha_epi_rv` | float | `-25.0` |  |
+| `beta_endo_lv` | float | `-20.0` |  |
+| `beta_epi_lv` | float | `20.0` |  |
+| `beta_endo_rv` | float | `0.0` |  |
+| `beta_epi_rv` | float | `20.0` |  |
+
 ## `[material]`
 
 ### HolzapfelOgdenMaterial (`holzapfel_ogden`)
@@ -368,6 +387,121 @@ Linear interpolation of a table, held constant outside it; `period` repeats it.
 | `period` | Quantity (optional) | – | Integrate one period from t = 0 on the [time] grid, then repeat it |
 | `peak` | Quantity (optional) | – | Divide the trace by its largest value, then scale it to this (needs period) |
 | `type` | 'bestel_activation' | `'bestel_activation'` |  |
+
+## `[circulation]`
+
+### NoCirculation (`none`)
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `type` | 'none' | `'none'` |  |
+
+### CycleCirculation (`cycle`)
+
+CycleController: one CavityControl and Windkessel per cavity.
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `type` | 'cycle' | `'cycle'` |  |
+| `cavity` | list[CycleCavityConfig] | **required** |  |
+
+### CycleCavityConfig
+
+One cavity of the five-phase cycle (pulse.cycle.CycleParams).
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `marker` | str | **required** |  |
+| `period` | Quantity | **required** |  |
+| `t_zero` | Quantity | **required** |  |
+| `t_end_diastole` | Quantity | **required** |  |
+| `preload_pressure` | Quantity | **required** |  |
+| `p_end_diastole` | Quantity | **required** | PRELOAD ends here; also the prestress target |
+| `p_fill` | Quantity | **required** |  |
+| `filling_rate` | Quantity | **required** |  |
+| `min_ejection_duration` | Quantity | `'10 ms'` |  |
+| `windkessel` | WindkesselConfig | **required** |  |
+
+### WindkesselConfig
+
+A three-element Windkessel (pulse.cycle.Windkessel).
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `p_init` | Quantity | **required** |  |
+| `compliance` | Quantity | **required** |  |
+| `resistance` | Quantity | **required** |  |
+| `characteristic_impedance` | Quantity | `'0 Pa*s/m**3'` |  |
+
+### SplitCirculation (`split`)
+
+The .ode circuit stepped by forward Euler, one mechanics solve per step.
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `ode_file` | path | **required** | gotranx .ode file (relative to the config); the physics hash covers its contents |
+| `drop_components` | list[str] | `[]` |  |
+| `parameters` | dict[str, float] | `{}` | Parameter overrides by name, in the .ode file's own units (plain numbers) |
+| `initial_state` | dict[str, float] | `{}` | Initial values by state name, in the .ode file's own units; coupled chamber volumes always come from the mesh |
+| `record` | list[str] | `[]` | Monitored expressions of the .ode file to add to loads.csv |
+| `chamber` | list[ChamberConfig] | **required** |  |
+| `inputs` | dict[str, PhaseInputConfig] | `{}` |  |
+| `type` | 'split' | `'split'` |  |
+
+### MonolithicCirculation (`monolithic`)
+
+The .ode circuit's states solved in the mechanics' own Newton system.
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `ode_file` | path | **required** | gotranx .ode file (relative to the config); the physics hash covers its contents |
+| `drop_components` | list[str] | `[]` |  |
+| `parameters` | dict[str, float] | `{}` | Parameter overrides by name, in the .ode file's own units (plain numbers) |
+| `initial_state` | dict[str, float] | `{}` | Initial values by state name, in the .ode file's own units; coupled chamber volumes always come from the mesh |
+| `record` | list[str] | `[]` | Monitored expressions of the .ode file to add to loads.csv |
+| `chamber` | list[ChamberConfig] | **required** |  |
+| `inputs` | dict[str, PhaseInputConfig] | `{}` |  |
+| `type` | 'monolithic' | `'monolithic'` |  |
+| `scheme` | 'backward_euler' \| 'bdf2' | `'backward_euler'` |  |
+
+### ChamberConfig
+
+Ties a cavity (facet marker) to a chamber of the .ode circuit.
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `marker` | str | **required** |  |
+| `volume_state` | str | **required** | The circuit state holding the chamber volume (mL) |
+| `pressure_missing` | str | **required** | The missing variable the chamber pressure feeds |
+
+### PhaseInputConfig (`phase`)
+
+A time-derived missing variable: t mod period (e.g. Regazzoni's beat_phase).
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `type` | 'phase' | `'phase'` |  |
+| `period` | Quantity | **required** |  |
+
+## `[prestress]`
+
+### PrestressConfig
+
+Recover the unloaded reference configuration before the run (PrestressProblem).
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `ramp_steps` | int | `20` |  |
+| `cache_folder` | path | `'prestress'` | Cache root (relative to the config); each result in its own <hash>/ subfolder; never deleted by --overwrite |
+| `inflate_steps` | int | `0` | > 0: ramp the chamber volumes back to the imaged ones in this many static steps before the run (split/monolithic only) |
+| `target` | list[PrestressTarget] | `[]` | Cavity pressures of the imaged mesh; not allowed with circulation.type = 'cycle', whose targets are p_end_diastole |
+
+### PrestressTarget
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `marker` | str | **required** |  |
+| `pressure` | Quantity | **required** |  |
 
 ## `[time]`
 
