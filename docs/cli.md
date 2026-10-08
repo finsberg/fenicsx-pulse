@@ -461,7 +461,7 @@ solves. The mechanics is solved at the new volume, and the coupling reports the 
 ```toml
 [circulation]
 type = "split"
-ode_file = "regazzoni2020.ode"
+ode_file = "circulation:regazzoni2020.ode"
 drop_components = ["timing", "LV", "RV"]
 record = ["p_LA", "p_RA", "Q_MV", "Q_AV", "Q_TV", "Q_PV"]
 [circulation.parameters]
@@ -508,7 +508,7 @@ A `[prestress]` section provides the end-diastolic pressures the 0D initial stat
 ```toml
 [circulation]
 type = "monolithic"
-ode_file = "regazzoni2020.ode"
+ode_file = "circulation:regazzoni2020.ode"
 drop_components = ["timing", "LV"]
 scheme = "backward_euler"
 record = ["p_LA", "Q_MV", "Q_AV"]
@@ -542,9 +542,11 @@ beat_phase = { type = "phase", period = "1 s" }
 
 ### The `.ode` rules (`split` and `monolithic`)
 
-- `ode_file` is resolved relative to the config file; the `split_biv` and `monolithic_*`
-  templates ship a copy of `regazzoni2020.ode` next to the config. Its contents (not its path)
-  are part of the physics hash.
+- `ode_file` is a path relative to the config file, or `"<package>:<file>"` for a file inside an
+  installed package: the `split_biv` and `monolithic_*` templates use
+  `"circulation:regazzoni2020.ode"`, the `circulation` package's own copy of the model. Its
+  contents (not its path) are part of the physics hash, so a restart refuses to continue if a
+  `circulation` upgrade changed the file.
 - `drop_components` removes components from the model; each dropped component's variables
   become *missing* inputs. Drop the chambers the mechanics replaces (`LV`, `RV`) and `timing`.
   Each `[[circulation.chamber]]` then ties a mesh `marker` to the `.ode` state `volume_state`

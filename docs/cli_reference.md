@@ -439,7 +439,7 @@ The .ode circuit stepped by forward Euler, one mechanics solve per step.
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `ode_file` | path | **required** | gotranx .ode file (relative to the config); the physics hash covers its contents |
+| `ode_file` | path | **required** | gotranx .ode file: a path relative to the config, or "<package>:<file>" for a file inside an installed package (e.g. "circulation:regazzoni2020.ode"); the physics hash covers its contents |
 | `drop_components` | list[str] | `[]` |  |
 | `parameters` | dict[str, float] | `{}` | Parameter overrides by name, in the .ode file's own units (plain numbers) |
 | `initial_state` | dict[str, float] | `{}` | Initial values by state name, in the .ode file's own units; coupled chamber volumes always come from the mesh |
@@ -454,7 +454,7 @@ The .ode circuit's states solved in the mechanics' own Newton system.
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `ode_file` | path | **required** | gotranx .ode file (relative to the config); the physics hash covers its contents |
+| `ode_file` | path | **required** | gotranx .ode file: a path relative to the config, or "<package>:<file>" for a file inside an installed package (e.g. "circulation:regazzoni2020.ode"); the physics hash covers its contents |
 | `drop_components` | list[str] | `[]` |  |
 | `parameters` | dict[str, float] | `{}` | Parameter overrides by name, in the .ode file's own units (plain numbers) |
 | `initial_state` | dict[str, float] | `{}` | Initial values by state name, in the .ode file's own units; coupled chamber volumes always come from the mesh |

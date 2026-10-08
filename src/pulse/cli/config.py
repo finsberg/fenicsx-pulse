@@ -789,8 +789,9 @@ class PhaseInputConfig(_Base):
 
 class _OdeCirculation(_Base):
     ode_file: Path = Field(
-        description="gotranx .ode file (relative to the config); the physics hash covers its "
-        "contents",
+        description='gotranx .ode file: a path relative to the config, or "<package>:<file>" '
+        'for a file inside an installed package (e.g. "circulation:regazzoni2020.ode"); the '
+        "physics hash covers its contents",
     )
     drop_components: list[str] = Field(default_factory=list)
     parameters: dict[str, float] = Field(

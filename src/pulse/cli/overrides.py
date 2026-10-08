@@ -4,8 +4,10 @@ Precedence (lowest to highest): TOML file < ``PULSE_*`` env vars < ``--set`` < f
 """
 
 import hashlib
+import importlib.resources
 import json
 import os
+import re
 import shlex
 import warnings
 from pathlib import Path
@@ -127,6 +129,30 @@ def _resolve(base: Path, p: Path) -> Path:
     return p if p.is_absolute() else (base / p).resolve()
 
 
+# "<package>:<file>", e.g. "circulation:regazzoni2020.ode". The package name has at least two
+# characters, so a Windows drive letter ("C:...") is never taken for one.
+_PACKAGE_FILE = re.compile(r"^([A-Za-z_][\w.]+):(?![/\\])(.+)$")
+
+
+def _package_file(value: str, what: str) -> Path | None:
+    """The file ``"<package>:<file>"`` names inside an installed package, or None if ``value``
+    is a plain path."""
+    match = _PACKAGE_FILE.match(value)
+    if match is None:
+        return None
+    package, resource = match.groups()
+    try:
+        root = importlib.resources.files(package)
+    except (ModuleNotFoundError, TypeError) as e:
+        raise ConfigError(
+            f"{what}: package {package!r} is not installed (pip install {package})",
+        ) from e
+    path = Path(str(root / resource))
+    if not path.is_file():
+        raise ConfigError(f"{what}: {resource!r} is not a file of package {package!r} ({path})")
+    return path.resolve()
+
+
 def load_config(
     path: Path,
     sets: Sequence[str] = (),
@@ -168,7 +194,8 @@ def load_config(
             load.profile.file = _resolve(base, load.profile.file)
     circulation = conf.circulation
     if circulation.type in ("split", "monolithic"):
-        circulation.ode_file = _resolve(base, circulation.ode_file)
+        packaged = _package_file(str(circulation.ode_file), "circulation.ode_file")
+        circulation.ode_file = packaged or _resolve(base, circulation.ode_file)
         if not circulation.ode_file.is_file():
             raise ConfigError(f"circulation.ode_file: {circulation.ode_file} does not exist")
     if conf.prestress is not None:

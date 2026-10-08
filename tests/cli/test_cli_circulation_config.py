@@ -216,3 +216,28 @@ def test_physics_hash_covers_prestress_but_not_its_cache_or_solver(tmp_path):
         _load(tmp_path / "c", prestress={"target": [{"marker": "ENDO", "pressure": "2 kPa"}]}),
     )
     assert base == moved and base != other
+
+
+def test_ode_file_from_an_installed_package(tmp_path):
+    regazzoni2020 = pytest.importorskip("circulation.regazzoni2020")
+    conf = _load(tmp_path, circulation=_ode_section("circulation:regazzoni2020.ode"))
+    assert conf.circulation.ode_file == Path(regazzoni2020.ODE_FILE).resolve()
+
+
+def test_packaged_ode_file_hashes_like_a_copy(tmp_path):
+    regazzoni2020 = pytest.importorskip("circulation.regazzoni2020")
+    copy = write_file(tmp_path / "copy.ode", Path(regazzoni2020.ODE_FILE).read_text())
+    packaged = _load(tmp_path / "a", circulation=_ode_section("circulation:regazzoni2020.ode"))
+    copied = _load(tmp_path / "b", circulation=_ode_section(copy))
+    assert physics_hash(packaged) == physics_hash(copied)
+
+
+def test_ode_file_package_not_installed(tmp_path):
+    with pytest.raises(ConfigError, match="pip install not_a_pulse_package"):
+        _load(tmp_path, circulation=_ode_section("not_a_pulse_package:model.ode"))
+
+
+def test_ode_file_not_in_the_package(tmp_path):
+    pytest.importorskip("circulation")
+    with pytest.raises(ConfigError, match="'nope.ode' is not a file of package 'circulation'"):
+        _load(tmp_path, circulation=_ode_section("circulation:nope.ode"))

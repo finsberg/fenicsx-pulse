@@ -67,7 +67,7 @@ period = "1 s"
 
 [circulation]
 type = "monolithic"
-ode_file = "regazzoni2020.ode"
+ode_file = "circulation:regazzoni2020.ode"  # the circulation package's own file
 drop_components = ["timing", "LV", "RV"]
 scheme = "backward_euler"
 record = ["p_LA", "p_RA", "Q_AV", "Q_PV"]

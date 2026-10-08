@@ -61,8 +61,19 @@ def test_every_expected_template_exists():
     assert set(_available_templates()) == EXPECTED
 
 
+# optional packages a template needs to *validate*: its .ode file lives in that package
+VALIDATE_NEEDS = {
+    "split_biv": ["circulation"],
+    "monolithic_lv": ["circulation"],
+    "monolithic_biv": ["circulation"],
+}
+
+
 @pytest.mark.parametrize("name", sorted(EXPECTED))
 def test_template_validates(name, tmp_path):
+    missing = [m for m in VALIDATE_NEEDS.get(name, []) if importlib.util.find_spec(m) is None]
+    if missing:
+        pytest.skip(f"needs {missing}")
     tmp = MPI.COMM_WORLD.bcast(tmp_path, root=0)
     assert main(["init", str(tmp / "config.toml"), "--template", name]) == 0
     conf = load_config(tmp / "config.toml", environ={})

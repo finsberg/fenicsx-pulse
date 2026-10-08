@@ -63,4 +63,3 @@ repos:
     hooks:
       - id: cspell
         files: src/|docs|tests|README.md
-        exclude: '\.ode$'  # third-party circuit sources, copied verbatim

@@ -8,7 +8,7 @@
 #   regional Tref (LV and septum 160 kPa, RV 90 kPa). Land and a regional Tref are left to
 #   simcardemsx. `peak` was tuned by hand on this mesh for a plausible left-ventricular loop;
 #   it is not from a reference (tuned by hand: first beat LV peak 112 mmHg, EF 42 %).
-# - Circuit: regazzoni2020.ode (from the circulation package) with its timing, LV and RV
+# - Circuit: the circulation package's regazzoni2020.ode with its timing, LV and RV
 #   components dropped. HR = 1/s: RR = 1 s, and the atrial onsets re-reduced modulo RR
 #   (tC_eff/tR_eff, as circulation.regazzoni2020.flat_ode_parameters computes them; change
 #   them together with RR). The initial state keeps the demo's 60 % fill of the atrial volumes
@@ -61,7 +61,7 @@ t_dias = "0.4 s"
 
 [circulation]
 type = "split"
-ode_file = "regazzoni2020.ode"
+ode_file = "circulation:regazzoni2020.ode"  # the circulation package's own file
 drop_components = ["timing", "LV", "RV"]
 record = ["p_LA", "p_RA", "Q_MV", "Q_AV", "Q_TV", "Q_PV"]
 [circulation.parameters]
