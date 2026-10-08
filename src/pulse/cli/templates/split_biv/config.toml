@@ -1,0 +1,101 @@
+# Transcribes demo/time_dependent/land_circulation_biv.py (BiV ellipsoid in Regazzoni's
+# closed-loop circulation, split coupling, four beats).
+#
+# Deviations from the demo:
+# - Activation: a prescribed, periodic Bestel tension (period 1 s, onset at 0.1 s, where the
+#   demo's calcium transient starts), the same everywhere, with plain ActiveStress, instead of
+#   crossbridge.Land2017 at every quadrature point through StabilizedActiveStress and a
+#   regional Tref (LV and septum 160 kPa, RV 90 kPa). Land and a regional Tref are left to
+#   simcardemsx. `peak` was tuned by hand on this mesh for a plausible left-ventricular loop;
+#   it is not from a reference.
+# - Circuit: regazzoni2020.ode (from the circulation package) with its timing, LV and RV
+#   components dropped. HR = 1/s: RR = 1 s, and the atrial onsets re-reduced modulo RR
+#   (tC_eff/tR_eff, as circulation.regazzoni2020.flat_ode_parameters computes them; change
+#   them together with RR). The initial state keeps the demo's 60 % fill of the atrial volumes
+#   and the venous and pulmonary arterial pressures, written out; the chamber volumes come from
+#   the mesh.
+# - Coupling order: the mechanics is solved after the Euler step (at V_{n+1} and Ta(t_{n+1}))
+#   instead of before it (at V_n, with Land advanced to t_{n+1}); the volume sequence is the
+#   same.
+# - Output: results.bp and loads.csv rows every 5 ms; no traces.npz, frames.npz or video.
+# Needs: fenicsx-ldrb, gotranx, circulation, scipy.
+
+[geometry]
+type = "biv_ellipsoid"
+unit = "m"
+scale = 1.6e-2
+char_length = 1.0
+fiber_angle_endo = 60.0
+fiber_angle_epi = -60.0
+fiber_space = "Quadrature_6"
+quadrature_degree = 6
+
+[material]
+type = "holzapfel_ogden"
+preset = "transversely_isotropic"
+
+[active]
+type = "active_stress"
+
+[compressibility]
+type = "compressible2"
+
+[bcs]
+base_bc = "free"
+[[bcs.dirichlet]]
+marker = "BASE"
+components = ["z"]  # sliding base: biv_ellipsoid's base normal is z
+[[bcs.robin]]
+marker = "EPI"
+value = "5e4 Pa/m"
+
+[[load]]
+target = "activation"
+[load.profile]
+type = "bestel_activation"
+period = "1 s"
+peak = "120 kPa"
+[load.profile.parameters]
+t_sys = "0.1 s"
+t_dias = "0.4 s"
+
+[circulation]
+type = "split"
+ode_file = "regazzoni2020.ode"
+drop_components = ["timing", "LV", "RV"]
+record = ["p_LA", "p_RA", "Q_MV", "Q_AV", "Q_TV", "Q_PV"]
+[circulation.parameters]
+RR = 1.0
+tC_eff_LA = 0.9
+tR_eff_LA = 0.07
+tC_eff_RA = 0.9
+tR_eff_RA = 0.07
+[circulation.initial_state]
+V_LA = 52.3098
+V_RA = 52.0998
+p_VEN_SYS = 21.5388
+p_VEN_PUL = 9.0024
+p_AR_PUL = 11.727
+[[circulation.chamber]]
+marker = "LV"
+volume_state = "V_LV"
+pressure_missing = "p_LV"
+[[circulation.chamber]]
+marker = "RV"
+volume_state = "V_RV"
+pressure_missing = "p_RV"
+[circulation.inputs]
+beat_phase = { type = "phase", period = "1 s" }
+
+[time]
+end_time = "4 s"
+dt = "1 ms"
+
+[problem]
+type = "static"
+u_space = "P_2"
+
+[output]
+folder = "output"
+save_every = "5 ms"
+checkpoint_every = "100 ms"

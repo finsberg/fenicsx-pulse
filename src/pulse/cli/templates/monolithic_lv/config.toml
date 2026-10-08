@@ -1,0 +1,106 @@
+# Transcribes demo/time_dependent/monolithic_3d0d.py (LV ellipsoid, Regazzoni's closed loop
+# solved in the same Newton system; the demo's quasi-static arm).
+#
+# Deviations from the demo:
+# - No standalone 10-beat 0D warm-up and no calibration (calibration.py): the warm-up's final
+#   circuit state and end-diastolic LV pressure are written below as numbers, computed once
+#   with the demo's own warm-up (Regazzoni2020 at HR = 1/s, 10 beats, dt = 1 ms, from the
+#   mesh's cavity volume), and Ta is not rescaled (the demo's Ta_scale = 1 without calibration).
+# - Prestress and run share one compressibility (Incompressible, the demo's run model); the
+#   demo prestresses with Compressible.
+# - Re-inflation ramps the cavity back to the imaged volume (30 static steps at Ta = 0) instead
+#   of to the warm-up's V_LV with Ta ramped down from the calibration's value.
+# - PULSE_DYNAMIC becomes [problem] type: for the dynamic arm set type = "dynamic",
+#   [viscoelasticity] type = "viscous" and damping Robins of 5e3 Pa*s/m on EPI and BASE.
+# - Output: results.bp and loads.csv rows every 10 ms; no traces.npz, frames.npz or video.
+# Needs: gotranx, circulation, scipy.
+
+[geometry]
+type = "lv_ellipsoid"
+unit = "m"
+r_short_endo = 0.025
+r_short_epi = 0.035
+r_long_endo = 0.09
+r_long_epi = 0.097
+psize_ref = 0.03
+fiber_angle_endo = 60.0
+fiber_angle_epi = -60.0
+fiber_space = "Quadrature_6"
+quadrature_degree = 6
+
+[material]
+type = "holzapfel_ogden"
+preset = "transversely_isotropic"
+
+[active]
+type = "active_stress"
+formulation = "stretch"
+
+[compressibility]
+type = "incompressible"
+
+[bcs]
+base_bc = "free"
+[[bcs.robin]]
+marker = "EPI"
+value = "1e5 Pa/m"
+[[bcs.robin]]
+marker = "BASE"
+value = "1e5 Pa/m"
+
+[[load]]
+target = "activation"
+[load.profile]
+type = "bestel_activation"
+period = "1 s"
+
+[circulation]
+type = "monolithic"
+ode_file = "regazzoni2020.ode"
+drop_components = ["timing", "LV"]
+scheme = "backward_euler"
+record = ["p_LA", "Q_MV", "Q_AV"]
+[circulation.parameters]
+RR = 1.0
+tC_eff_LA = 0.9
+tR_eff_LA = 0.07
+tC_eff_RA = 0.9
+tR_eff_RA = 0.07
+[circulation.initial_state]
+V_LA = 80.7094
+V_RA = 66.7727
+V_RV = 181.218
+p_AR_SYS = 76.4746
+p_VEN_SYS = 32.4307
+p_AR_PUL = 20.2648
+p_VEN_PUL = 17.2985
+Q_AR_SYS = 60.484
+Q_VEN_SYS = 80.196
+Q_AR_PUL = 72.4093
+Q_VEN_PUL = -392.833
+[[circulation.chamber]]
+marker = "ENDO"
+volume_state = "V_LV"
+pressure_missing = "p_LV"
+[circulation.inputs]
+beat_phase = { type = "phase", period = "1 s" }
+
+[prestress]
+ramp_steps = 20
+inflate_steps = 30
+[[prestress.target]]
+marker = "ENDO"
+pressure = "2.463 kPa"
+
+[time]
+end_time = "2 s"
+dt = "2 ms"
+
+[problem]
+type = "static"
+u_space = "P_2"
+
+[output]
+folder = "output"
+save_every = "10 ms"
+checkpoint_every = "100 ms"

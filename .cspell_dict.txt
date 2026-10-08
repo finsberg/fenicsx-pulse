@@ -282,6 +282,7 @@ normalises
 normalising
 normalisation
 Prestressing
+prestresses
 prestressing
 colours
 axvspan

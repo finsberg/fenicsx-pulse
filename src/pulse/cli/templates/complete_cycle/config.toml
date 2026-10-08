@@ -1,0 +1,129 @@
+# Transcribes demo/time_dependent/complete_cycle.py (prestressed UKB BiV through two beats of
+# the five-phase cycle, a Windkessel per ventricle, Bestel activation).
+#
+# Deviations from the demo:
+# - Fibres: the demo's per-ventricle LDRB angles ([geometry.ldrb]) in Quadrature_6; the extra
+#   DG_1 fibre copy the demo saves for post-processing is not computed.
+# - Prestress: the targets are the cavities' p_end_diastole, as in the demo; the CLI unloads a
+#   passive model (the demo's Ta is 0 there too) and caches the result by hash.
+# - Activation: bestel_activation with period = 0.8 s and peak = 100 kPa, integrated on the
+#   1 ms grid one interval at a time (the demo integrates the beat once with max_step = 1 ms);
+#   the traces agree to the integrator's tolerance.
+# - Output: results.bp and loads.csv rows every 5 ms (the demo traces every step and writes VTX
+#   every 10 ms); no traces.npz, frames.npz or video. `pulse post` draws the PV loops.
+# Needs: ukb-atlas, fenicsx-ldrb, circulation, scipy.
+
+[geometry]
+type = "ukb"
+unit = "m"
+scale = 1e-3
+mode = -1
+std = 0.0
+case = "ED"
+char_length_max = 10.0
+char_length_min = 10.0
+clipped = true
+fiber_space = "Quadrature_6"
+quadrature_degree = 6
+rotate_base_normal = [1.0, 0.0, 0.0]
+
+[geometry.ldrb]
+alpha_endo_lv = 60.0
+alpha_epi_lv = -60.0
+alpha_endo_rv = 90.0
+alpha_epi_rv = -25.0
+beta_endo_lv = -20.0
+beta_epi_lv = 20.0
+beta_endo_rv = 0.0
+beta_epi_rv = 20.0
+
+[material]
+type = "holzapfel_ogden"
+preset = "transversely_isotropic"
+
+[active]
+type = "active_stress"
+
+[compressibility]
+type = "compressible"
+kappa = "1e6 Pa"
+
+[viscoelasticity]
+type = "viscous"
+eta = "100 Pa*s"
+
+[bcs]
+base_bc = "free"
+[[bcs.dirichlet]]
+marker = "BASE"
+components = ["x"]  # sliding base: the mesh is rotated so the base normal is x
+[[bcs.robin]]
+marker = "EPI"
+value = "1e5 Pa/m"
+[[bcs.robin]]
+marker = "BASE"
+value = "1e6 Pa/m"
+[[bcs.robin]]
+marker = "EPI"
+value = "5e3 Pa*s/m"
+damping = true
+
+[[load]]
+target = "activation"
+[load.profile]
+type = "bestel_activation"
+period = "0.8 s"
+peak = "100 kPa"
+[load.profile.parameters]
+t_sys = "0.12 s"   # t_end_diastole: tension builds as soon as PRELOAD ends
+t_dias = "0.4 s"
+
+[circulation]
+type = "cycle"
+
+[[circulation.cavity]]
+marker = "LV"
+period = "0.8 s"
+t_zero = "0.05 s"
+t_end_diastole = "0.12 s"
+preload_pressure = "500 Pa"
+p_end_diastole = "1000 Pa"
+p_fill = "500 Pa"
+filling_rate = "0.104 mL/ms"
+[circulation.cavity.windkessel]
+p_init = "9000 Pa"
+compliance = "1.5 mL/mmHg"
+resistance = "1.1 mmHg*s/mL"
+characteristic_impedance = "0.03 mmHg*s/mL"
+
+[[circulation.cavity]]
+marker = "RV"   # tuned by hand on this mesh in the demo, not taken from a reference
+period = "0.8 s"
+t_zero = "0.05 s"
+t_end_diastole = "0.12 s"
+preload_pressure = "200 Pa"
+p_end_diastole = "400 Pa"
+p_fill = "200 Pa"
+filling_rate = "0.057 mL/ms"
+[circulation.cavity.windkessel]
+p_init = "2500 Pa"
+compliance = "4.0 mL/mmHg"
+resistance = "0.5 mmHg*s/mL"
+characteristic_impedance = "0.01 mmHg*s/mL"
+
+[prestress]
+ramp_steps = 20
+
+[time]
+end_time = "1.6 s"
+dt = "1 ms"
+
+[problem]
+type = "dynamic"
+u_space = "P_2"
+rho = "1000 kg/m**3"
+
+[output]
+folder = "output"
+save_every = "5 ms"
+checkpoint_every = "100 ms"

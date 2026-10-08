@@ -1,0 +1,198 @@
+# Closed-loop circulation model of Regazzoni et al. (2020), in the gotranx
+# `.ode` language.
+#
+#   F. Regazzoni, M. Salvador, P. C. Africa, M. Fedele, L. Dede', A. Quarteroni,
+#   "A cardiac electromechanics model coupled with a lumped parameters model for
+#   closed-loop blood circulation. Part I: model derivation", arXiv (2020)
+#   https://arxiv.org/abs/2011.15040
+#
+# This is a translation of `regazzoni2020.Regazzoni2020`, kept equation for
+# equation. `tests/test_regazzoni_ode_equivalence.py` checks the generated code
+# against that class's `rhs` over randomized states, which is what keeps the two
+# from drifting apart.
+#
+# Twelve states, all in the `circulation` component. Each chamber's pressure
+# closure lives in its own component (`LA`, `LV`, `RA`, `RV`) so that a chamber
+# can be replaced by an external model:
+#
+#     ode     = gotranx.load_ode("regazzoni2020.ode")     # standalone
+#     coupled = ode - ode.get_component("LV")             # p_LV supplied externally
+#
+# Subtracting a chamber leaves its pressure as a *missing variable* -- a value
+# the generated code expects as an argument rather than computing. That is the
+# seam a 3D mechanics solver plugs into: it, not an elastance formula, decides
+# the pressure the chamber develops at a given volume. The chamber volume stays
+# a state either way, so nothing else about the model changes.
+#
+# ## Two deliberate departures from the Python implementation
+#
+# 1. `beat_phase` is a missing variable, not computed here. The Python code
+#    writes the activation phase as `np.mod(t - tC, RR)`, and UFL has no `Mod`
+#    (nor `floor`), so a model using it could not target the UFL backend at all.
+#    The phase depends only on time -- never on any state -- so computing it
+#    outside costs no accuracy and keeps it out of the differentiated part of
+#    the system, where it would contribute nothing but zeros.
+#
+#    Supply `beat_phase = t mod RR`, in `[0, RR)`. Each chamber's own offset is
+#    then applied here with a single wrap, which is exact provided the offsets
+#    are themselves reduced modulo RR -- see `tC_eff`/`tR_eff` below.
+#
+# 2. The valve resistance is written as `Rmin * (Rmax/Rmin)**H` rather than the
+#    Python code's `10**(log10(Rmin) + (log10(Rmax) - log10(Rmin)) * H)`. These
+#    are identically equal for any base; the exponential form is base-free (so
+#    it cannot be broken by `log` meaning natural log, as it does in the UFL
+#    backend), has no logarithm of a ~1e-7 ratio, and makes `Rmax/Rmin` -- the
+#    quantity that actually governs conditioning -- appear literally.
+#
+# The diode's steepness, hard-coded as 200 inside `base.smooth_heavyside`, is a
+# parameter here (`valve_steepness`). It is the single knob controlling how
+# sharp the valve nonlinearity is, and a Newton-based solver cares about it a
+# great deal, so it should be adjustable without editing library code.
+
+parameters("circulation",
+    RR = 0.8,                # beat length [s], = 1 / HR
+    valve_steepness = 200.0  # diode sharpness in smooth_heavyside
+)
+
+parameters("circulation",
+    Rmin_MV = 0.0075, Rmax_MV = 75006.2,
+    Rmin_AV = 0.0075, Rmax_AV = 75006.2,
+    Rmin_TV = 0.0075, Rmax_TV = 75006.2,
+    Rmin_PV = 0.0075, Rmax_PV = 75006.2
+)
+
+parameters("circulation",
+    R_AR_SYS = 0.733,  C_AR_SYS = 1.372,
+    R_VEN_SYS = 0.32,  C_VEN_SYS = 11.363,
+    L_AR_SYS = 0.005,  L_VEN_SYS = 0.0005,
+    R_AR_PUL = 0.046,  C_AR_PUL = 20.0,
+    R_VEN_PUL = 0.0015, C_VEN_PUL = 16.0,
+    L_AR_PUL = 0.0005, L_VEN_PUL = 0.0005
+)
+
+# External blood withdrawal/infusion. All zero by default, i.e. inactive.
+parameters("circulation",
+    start_withdrawal = 0.0, end_withdrawal = 0.0, flow_withdrawal = 0.0,
+    start_infusion = 0.0,   end_infusion = 0.0,   flow_infusion = 0.0
+)
+
+states("circulation",
+    V_LA = 87.183,
+    V_LV = 118.520,
+    V_RA = 86.833,
+    V_RV = 166.177,
+    p_AR_SYS = 87.675,
+    p_VEN_SYS = 35.898,
+    p_AR_PUL = 19.545,
+    p_VEN_PUL = 15.004,
+    Q_AR_SYS = 71.104,
+    Q_VEN_SYS = 94.039,
+    Q_AR_PUL = 94.084,
+    Q_VEN_PUL = 473.279
+)
+
+# The activation phase within the beat, in `[0, RR)`.
+#
+# This lives in its own component so it can be subtracted away. Kept, it is
+# computed here with `Mod`, which the Python and C backends handle -- so the
+# standalone model is self-contained and needs nothing supplied. Subtracted, it
+# becomes a missing variable and the `Mod` disappears along with it, which is
+# what lets the remainder target the UFL backend at all:
+#
+#     coupled = ode - ode.get_component("timing") - ode.get_component("LV")
+#
+# Nothing is lost by supplying it from outside: it is a function of time alone,
+# so its derivative with respect to every state is zero.
+
+expressions("timing")
+beat_phase = Mod(t, RR)
+
+# Chamber elastances, following Blanco & Feijoo (2010): a raised cosine rising
+# over the contraction window TC, a raised cosine falling over the relaxation
+# window TR, and zero at rest.
+#
+# `tC_eff` and `tR_eff` are the contraction and relaxation onsets already
+# reduced modulo RR -- i.e. `tC mod RR` and `(tC + TC) mod RR`. Reducing them
+# outside is what lets the phase shift below be a single wrap rather than
+# another modulo: with both `beat_phase` and the offset in `[0, RR)`, their
+# difference lies in `(-RR, RR)` and one correction suffices. The defaults
+# below are the published offsets reduced at the default RR = 0.8 s; anything
+# that changes RR must recompute them.
+
+parameters("LA", EA_LA = 0.07, EB_LA = 0.18, TC_LA = 0.17, TR_LA = 0.17,
+                 tC_eff_LA = 0.1, tR_eff_LA = 0.27, V0_LA = 4.0)
+
+expressions("LA")
+tau_c_LA = Conditional(Lt(beat_phase - tC_eff_LA, 0.0), beat_phase - tC_eff_LA + RR, beat_phase - tC_eff_LA)
+tau_r_LA = Conditional(Lt(beat_phase - tR_eff_LA, 0.0), beat_phase - tR_eff_LA + RR, beat_phase - tR_eff_LA)
+e_LA = Conditional(Lt(tau_c_LA, TC_LA), 0.5 * (1 - cos(pi * tau_c_LA / TC_LA)), Conditional(Lt(tau_r_LA, TR_LA), 0.5 * (1 + cos(pi * tau_r_LA / TR_LA)), 0.0))
+p_LA = (EA_LA * e_LA + EB_LA) * (V_LA - V0_LA)
+
+parameters("LV", EA_LV = 4.482, EB_LV = 0.170, TC_LV = 0.25, TR_LV = 0.4,
+                 tC_eff_LV = 0.1, tR_eff_LV = 0.35, V0_LV = 42.0)
+
+expressions("LV")
+tau_c_LV = Conditional(Lt(beat_phase - tC_eff_LV, 0.0), beat_phase - tC_eff_LV + RR, beat_phase - tC_eff_LV)
+tau_r_LV = Conditional(Lt(beat_phase - tR_eff_LV, 0.0), beat_phase - tR_eff_LV + RR, beat_phase - tR_eff_LV)
+e_LV = Conditional(Lt(tau_c_LV, TC_LV), 0.5 * (1 - cos(pi * tau_c_LV / TC_LV)), Conditional(Lt(tau_r_LV, TR_LV), 0.5 * (1 + cos(pi * tau_r_LV / TR_LV)), 0.0))
+p_LV = (EA_LV * e_LV + EB_LV) * (V_LV - V0_LV)
+
+parameters("RA", EA_RA = 0.06, EB_RA = 0.07, TC_RA = 0.17, TR_RA = 0.17,
+                 tC_eff_RA = 0.1, tR_eff_RA = 0.27, V0_RA = 4.0)
+
+expressions("RA")
+tau_c_RA = Conditional(Lt(beat_phase - tC_eff_RA, 0.0), beat_phase - tC_eff_RA + RR, beat_phase - tC_eff_RA)
+tau_r_RA = Conditional(Lt(beat_phase - tR_eff_RA, 0.0), beat_phase - tR_eff_RA + RR, beat_phase - tR_eff_RA)
+e_RA = Conditional(Lt(tau_c_RA, TC_RA), 0.5 * (1 - cos(pi * tau_c_RA / TC_RA)), Conditional(Lt(tau_r_RA, TR_RA), 0.5 * (1 + cos(pi * tau_r_RA / TR_RA)), 0.0))
+p_RA = (EA_RA * e_RA + EB_RA) * (V_RA - V0_RA)
+
+parameters("RV", EA_RV = 0.200, EB_RV = 0.029, TC_RV = 0.25, TR_RV = 0.4,
+                 tC_eff_RV = 0.1, tR_eff_RV = 0.35, V0_RV = 16.0)
+
+expressions("RV")
+tau_c_RV = Conditional(Lt(beat_phase - tC_eff_RV, 0.0), beat_phase - tC_eff_RV + RR, beat_phase - tC_eff_RV)
+tau_r_RV = Conditional(Lt(beat_phase - tR_eff_RV, 0.0), beat_phase - tR_eff_RV + RR, beat_phase - tR_eff_RV)
+e_RV = Conditional(Lt(tau_c_RV, TC_RV), 0.5 * (1 - cos(pi * tau_c_RV / TC_RV)), Conditional(Lt(tau_r_RV, TR_RV), 0.5 * (1 + cos(pi * tau_r_RV / TR_RV)), 0.0))
+p_RV = (EA_RV * e_RV + EB_RV) * (V_RV - V0_RV)
+
+# Valves. Each is a smooth diode: the resistance blends from Rmin to Rmax as the
+# pressure difference reverses, with `valve_steepness` setting how abruptly.
+# The heaviside argument is the *downstream minus upstream* pressure, so H -> 1
+# (shut, R -> Rmax) exactly when the valve is being pushed backwards.
+
+expressions("circulation")
+H_MV = atan(pi / 2 * (p_LV - p_LA) * valve_steepness) / pi + 0.5
+R_MV = Rmin_MV * (Rmax_MV / Rmin_MV)**H_MV
+Q_MV = (p_LA - p_LV) / R_MV
+
+H_AV = atan(pi / 2 * (p_AR_SYS - p_LV) * valve_steepness) / pi + 0.5
+R_AV = Rmin_AV * (Rmax_AV / Rmin_AV)**H_AV
+Q_AV = (p_LV - p_AR_SYS) / R_AV
+
+H_TV = atan(pi / 2 * (p_RV - p_RA) * valve_steepness) / pi + 0.5
+R_TV = Rmin_TV * (Rmax_TV / Rmin_TV)**H_TV
+Q_TV = (p_RA - p_RV) / R_TV
+
+H_PV = atan(pi / 2 * (p_AR_PUL - p_RV) * valve_steepness) / pi + 0.5
+R_PV = Rmin_PV * (Rmax_PV / Rmin_PV)**H_PV
+Q_PV = (p_RV - p_AR_PUL) / R_PV
+
+I_ext = Conditional(And(Le(start_withdrawal, t), Lt(t, end_withdrawal)), flow_withdrawal, Conditional(And(Le(start_infusion, t), Lt(t, end_infusion)), flow_infusion, 0.0))
+
+# Chamber volumes: what flows in, less what flows out.
+dV_LA_dt = Q_VEN_PUL - Q_MV
+dV_LV_dt = Q_MV - Q_AV
+dV_RA_dt = Q_VEN_SYS - Q_TV
+dV_RV_dt = Q_TV - Q_PV
+
+# Compliant compartments.
+dp_AR_SYS_dt = (Q_AV - Q_AR_SYS) / C_AR_SYS
+dp_VEN_SYS_dt = (Q_AR_SYS - Q_VEN_SYS + I_ext) / C_VEN_SYS
+dp_AR_PUL_dt = (Q_PV - Q_AR_PUL) / C_AR_PUL
+dp_VEN_PUL_dt = (Q_AR_PUL - Q_VEN_PUL) / C_VEN_PUL
+
+# Inertial flows.
+dQ_AR_SYS_dt = -((R_AR_SYS * Q_AR_SYS + p_VEN_SYS - p_AR_SYS) / L_AR_SYS)
+dQ_VEN_SYS_dt = -((R_VEN_SYS * Q_VEN_SYS + p_RA - p_VEN_SYS) / L_VEN_SYS)
+dQ_AR_PUL_dt = -((R_AR_PUL * Q_AR_PUL + p_VEN_PUL - p_AR_PUL) / L_AR_PUL)
+dQ_VEN_PUL_dt = -((R_VEN_PUL * Q_VEN_PUL + p_LA - p_VEN_PUL) / L_VEN_PUL)
