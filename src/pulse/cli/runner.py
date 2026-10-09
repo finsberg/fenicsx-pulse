@@ -23,10 +23,11 @@ import json
 import logging
 import os
 import shutil
+from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
 from time import perf_counter
-from typing import Any, Callable
+from typing import Any, Callable, Sequence
 
 from mpi4py import MPI
 
@@ -36,15 +37,24 @@ import numpy as np
 
 import pulse
 
+from ..coupling import NoCoupling
 from ..telemetry import NullMonitor, PerformanceMonitor
 from ..units import mesh_factor
 from .bcs import build_bcs
-from .config import CAVITY_MARKERS, Config, ConfigError, si
+from .config import CAVITY_MARKERS, Config, ConfigError, coupled_markers, si
+from .coupling import build_coupling
 from .geometry import CLIGeometry, build_geometry, check_markers
 from .loads import LoadSet, build_loads, make_load_variables, require_optional_packages
 from .log import add_logfile_handler, remove_logfile_handlers
 from .model import build_model
 from .overrides import dump_config, physics_hash
+from .prestress import (
+    InflationState,
+    PrestressResult,
+    apply_prestress,
+    build_prestress,
+    inflate,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -244,6 +254,11 @@ def required_markers(conf: Config) -> dict[str, list[str]]:
     }
     if conf.bcs.base_bc == "fixed":
         out["bcs.base_marker"] = [conf.bcs.base_marker]
+    coupled = coupled_markers(conf.circulation)
+    if coupled:
+        out["circulation"] = coupled
+    if conf.prestress is not None:
+        out["prestress.target"] = [t.marker for t in conf.prestress.target]
     return out
 
 
@@ -274,16 +289,10 @@ def check_config_markers(conf: Config, geo: CLIGeometry) -> None:
             )
 
 
-def build_problem(
-    conf: Config,
-    geo: CLIGeometry,
-    model: Any,
-    bcs: Any,
-    monitor: Any = None,
-) -> tuple[Any, Any]:
-    """Return ``(problem, dt_constant)``; ``dt_constant`` is None for a static problem."""
+def problem_parameters(conf: Config) -> dict[str, Any]:
+    """The StaticProblem parameters that the config sections ``[problem]`` etc. set."""
     defaults = pulse.StaticProblem.default_parameters()
-    parameters: dict[str, Any] = {
+    return {
         "u_space": conf.problem.u_space,
         "p_space": conf.problem.p_space,
         "rigid_body_constraint": conf.problem.rigid_body_constraint,
@@ -292,11 +301,33 @@ def build_problem(
         "base_marker": conf.bcs.base_marker,
         "petsc_options": {**defaults["petsc_options"], **conf.solver.petsc_options},
     }
+
+
+def build_problem(
+    conf: Config,
+    geo: CLIGeometry,
+    model: Any,
+    bcs: Any,
+    monitor: Any = None,
+    coupling: Any = None,
+) -> tuple[Any, Any]:
+    """Return ``(problem, dt_constant)``; ``dt_constant`` is None for a static problem.
+
+    The coupling supplies the cavities and any extra keyword arguments (a ``"parameters"``
+    entry is merged into the problem's parameters).
+    """
+    coupling = coupling if coupling is not None else NoCoupling()
+    cavities = coupling.cavities(geo.mesh)  # first: problem_kwargs may use what it creates
+    extra = dict(coupling.problem_kwargs())
+    parameters = problem_parameters(conf)
+    parameters.update(extra.pop("parameters", {}))
     kwargs = dict(
         model=model,
         geometry=geo.geometry,
         bcs=bcs,
+        cavities=cavities,
         monitor=monitor if monitor is not None else NullMonitor(),
+        **extra,
     )
     if conf.problem.type == "static":
         return pulse.StaticProblem(parameters=parameters, **kwargs), None
@@ -327,9 +358,17 @@ class MechanicsSimulation:
     step_index: int = 0
     dt_constant: Any = None
     monitor: Any = field(default_factory=NullMonitor)
+    coupling: Any = field(default_factory=NoCoupling)
+    hooks: list[Any] = field(default_factory=list)
+    prestress: Any = None
+    inflation: Any = None
     _last_saved: float = field(default=-np.inf, repr=False)
     _last_row: float = field(default=-np.inf, repr=False)
     _checkpoints: np.ndarray = field(default_factory=lambda: np.zeros(0), repr=False)
+
+    def __post_init__(self) -> None:
+        if isinstance(self.coupling, NoCoupling) and self.coupling.problem is None:
+            self.coupling.attach(self.problem)
 
     @property
     def folder(self) -> Path:
@@ -346,7 +385,12 @@ class MechanicsSimulation:
         return [m for m in self.loads.pressure_markers if m in CAVITY_MARKERS]
 
     def csv_fields(self) -> list[str]:
-        return ["t", *self.loads.names, *(f"volume_{m}" for m in self.cavity_markers())]
+        return [
+            "t",
+            *self.loads.names,
+            *(f"volume_{m}" for m in self.cavity_markers()),
+            *self.coupling.record(),
+        ]
 
     def volumes(self) -> dict[str, float]:
         """Cavity volumes in m^3 (summed over ranks: HeartGeometry.volume is rank-local)."""
@@ -360,11 +404,25 @@ class MechanicsSimulation:
     def record(self, t: float) -> dict[str, float]:
         with self.monitor.track_time("volumes"):
             volumes = self.volumes()
-        return {"t": t, **self.loads.values(t), **volumes}
+        return {"t": t, **self.loads.values(t), **volumes, **self.coupling.record()}
 
     def start(self) -> None:
-        """Fresh run: create the output folder, write loads.csv's header and set the loads to the
-        start time."""
+        """Fresh run: set the loads to the start time, initialise the coupling, create the
+        output folder and write loads.csv's header."""
+        prestress = self.conf.prestress
+        if prestress is not None and prestress.inflate_steps > 0 and self.inflation is None:
+            raise ConfigError(
+                "[prestress] inflate_steps > 0, but this simulation was not re-inflated: it was "
+                "built as for a restart or post-processing. Call build_simulation(..., "
+                "fresh=True) for a new run (or restore() to continue one)",
+            )
+        self.loads.update(self.t)
+        if self.inflation is not None:
+            self.inflation.apply(self.problem)
+        try:
+            self.coupling.initialize(self.t)
+        except RuntimeError as e:
+            raise SolverFailure(f"Initializing the coupling at t={self.t} s failed: {e}") from e
         fields = self.csv_fields()
         folder = self.folder
 
@@ -373,25 +431,23 @@ class MechanicsSimulation:
             _write_csv_header(folder / LOADS, fields)
 
         _on_rank0(self.comm, OSError, write)
-        self.loads.update(self.t)
 
     def step(self, dt: float) -> None:
         """Advance ``t -> t + dt``, halving the step on Newton failure (``solver.max_halvings``).
 
         Raises :class:`SolverFailure` when the deepest halving fails; the problem (states, old
-        states, loads and the ``dt`` Constant) is then back at ``t``, as it was before this call,
-        even when some halves had already converged, and ``t``/``step_index`` are unchanged. Any
-        other exception raised mid-step (e.g. a PETSc error) rolls back the same way and
-        propagates unchanged.
+        states, restart metadata), the coupling, every hook, the loads and the ``dt`` Constant
+        are then back at ``t``, as they were before this call, even when some halves had
+        already converged, and ``t``/``step_index`` are unchanged. Any other exception raised
+        mid-step (e.g. a PETSc error) rolls back the same way and propagates unchanged.
         """
         t0 = self.t
         with self.monitor.track_time("step"):
-            snapshot = [(f, f.x.array.copy()) for f in self._state_functions()]
+            snapshot = self._snapshot()
             try:
                 self._advance(t0, dt, 0)
             except Exception as e:
-                for f, values in snapshot:
-                    f.x.array[:] = values
+                self._restore_snapshot(snapshot)
                 self.loads.update(t0)
                 if isinstance(e, SolverFailure):
                     raise SolverFailure(f"Step to t={t0 + dt:.6g} s failed: {e}") from e
@@ -404,21 +460,60 @@ class MechanicsSimulation:
         self.monitor.advance_step(t0, self.t)
 
     def _state_functions(self) -> list[Any]:
-        """Every Function a (partly) converged step changes: states, old states, and for a
-        dynamic problem the velocity/acceleration history."""
-        functions = [*self.problem.states, *self.problem.old_states]
-        functions += [getattr(self.problem, name, None) for name in ("v_old", "a_old")]
+        """Every Function a (partly) converged step may change: the restart functions (states,
+        old states, circulation history, velocity/acceleration, hook functions) and the
+        problem's current states (e.g. the rigid-body multiplier)."""
+        functions = [f for _, f in self.restart_functions()] + list(self.problem.states)
         unique = {id(f): f for f in functions if f is not None}
         return list(unique.values())
+
+    def _snapshot(self) -> dict[str, Any]:
+        return {
+            "arrays": [(f, f.x.array.copy()) for f in self._state_functions()],
+            "problem": deepcopy(self.problem.restart_metadata()),
+            "coupling": deepcopy(self.coupling.state_dict()),
+            "hooks": [deepcopy(hook.state_dict()) for hook in self.hooks],
+        }
+
+    def _restore_snapshot(self, snapshot: dict[str, Any]) -> None:
+        for f, values in snapshot["arrays"]:
+            f.x.array[:] = values
+        self.problem.load_restart_metadata(snapshot["problem"])
+        self.coupling.load_state_dict(deepcopy(snapshot["coupling"]))
+        for hook, state in zip(self.hooks, snapshot["hooks"]):
+            hook.load_state_dict(deepcopy(state))
+
+    def _hook_snapshot(self) -> list[tuple[list[tuple[Any, np.ndarray]], dict[str, Any]]]:
+        return [
+            (
+                [(f, f.x.array.copy()) for _, f in hook.restart_functions()],
+                deepcopy(hook.state_dict()),
+            )
+            for hook in self.hooks
+        ]
+
+    def _restore_hooks(self, snapshot) -> None:
+        for hook, (arrays, state) in zip(self.hooks, snapshot):
+            for f, values in arrays:
+                f.x.array[:] = values
+            hook.load_state_dict(state)
 
     def _advance(self, t: float, dt: float, level: int) -> None:
         if self.dt_constant is not None:
             self.dt_constant.value = dt
         with self.monitor.track_time("loads"):
             self.loads.update(t + dt)
-        if self.problem.solve():
+        hooks_before = self._hook_snapshot()
+        for hook in self.hooks:
+            hook.before_solve(t, dt)
+        with self.monitor.track_time("coupling"):
+            ok = self.coupling.advance(t, dt)
+        if ok:
+            for hook in self.hooks:
+                hook.after_solve(t, dt)
             return
-        self.problem.reset_states()
+        # The coupling has already put itself and the problem back (its contract).
+        self._restore_hooks(hooks_before)
         self.loads.update(t)
         max_level = self.conf.solver.max_halvings
         if level >= max_level:
@@ -455,8 +550,11 @@ class MechanicsSimulation:
             self._last_row = t
 
     def restart_functions(self) -> list[tuple[str, dolfinx.fem.Function]]:
-        """The state a restart needs, under ``mechanics_*`` names (composable with beat's)."""
-        return self.problem.restart_functions()
+        """The state a restart needs: the problem's ``mechanics_*`` functions, then each hook's."""
+        out = list(self.problem.restart_functions())
+        for hook in self.hooks:
+            out += list(hook.restart_functions())
+        return out
 
     def checkpoint(self) -> None:
         """Write the state at ``t`` to restart.bp and point restart.json at it.
@@ -487,6 +585,12 @@ class MechanicsSimulation:
                 "physics_hash": physics_hash(self.conf),
                 "functions": [name for name, _ in functions],
                 "problem": self.problem.restart_metadata(),
+                "coupling": {
+                    "type": type(self.coupling).__name__,
+                    "state": self.coupling.state_dict(),
+                },
+                "hooks": [hook.state_dict() for hook in self.hooks],
+                "prestress": self.prestress.hash if self.prestress is not None else None,
             },
         }
         # Written last (and atomically): restart.json only ever names a complete checkpoint.
@@ -502,6 +606,33 @@ class MechanicsSimulation:
             ),
             dtype=float,
         )
+
+    def _restore_coupling(self, meta: dict[str, Any]) -> None:
+        """Load the coupling's and the hooks' state of a checkpoint, after its Functions."""
+        kind = type(self.coupling).__name__
+        stored = meta.get("coupling")
+        if stored is None:
+            # pulse <= 0.11 checkpoints carry no coupling: they are plain mechanics runs.
+            if type(self.coupling) is not NoCoupling:
+                raise ConfigError(
+                    f"Cannot restart: the checkpoint has no coupling state, but this run "
+                    f"needs {kind}",
+                )
+        else:
+            if stored["type"] != kind:
+                raise ConfigError(
+                    f"Cannot restart: the checkpoint holds a {stored['type']} coupling, this "
+                    f"run has {kind}",
+                )
+            self.coupling.load_state_dict(stored["state"])
+        hooks = meta.get("hooks", [])
+        if len(hooks) != len(self.hooks):
+            raise ConfigError(
+                f"Cannot restart: the checkpoint holds {len(hooks)} step hook(s), this run "
+                f"has {len(self.hooks)}",
+            )
+        for hook, state in zip(self.hooks, hooks):
+            hook.load_state_dict(state)
 
     def restore(self) -> None:
         """Load the latest checkpoint (restart.json) into the problem and set ``t``/``step``."""
@@ -528,6 +659,7 @@ class MechanicsSimulation:
             f.x.scatter_forward()
         # pulse 0.11.0's restart.json has no "problem" entry; its problems had no metadata.
         self.problem.load_restart_metadata(meta.get("problem", {}))
+        self._restore_coupling(meta)
         # Only checkpoints whose every function is present may be reused instead of rewritten.
         complete = stored
         for name in names[1:]:
@@ -560,13 +692,26 @@ def build_simulation(
     geometry: CLIGeometry | None = None,
     active_model: Any = None,
     monitor: Any = None,
+    coupling: Any = None,
+    hooks: Sequence[Any] = (),
+    fresh: bool = False,
 ) -> MechanicsSimulation:
     """Build geometry, model, BCs, loads and problem. ``geometry``/``active_model``/``monitor``
-    may be injected (simcardemsx); an injected active model replaces ``[active]``."""
+    may be injected (simcardemsx); an injected active model replaces ``[active]``.
+    ``coupling`` replaces ``[circulation]``; ``hooks`` are advanced, committed and rolled back
+    with every step (see ``pulse.coupling.StepHook``). ``fresh`` marks a new run (not a restart
+    or post-processing): a missing prestress cache is then expected, not warned about, and the
+    chambers are re-inflated; ``start()`` refuses a run with ``inflate_steps > 0`` built without
+    it."""
     monitor = monitor if monitor is not None else NullMonitor()
     require_optional_packages(conf.load)
     geo = geometry if geometry is not None else build_geometry(conf.geometry, comm)
     check_config_markers(conf, geo)
+    prestress: PrestressResult | None = None
+    if conf.prestress is not None:
+        with monitor.track_time("prestress"):
+            prestress = build_prestress(conf, geo, comm, warn_if_missing=not fresh)
+            geo = apply_prestress(conf, geo, prestress)
     variables = make_load_variables(conf.load, geo.mesh)
     activation = variables.get("activation")
     if activation is not None:
@@ -582,8 +727,23 @@ def build_simulation(
     model = build_model(conf, geo, activation=activation, active_model=active_model)
     pressures = {load.marker: variables[load.name] for load in conf.load if load.marker}
     bcs = build_bcs(conf.bcs, geo, pressures)
-    problem, dt_constant = build_problem(conf, geo, model, bcs, monitor=monitor)
     loads = build_loads(conf.load, variables, conf.time)
+    loads.update(conf.time.start_s())  # Ta(t0), for the re-inflation's solves
+    coupling = coupling if coupling is not None else build_coupling(conf)
+    inflation: InflationState | None = None
+    if fresh and prestress is not None and conf.prestress and conf.prestress.inflate_steps > 0:
+        with monitor.track_time("inflation"):
+            inflation = inflate(
+                conf,
+                geo,
+                model,
+                bcs,
+                prestress,
+                coupled_markers(conf.circulation),
+                monitor=monitor,
+            )
+    problem, dt_constant = build_problem(conf, geo, model, bcs, monitor=monitor, coupling=coupling)
+    coupling.attach(problem)
     return MechanicsSimulation(
         conf=conf,
         geo=geo,
@@ -592,6 +752,10 @@ def build_simulation(
         t=conf.time.start_s(),
         dt_constant=dt_constant,
         monitor=monitor,
+        coupling=coupling,
+        hooks=list(hooks),
+        prestress=prestress,
+        inflation=inflation,
     )
 
 
@@ -617,7 +781,7 @@ def run(
         else None
     )
     try:
-        sim = build_simulation(conf, comm, monitor=monitor)
+        sim = build_simulation(conf, comm, monitor=monitor, fresh=not restart)
     except (ConfigError, SolverFailure):
         raise
     except Exception as e:

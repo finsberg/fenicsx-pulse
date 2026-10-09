@@ -33,6 +33,7 @@ SECTIONS: list[tuple[str, list[type[BaseModel]]]] = [
         ],
     ),
     ("[geometry.fibers]", [c.FromGeometryFibers, c.AxisFibers, c.NoFibers]),
+    ("[geometry.ldrb]", [c.LDRBAngles]),
     (
         "[material]",
         [
@@ -67,6 +68,20 @@ SECTIONS: list[tuple[str, list[type[BaseModel]]]] = [
             c.BestelActivationProfile,
         ],
     ),
+    (
+        "[circulation]",
+        [
+            c.NoCirculation,
+            c.CycleCirculation,
+            c.CycleCavityConfig,
+            c.WindkesselConfig,
+            c.SplitCirculation,
+            c.MonolithicCirculation,
+            c.ChamberConfig,
+            c.PhaseInputConfig,
+        ],
+    ),
+    ("[prestress]", [c.PrestressConfig, c.PrestressTarget]),
     ("[time]", [c.TimeConfig]),
     ("[problem]", [c.ProblemConfig]),
     ("[solver]", [c.SolverConfig]),

@@ -37,6 +37,7 @@ test = [
     "pytest",
     "pytest-cov",
     "cardiac-geometriesx",
+    "gotranx",
     "fenicsx-pulse[cli]",
 ]
 dev = [

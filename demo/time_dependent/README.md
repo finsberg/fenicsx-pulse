@@ -39,6 +39,8 @@ In these examples the 3D mechanics model takes the place of the ventricles in a 
 | Split loop | any 0D code, called each step | [land_circulation_biv](land_circulation_biv.py) | the circulation is an external solver |
 | Monolithic | `GotranxCirculation`, 0D states inside Newton | [monolithic_3d0d](monolithic_3d0d.py), [monolithic_3d0d_biv](monolithic_3d0d_biv.py) | the circuit is a `.ode` file and you want one Newton system |
 
+Each style has a CLI template: `pulse init --template complete_cycle`, `split_biv`, `monolithic_lv` or `monolithic_biv`.
+
 The closed loop in the last two is the circulation model of Regazzoni et al. {cite}`regazzoni2022cardiac`. Each demo also chooses its own activation: [complete_cycle](complete_cycle.py) and the monolithic demos use the Bestel model {cite}`bestel2001biomechanical`, and [land_circulation_biv](land_circulation_biv.py) runs the Land crossbridge model {cite}`land2017model` at every quadrature point. [complete_cycle](complete_cycle.py) solves the dynamic problem, [land_circulation_biv](land_circulation_biv.py) the quasi-static one, which needs no time integration scheme, and the monolithic demos can run either.
 
 See also the [Isometric Twitch Experiments & the Frank-Starling Mechanism](../crossbridge/README.md) section, which uses the same quasi-static formulation as [land_circulation_biv](land_circulation_biv.py) but focuses on cellular-scale active tension models rather than a full circulation loop.

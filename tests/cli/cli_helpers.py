@@ -7,6 +7,39 @@ from mpi4py import MPI
 
 import toml
 
+WINDKESSEL = Path(__file__).parents[1] / "data" / "windkessel.ode"
+
+# A coarse LV ellipsoid in metres (the same shape as the library's coupling tests).
+LV_GEOMETRY: dict[str, Any] = {
+    "type": "lv_ellipsoid",
+    "unit": "m",
+    "r_short_endo": 0.025,
+    "r_short_epi": 0.035,
+    "r_long_endo": 0.09,
+    "r_long_epi": 0.097,
+    "psize_ref": 0.05,
+    "fiber_space": "P_1",
+    "quadrature_degree": 4,
+}
+
+# howto/restart.py's compressed LV cycle: PRELOAD ends after two 2 ms steps.
+CYCLE_CAVITY: dict[str, Any] = {
+    "marker": "ENDO",
+    "period": "0.8 s",
+    "t_zero": "2 ms",
+    "t_end_diastole": "4 ms",
+    "preload_pressure": "500 Pa",
+    "p_end_diastole": "1000 Pa",
+    "p_fill": "500 Pa",
+    "filling_rate": "0.046 mL/ms",
+    "windkessel": {
+        "p_init": "9 kPa",
+        "compliance": "1.5 mL/mmHg",
+        "resistance": "1.1 mmHg*s/mL",
+        "characteristic_impedance": "0.03 mmHg*s/mL",
+    },
+}
+
 
 def minimal_config_dict(tmp_path, **overrides: Any) -> dict[str, Any]:
     """A 2x2x2 box, compressible neo-Hookean, clamped at X0, pressure ramp on X1, 3 steps."""
@@ -70,3 +103,29 @@ def write_file(path, text: str) -> Path:
         path.write_text(text)
     MPI.COMM_WORLD.barrier()
     return path
+
+
+def lv_sections(geometry_folder, **overrides: Any) -> dict[str, Any]:
+    """Sections for minimal_config_dict: the coarse LV, HO + active stress, fixed base."""
+    sections: dict[str, Any] = {
+        "geometry": {**LV_GEOMETRY, "folder": str(geometry_folder)},
+        "material": {"type": "holzapfel_ogden"},
+        "active": {"type": "active_stress"},
+        "bcs": {"base_bc": "fixed", "dirichlet": []},
+        "load": [],
+        "time": {"end_time": "6 ms", "dt": "2 ms"},
+    }
+    sections.update(overrides)
+    return sections
+
+
+def ode_section(ode_file, kind: str = "split", **extra: Any) -> dict[str, Any]:
+    """[circulation] for the test circuit tests/data/windkessel.ode, its LV on ENDO."""
+    return {
+        "type": kind,
+        "ode_file": str(ode_file),
+        "drop_components": ["timing", "LV"],
+        "chamber": [{"marker": "ENDO", "volume_state": "V_LV", "pressure_missing": "p_LV"}],
+        "inputs": {"beat_phase": {"type": "phase", "period": "1 s"}},
+        **extra,
+    }

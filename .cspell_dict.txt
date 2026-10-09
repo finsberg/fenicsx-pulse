@@ -208,6 +208,7 @@ regazzoni
 Regazzoni
 Reidmen
 Remedios
+reselects
 resid
 Riccobelli
 rique
@@ -276,3 +277,16 @@ xvfb
 yjmcc
 ylabel
 Zhou
+substeps
+normalise
+normalises
+normalising
+normalisation
+Prestressing
+prestresses
+prestressing
+colours
+axvspan
+zorder
+fontsize
+kwargs

@@ -5,7 +5,7 @@ from cli_helpers import write_cfg
 
 from pulse.cli.config import ConfigError
 from pulse.cli.overrides import load_config
-from pulse.cli.postprocess import run_post
+from pulse.cli.postprocess import _plots, column_groups, run_post
 from pulse.cli.runner import run
 
 
@@ -59,3 +59,33 @@ def test_point_outside_mesh_is_config_error(tmp_path):
     )
     with pytest.raises(ConfigError, match="far"):
         run_post(outside)
+
+
+def test_post_plots_coupled_columns_by_prefix():
+    columns = [
+        "t", "activation", "pressure_X1", "volume_X1",
+        "volume_LV", "pressure_LV", "phase_LV", "Pc_LV", "Q_LV",
+        "circ_V_LA", "circ_p_AR_SYS", "circ_Q_MV",
+    ]  # fmt: skip
+    groups = column_groups(columns, ["activation", "pressure_X1"])
+    assert groups["loads"] == ["activation", "pressure_X1"]  # never phase_/Pc_/Q_/circ_
+    assert groups["cavities"] == ["X1", "LV"]
+    assert groups["phases"] == ["LV"]
+    assert groups["circulation"] == ["V_LA", "p_AR_SYS", "Q_MV"]
+
+
+@pytest.mark.skip_in_parallel
+def test_post_writes_coupled_plots(tmp_path):
+    pytest.importorskip("matplotlib")
+    folder, post = tmp_path / "out", tmp_path / "out" / "post"
+    post.mkdir(parents=True)
+    header = "t,activation,volume_LV,pressure_LV,phase_LV,circ_V_LA,circ_p_AR_SYS\n"
+    rows = "".join(
+        f"{0.001 * i},{100.0 * i},{1e-4 + 1e-6 * i},{1000.0 + 50 * i},{min(i // 2, 4)},"
+        f"{50 + i},{80 - i}\n"
+        for i in range(10)
+    )
+    (folder / "loads.csv").write_text(header + rows)
+    _plots(folder, post, ["activation"])
+    names = {p.name for p in post.iterdir()}
+    assert {"loads.png", "cavities.png", "pv_loop_LV.png", "circulation.png"} <= names

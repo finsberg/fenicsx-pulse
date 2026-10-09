@@ -4,8 +4,10 @@ Precedence (lowest to highest): TOML file < ``PULSE_*`` env vars < ``--set`` < f
 """
 
 import hashlib
+import importlib.resources
 import json
 import os
+import re
 import shlex
 import warnings
 from pathlib import Path
@@ -127,6 +129,30 @@ def _resolve(base: Path, p: Path) -> Path:
     return p if p.is_absolute() else (base / p).resolve()
 
 
+# "<package>:<file>", e.g. "circulation:regazzoni2020.ode". The package name has at least two
+# characters, so a Windows drive letter ("C:...") is never taken for one.
+_PACKAGE_FILE = re.compile(r"^([A-Za-z_][\w.]+):(?![/\\])(.+)$")
+
+
+def _package_file(value: str, what: str) -> Path | None:
+    """The file ``"<package>:<file>"`` names inside an installed package, or None if ``value``
+    is a plain path."""
+    match = _PACKAGE_FILE.match(value)
+    if match is None:
+        return None
+    package, resource = match.groups()
+    try:
+        root = importlib.resources.files(package)
+    except (ModuleNotFoundError, TypeError) as e:
+        raise ConfigError(
+            f"{what}: package {package!r} is not installed (pip install {package})",
+        ) from e
+    path = Path(str(root / resource))
+    if not path.is_file():
+        raise ConfigError(f"{what}: {resource!r} is not a file of package {package!r} ({path})")
+    return path.resolve()
+
+
 def load_config(
     path: Path,
     sets: Sequence[str] = (),
@@ -166,6 +192,14 @@ def load_config(
     for load in conf.load:
         if isinstance(load.profile, TableProfile) and load.profile.file is not None:
             load.profile.file = _resolve(base, load.profile.file)
+    circulation = conf.circulation
+    if circulation.type in ("split", "monolithic"):
+        packaged = _package_file(str(circulation.ode_file), "circulation.ode_file")
+        circulation.ode_file = packaged or _resolve(base, circulation.ode_file)
+        if not circulation.ode_file.is_file():
+            raise ConfigError(f"circulation.ode_file: {circulation.ode_file} does not exist")
+    if conf.prestress is not None:
+        conf.prestress.cache_folder = _resolve(base, conf.prestress.cache_folder)
     if output_folder is not None:
         conf.output.folder = Path(output_folder).resolve()
     return conf
@@ -225,9 +259,9 @@ def physics_hash(conf: Config) -> str:
     start time are hashed instead, so a changed ``dt`` is caught however it is spelled),
     ``[output]``, ``[postprocess]`` and ``[solver]`` (``max_halvings``/``petsc_options`` only
     change how a step is solved, not the physics: after a solver failure, exit code 2, a run may
-    be restarted with more halvings or other PETSc options); replaces table CSV paths by their
-    contents' hash; keeps ``geometry.folder`` only for ``type = "folder"``, where it *is* the
-    mesh.
+    be restarted with more halvings or other PETSc options); replaces table CSV paths and
+    ``circulation.ode_file`` by their contents' hash; drops ``prestress.cache_folder``; keeps
+    ``geometry.folder`` only for ``type = "folder"``, where it *is* the mesh.
     """
     data = conf.model_dump(
         mode="json",
@@ -238,7 +272,22 @@ def physics_hash(conf: Config) -> str:
         profile = load.profile
         if isinstance(profile, TableProfile) and profile.file is not None:
             dumped["profile"]["file"] = file_hash(profile.file)
+        for key in ("period", "peak"):  # added after 0.11: keep old hashes while unset
+            if dumped["profile"].get(key, 0) is None and not isinstance(profile, TableProfile):
+                dumped["profile"].pop(key)
     if data["geometry"].get("type") != "folder":
         data["geometry"].pop("folder", None)
+    if data["geometry"].get("ldrb", 0) is None:  # added after 0.11: keep old hashes
+        data["geometry"].pop("ldrb")
+    # Sections and fields added after pulse 0.11 are dropped while they hold their defaults,
+    # so that checkpoints written before they existed keep the same hash and still restart.
+    if conf.circulation.type == "none":
+        data.pop("circulation", None)
+    elif conf.circulation.type in ("split", "monolithic"):
+        data["circulation"]["ode_file"] = file_hash(conf.circulation.ode_file)
+    if conf.prestress is None:
+        data.pop("prestress", None)
+    else:
+        data["prestress"].pop("cache_folder", None)
     blob = json.dumps(data, sort_keys=True).encode()
     return hashlib.sha256(blob).hexdigest()

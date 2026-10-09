@@ -36,6 +36,7 @@ __all__ = [
     "CirculationModel",
     "ChamberCoupling",
     "GotranxCirculation",
+    "GotranxNumpyCirculation",
     "mL",
     "mmHg",
 ]
@@ -113,7 +114,109 @@ class ChamberCoupling:
 
 
 @dataclass
-class GotranxCirculation:
+class _GotranxModel:
+    """What `GotranxCirculation` and `GotranxNumpyCirculation` share.
+
+    Reading the `.ode` file, dropping components, taking the parameters that still apply, and
+    ordering states and missing values through gotranx's own index functions. Subclasses only
+    choose the code generator.
+    """
+
+    ode_file: Path | str
+    parameters: dict[str, float] | None = None
+    drop_components: Sequence[str] = ()
+    _model: dict = field(init=False, repr=False, default_factory=dict)
+    _parameter_values: np.ndarray = field(init=False, repr=False)
+    _ignored: tuple[str, ...] = field(init=False, repr=False, default=())
+
+    def _generate(self, ode: Any) -> str:
+        raise NotImplementedError  # pragma: no cover - subclasses choose the generator
+
+    def __post_init__(self) -> None:
+        import gotranx
+
+        ode = gotranx.load_ode(Path(self.ode_file))
+        for name in self.drop_components:
+            ode = ode - ode.get_component(name)
+        logger.debug(
+            f"Generating code for {Path(self.ode_file).name} "
+            f"({len(ode.states)} states, missing {sorted(ode.missing_variables)})",
+        )
+        exec(self._generate(ode), self._model)
+
+        # Dropping a component drops its parameters too, so a caller passing the whole
+        # parameter set of the unsplit model will be handing over names this model no longer
+        # has. Take what applies and remember what was left.
+        known, unknown = {}, []
+        for name, value in (self.parameters or {}).items():
+            try:
+                self._model["parameter_index"](name)
+            except KeyError:
+                unknown.append(name)
+            else:
+                known[name] = value
+        if unknown:
+            logger.debug(
+                f"Ignoring {len(unknown)} parameter(s) not in the generated model "
+                f"(expected after dropping {list(self.drop_components)}): {sorted(unknown)}",
+            )
+        self._ignored = tuple(sorted(unknown))
+        self._parameter_values = self._model["init_parameter_values"](**known)
+
+        # gotranx orders states and missing variables alphabetically, which is rarely the
+        # declaration order. Everything goes through the generated index functions so that
+        # ordering never has to be guessed.
+        self._state_names = tuple(
+            sorted((s.name for s in ode.states), key=self._model["state_index"]),
+        )
+        self._missing_names = tuple(
+            sorted(ode.missing_variables, key=self._model["missing_index"])
+            if ode.missing_variables
+            else (),
+        )
+
+    @property
+    def state_names(self) -> Sequence[str]:
+        return self._state_names
+
+    @property
+    def missing_names(self) -> Sequence[str]:
+        return self._missing_names
+
+    @property
+    def ignored_parameters(self) -> tuple[str, ...]:
+        """Given parameters the generated model does not have (sorted)."""
+        return self._ignored
+
+    @property
+    def initial_states(self) -> np.ndarray:
+        return np.asarray(self._model["init_state_values"](), dtype=np.float64)
+
+    def initial_states_with(self, overrides: dict[str, float]) -> np.ndarray:
+        """`initial_states` with some values replaced, by state name."""
+        values = self.initial_states.copy()
+        for name, value in overrides.items():
+            try:
+                index = self.state_index(name)
+            except KeyError:
+                raise KeyError(
+                    f"{name!r} is not a state of {Path(self.ode_file).name}; its states are "
+                    f"{list(self.state_names)}",
+                ) from None
+            values[index] = value
+        return values
+
+    def state_index(self, name: str) -> int:
+        """Position of a state in :attr:`state_names`."""
+        return int(self._model["state_index"](name))
+
+    def missing_index(self, name: str) -> int:
+        """Position of a missing value in :attr:`missing_names`."""
+        return int(self._model["missing_index"](name))
+
+
+@dataclass
+class GotranxCirculation(_GotranxModel):
     """A :class:`CirculationModel` generated from a `.ode` file by `gotranx`.
 
     The file is translated to UFL in memory rather than written to disk, so
@@ -135,75 +238,56 @@ class GotranxCirculation:
         makes the remainder translatable at all, since UFL has no ``Mod``.
     """
 
-    ode_file: Path | str
-    parameters: dict[str, float] | None = None
-    drop_components: Sequence[str] = ()
-    _model: dict = field(init=False, repr=False, default_factory=dict)
-    _parameter_values: np.ndarray = field(init=False, repr=False)
-
-    def __post_init__(self) -> None:
-        import gotranx
+    def _generate(self, ode: Any) -> str:
         import gotranx.cli.gotran2ufl
         from gotranx.codegen.python import Format
 
-        ode = gotranx.load_ode(Path(self.ode_file))
-        for name in self.drop_components:
-            ode = ode - ode.get_component(name)
-        logger.debug(
-            f"Generating UFL for {Path(self.ode_file).name} "
-            f"({len(ode.states)} states, missing {sorted(ode.missing_variables)})",
-        )
-
-        code = gotranx.cli.gotran2ufl.get_code(ode, format=Format.none)
-        exec(code, self._model)
-
-        # Dropping a component drops its parameters too, so a caller passing the
-        # whole parameter set of the unsplit model will be handing over names
-        # this model no longer has. Take what applies and say what was left.
-        known, unknown = {}, []
-        for name, value in (self.parameters or {}).items():
-            try:
-                self._model["parameter_index"](name)
-            except KeyError:
-                unknown.append(name)
-            else:
-                known[name] = value
-        if unknown:
-            logger.debug(
-                f"Ignoring {len(unknown)} parameter(s) not in the generated model "
-                f"(expected after dropping {list(self.drop_components)}): {sorted(unknown)}",
-            )
-        self._parameter_values = self._model["init_parameter_values"](**known)
-
-        # gotranx orders states and missing variables alphabetically, which is
-        # rarely the declaration order. Everything below goes through the
-        # generated index functions so that ordering never has to be guessed.
-        self._state_names = tuple(
-            sorted((s.name for s in ode.states), key=self._model["state_index"]),
-        )
-        self._missing_names = tuple(
-            sorted(ode.missing_variables, key=self._model["missing_index"]),
-        )
-
-    @property
-    def state_names(self) -> Sequence[str]:
-        return self._state_names
-
-    @property
-    def missing_names(self) -> Sequence[str]:
-        return self._missing_names
-
-    @property
-    def initial_states(self) -> np.ndarray:
-        return np.asarray(self._model["init_state_values"]())
-
-    def state_index(self, name: str) -> int:
-        """Position of a state in :attr:`state_names`."""
-        return int(self._model["state_index"](name))
-
-    def missing_index(self, name: str) -> int:
-        """Position of a missing value in :attr:`missing_names`."""
-        return int(self._model["missing_index"](name))
+        return gotranx.cli.gotran2ufl.get_code(ode, format=Format.none)
 
     def rhs(self, t: Any, states: Sequence[Any], missing: Sequence[Any]) -> Sequence[Any]:
         return self._model["rhs"](t, states, self._parameter_values, missing)
+
+
+@dataclass
+class GotranxNumpyCirculation(_GotranxModel):
+    """A :class:`CirculationModel` generated from a `.ode` file as plain numpy code.
+
+    The same model as :class:`GotranxCirculation`, for callers that step the circuit
+    themselves rather than inside Newton: `pulse.coupling.SplitCoupling` evaluates `rhs` once
+    per step with floats. It also exposes gotranx's monitored expressions (`monitor_names`,
+    `monitor`), such as valve flows, which the UFL backend has no use for.
+    """
+
+    def _generate(self, ode: Any) -> str:
+        import gotranx.cli.gotran2py
+        from gotranx.codegen.python import Format
+
+        return gotranx.cli.gotran2py.get_code(ode, scheme=[], format=Format.none)
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        monitor = self._model["monitor"]
+        self._monitor_names = tuple(sorted(monitor, key=monitor.get))
+
+    @property
+    def monitor_names(self) -> Sequence[str]:
+        return self._monitor_names
+
+    def monitor_index(self, name: str) -> int:
+        """Position of a monitored value in :attr:`monitor_names`."""
+        return int(self._model["monitor_index"](name))
+
+    def _arguments(self, t: float, states: Sequence[float], missing: Sequence[float]) -> list:
+        # A model with nothing missing is generated without the `missing_variables` argument.
+        arguments = [t, np.asarray(states, dtype=np.float64), self._parameter_values]
+        if self._missing_names:
+            arguments.append(np.asarray(missing, dtype=np.float64))
+        return arguments
+
+    def rhs(self, t: float, states: Sequence[float], missing: Sequence[float]) -> np.ndarray:
+        return np.asarray(self._model["rhs"](*self._arguments(t, states, missing)), dtype=float)
+
+    def monitor(self, t: float, states: Sequence[float], missing: Sequence[float]) -> np.ndarray:
+        """The monitored values, ordered as :attr:`monitor_names`."""
+        values = self._model["monitor_values"](*self._arguments(t, states, missing))
+        return np.asarray(values, dtype=float)

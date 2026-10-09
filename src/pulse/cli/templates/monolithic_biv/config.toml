@@ -1,0 +1,123 @@
+# Transcribes demo/time_dependent/monolithic_3d0d_biv.py (prestressed UKB BiV, Regazzoni's
+# closed loop solved in the same Newton system; the demo's quasi-static arm).
+#
+# Deviations from the demo:
+# - No standalone 10-beat 0D warm-up: the warm-up's final circuit state and end-diastolic
+#   pressures are written below as numbers, computed once with the demo's own warm-up
+#   (Regazzoni2020 at HR = 1/s, 10 beats, dt = 1 ms, from the mesh's cavity volumes).
+# - Fibres: the demo's per-ventricle LDRB angles ([geometry.ldrb]); the demo rotates the mesh
+#   once more after loading it, which is a no-op on an already rotated mesh.
+# - PULSE_DYNAMIC becomes [problem] type: for the dynamic arm set type = "dynamic",
+#   [viscoelasticity] type = "viscous" and damping Robins of 5e3 Pa*s/m on EPI and BASE.
+# - Output: results.bp and loads.csv rows every 10 ms; no traces.npz, frames.npz or video.
+# Needs: ukb-atlas, fenicsx-ldrb, gotranx, circulation, scipy.
+
+[geometry]
+type = "ukb"
+unit = "m"
+scale = 1e-3
+mode = -1
+std = 0.0
+case = "ED"
+char_length_max = 10.0
+char_length_min = 10.0
+clipped = true
+fiber_space = "Quadrature_6"
+quadrature_degree = 6
+rotate_base_normal = [1.0, 0.0, 0.0]
+
+[geometry.ldrb]
+alpha_endo_lv = 60.0
+alpha_epi_lv = -60.0
+alpha_endo_rv = 90.0
+alpha_epi_rv = -25.0
+beta_endo_lv = -20.0
+beta_epi_lv = 20.0
+beta_endo_rv = 0.0
+beta_epi_rv = 20.0
+
+[material]
+type = "holzapfel_ogden"
+preset = "transversely_isotropic"
+
+[active]
+type = "active_stress"
+formulation = "stretch"
+
+[compressibility]
+type = "compressible"
+
+[bcs]
+base_bc = "free"
+[[bcs.dirichlet]]
+marker = "BASE"
+components = ["x"]  # sliding base: the mesh is rotated so the base normal is x
+[[bcs.robin]]
+marker = "EPI"
+value = "1e5 Pa/m"
+[[bcs.robin]]
+marker = "BASE"
+value = "1e6 Pa/m"
+
+[[load]]
+target = "activation"
+[load.profile]
+type = "bestel_activation"
+period = "1 s"
+
+[circulation]
+type = "monolithic"
+ode_file = "circulation:regazzoni2020.ode"  # the circulation package's own file
+drop_components = ["timing", "LV", "RV"]
+scheme = "backward_euler"
+record = ["p_LA", "p_RA", "Q_AV", "Q_PV"]
+[circulation.parameters]
+RR = 1.0
+tC_eff_LA = 0.9
+tR_eff_LA = 0.07
+tC_eff_RA = 0.9
+tR_eff_RA = 0.07
+[circulation.initial_state]
+V_LA = 74.8732
+V_RA = 62.1192
+p_AR_SYS = 70.7042
+p_VEN_SYS = 30.0452
+p_AR_PUL = 18.7257
+p_VEN_PUL = 15.9812
+Q_AR_SYS = 55.8354
+Q_VEN_SYS = 74.3095
+Q_AR_PUL = 66.986
+Q_VEN_PUL = -362.859
+[[circulation.chamber]]
+marker = "LV"
+volume_state = "V_LV"
+pressure_missing = "p_LV"
+[[circulation.chamber]]
+marker = "RV"
+volume_state = "V_RV"
+pressure_missing = "p_RV"
+[circulation.inputs]
+beat_phase = { type = "phase", period = "1 s" }
+
+[prestress]
+ramp_steps = 20
+inflate_steps = 20
+[[prestress.target]]
+marker = "LV"
+pressure = "2.275 kPa"
+[[prestress.target]]
+marker = "RV"
+pressure = "0.5903 kPa"
+
+[time]
+end_time = "2 s"
+dt = "2 ms"
+
+[problem]
+type = "static"
+u_space = "P_2"
+
+[output]
+folder = "output"
+save_every = "10 ms"
+checkpoint_every = "100 ms"

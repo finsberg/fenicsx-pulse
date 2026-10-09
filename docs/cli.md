@@ -315,7 +315,8 @@ output/
 
 `loads.csv` has one row per saved time: `t` in seconds, every `[[load]]`'s value in pascal
 (`pressure_<marker>` or `activation`), and `volume_<marker>` in cubic metres for every cavity
-marker (`ENDO`, `LV`, `RV`) that carries a pressure load — summed over MPI ranks.
+marker (`ENDO`, `LV`, `RV`) that carries a pressure load — summed over MPI ranks. With
+`[circulation]` the columns are the coupling's instead, see {ref}`cli-circulation`.
 
 `pulse run` never writes VTX itself — only the io4dolfinx files above. `pulse post config.toml`
 reads `results.bp` (which can happen later, on any number of ranks, independent of how many ranks
@@ -399,6 +400,231 @@ conf = load_config("config.toml")
 monitor = PerformanceMonitor(log_frequency=10)
 sim = build_simulation(conf, monitor=monitor)
 ```
+
+(cli-circulation)=
+## Circulation coupling
+
+By default each cavity marker carries a pressure `[[load]]`. With `[circulation]` the cavities
+are instead coupled to a 0D model of the circulation: the 3D mechanics takes the place of the
+ventricles, and the two exchange cavity volumes and pressures. The three styles differ in how the
+0D side is advanced:
+
+| Style | How the 0D side is advanced | Template | Pick it when |
+| --- | --- | --- | --- |
+| `cycle` | `pulse.cycle.CycleController`: the five-phase cycle, a Windkessel per cavity | `complete_cycle` | you want the classic phase-driven cycle without a closed loop |
+| `split` | any 0D model from an `.ode` file, forward Euler between mechanics solves | `split_biv` | the circulation is an external solver, or you want to swap it freely |
+| `monolithic` | the `.ode` model written in UFL, its states unknowns of the same Newton system | `monolithic_lv`, `monolithic_biv` | the circuit is a `.ode` file and you want one Newton system |
+
+`pulse init --template complete_cycle` (or `split_biv`, `monolithic_lv`, `monolithic_biv`) writes a
+runnable config for each. The coupling owns the solve of each step; with `[circulation]` the
+cavity markers must not also have a pressure `[[load]]`. Some rules hold for every style:
+`geometry.unit` must be `"m"` (the 0D volumes are converted to cubic metres), `split` needs
+`problem.type = "static"`, and `cycle` needs `time.start_time = 0`. The three styles are covered
+in the Python API by `pulse.coupling`, see {ref}`cli-library-coupling`.
+
+### `type = "cycle"`
+
+One `[[circulation.cavity]]` per cavity marker, with the five-phase timing, the pressures that
+define the phases and a three-element Windkessel. Quantities are pint strings:
+
+```toml
+[circulation]
+type = "cycle"
+
+[[circulation.cavity]]
+marker = "LV"
+period = "0.8 s"
+t_zero = "0.05 s"
+t_end_diastole = "0.12 s"
+preload_pressure = "500 Pa"
+p_end_diastole = "1000 Pa"
+p_fill = "500 Pa"
+filling_rate = "0.104 mL/ms"
+[circulation.cavity.windkessel]
+p_init = "9000 Pa"
+compliance = "1.5 mL/mmHg"
+resistance = "1.1 mmHg*s/mL"
+characteristic_impedance = "0.03 mmHg*s/mL"
+```
+
+The Bestel activation profile of this template needs `period` whenever `peak` is set. `loads.csv`
+gains, for each cavity `<marker>`: `phase_<marker>` (the phase index),
+`volume_<marker>` and `pressure_<marker>` (m^3 and Pa), `Pc_<marker>` (the Windkessel's
+compliance pressure) and `Q_<marker>` (the outflow). `solver.preconditioner_lag` sets the
+steady-state `snes_lag_preconditioner` for this style.
+
+### `type = "split"`
+
+The 0D model is an `.ode` file (gotranx), advanced by forward Euler between two mechanics
+solves. The mechanics is solved at the new volume, and the coupling reports the pressure back:
+
+```toml
+[circulation]
+type = "split"
+ode_file = "circulation:regazzoni2020.ode"
+drop_components = ["timing", "LV", "RV"]
+record = ["p_LA", "p_RA", "Q_MV", "Q_AV", "Q_TV", "Q_PV"]
+[circulation.parameters]
+RR = 1.0
+tC_eff_LA = 0.9
+tR_eff_LA = 0.07
+tC_eff_RA = 0.9
+tR_eff_RA = 0.07
+[circulation.initial_state]
+V_LA = 52.3098
+V_RA = 52.0998
+p_VEN_SYS = 21.5388
+p_VEN_PUL = 9.0024
+p_AR_PUL = 11.727
+[[circulation.chamber]]
+marker = "LV"
+volume_state = "V_LV"
+pressure_missing = "p_LV"
+[[circulation.chamber]]
+marker = "RV"
+volume_state = "V_RV"
+pressure_missing = "p_RV"
+[circulation.inputs]
+beat_phase = { type = "phase", period = "1 s" }
+```
+
+`loads.csv` gains `volume_<marker>` and `pressure_<marker>` for each chamber (m^3 and Pa),
+`circ_<state>` for every state of the reduced `.ode` and `circ_<name>` for each entry of `record`,
+the latter in the `.ode`'s own units (mL, mmHg, mL/s).
+
+The cavity constraint rows of the plain volume constraint are in m^3 and Newton stops at
+`snes_atol = 1e-6`, so the mesh's cavity volume can lag the 0D volume by less than 1e-6 m^3
+(1 mL is 1e-6 m^3).
+
+### `type = "monolithic"`
+
+The same `.ode` keys, plus `scheme` (`"backward_euler"`, the default, or `"bdf2"`); the 0D
+states are unknowns of the Newton system of the displacement, so every step is one coupled solve.
+`"bdf2"` takes a step as backward Euler whenever its `dt` differs from the last converged step's
+(the first step, the halves of a halved step, and the full step after them), since BDF2's
+coefficients hold only for equally long steps.
+A `[prestress]` section provides the end-diastolic pressures the 0D initial state is consistent with:
+
+```toml
+[circulation]
+type = "monolithic"
+ode_file = "circulation:regazzoni2020.ode"
+drop_components = ["timing", "LV"]
+scheme = "backward_euler"
+record = ["p_LA", "Q_MV", "Q_AV"]
+[circulation.parameters]
+RR = 1.0
+tC_eff_LA = 0.9
+tR_eff_LA = 0.07
+tC_eff_RA = 0.9
+tR_eff_RA = 0.07
+[circulation.initial_state]
+V_LA = 80.7094
+V_RA = 66.7727
+V_RV = 181.218
+p_AR_SYS = 76.4746
+p_VEN_SYS = 32.4307
+p_AR_PUL = 20.2648
+p_VEN_PUL = 17.2985
+Q_AR_SYS = 60.484
+Q_VEN_SYS = 80.196
+Q_AR_PUL = 72.4093
+Q_VEN_PUL = -392.833
+[[circulation.chamber]]
+marker = "ENDO"
+volume_state = "V_LV"
+pressure_missing = "p_LV"
+[circulation.inputs]
+beat_phase = { type = "phase", period = "1 s" }
+```
+
+`loads.csv` gains the same columns as for `split`.
+
+### The `.ode` rules (`split` and `monolithic`)
+
+- `ode_file` is a path relative to the config file, or `"<package>:<file>"` for a file inside an
+  installed package: the `split_biv` and `monolithic_*` templates use
+  `"circulation:regazzoni2020.ode"`, the `circulation` package's own copy of the model. Its
+  contents (not its path) are part of the physics hash, so a restart refuses to continue if a
+  `circulation` upgrade changed the file.
+- `drop_components` removes components from the model; each dropped component's variables
+  become *missing* inputs. Drop the chambers the mechanics replaces (`LV`, `RV`) and `timing`.
+  Each `[[circulation.chamber]]` then ties a mesh `marker` to the `.ode` state `volume_state`
+  (mL) and the missing pressure `pressure_missing` (mmHg) the 3D model supplies.
+- `parameters` and `initial_state` are plain floats in the `.ode`'s own units (mL, mmHg, s),
+  not pint strings. The initial volumes of the chambers come from the mesh and are not written.
+- `inputs` supplies the remaining missing variables. The only type is `phase`, `t mod period`,
+  which is what Regazzoni's `beat_phase` is once `timing` is dropped.
+- `record` lists monitored `.ode` variables to add to `loads.csv` as `circ_<name>`.
+- With `timing` dropped, the atrial onsets are the `tC_eff_*`/`tR_eff_*` parameters (the onsets
+  re-reduced modulo `RR`, as `circulation.regazzoni2020.flat_ode_parameters` computes them).
+  Change `RR` and these together, or the atria are silently mistimed.
+
+## Prestress and re-inflation
+
+A mesh imaged in vivo is already loaded. `[prestress]` unloads it before the run, then the
+run starts from the unloaded reference configuration:
+
+```toml
+[prestress]
+ramp_steps = 20
+inflate_steps = 30
+[[prestress.target]]
+marker = "ENDO"
+pressure = "2.463 kPa"
+```
+
+- The targets are the pressures the imaged mesh was loaded with. For `type = "cycle"` a
+  `[[prestress.target]]` is refused: the targets are each cavity's `p_end_diastole`.
+- The unloaded configuration is cached in `prestress.cache_folder/<hash16>/`, where the hash
+  covers the geometry, `[material]`, `[compressibility]`, `[bcs]`, the targets, `ramp_steps` and
+  the function spaces: anything that changes the result. Changing `[solver]` or
+  `[circulation]` reuses the cache, and so do other runs of the same physics.
+- `inflate_steps` (`split` and `monolithic` only; 0 skips) re-inflates the unloaded cavity to
+  the imaged volume in that many static steps with the activation at its starting value, so the
+  coupling starts from the imaged state. It needs a `[[prestress.target]]` for every
+  `[[circulation.chamber]]` marker (the imaged volumes to go back to). It may need 6 to 8 steps
+  or more; when a step fails, the error names the fraction of the way reached and says to raise
+  `inflate_steps`.
+
+(cli-library-coupling)=
+## Coupling from Python
+
+`pulse.coupling` holds the coupling protocols the CLI builds from `[circulation]`, so other
+drivers can build their own. A `Coupling` is called in this order: `cavities(mesh)` and
+`problem_kwargs()` while the problem is built, `attach(problem)` once it exists, then
+`initialize(t0)` on a fresh run *or* `load_state_dict(state)` on a restart (never both), then
+`advance(t, dt)` once per step. `advance` returns `False` when the solve fails; in that case the
+problem's restart functions and metadata and the coupling's own state are as they were before the
+call, except for per-step inputs (the `Constant`s set before each solve) and solver hints, so the
+caller can retry with a smaller `dt`.
+
+A `StepHook` is state that is not a 0D model but advances with each step: `before_solve`,
+`after_solve` (only after a converged attempt), `state_dict`/`load_state_dict` and
+`restart_functions` for rollback and checkpoints, e.g. a stateful crossbridge model that drives
+`Ta`:
+
+```python
+from pulse.cli.overrides import load_config
+from pulse.cli.runner import build_simulation
+
+conf = load_config("config.toml")
+sim = build_simulation(conf, coupling=my_coupling, hooks=[my_crossbridge_hook])
+```
+
+`coupling=` replaces the one built from `[circulation]`. The rules for injected objects:
+
+- Pass `fresh=True` for a new run (and leave it `False` for a restart or post-processing). The
+  re-inflation (`inflate_steps`) and the missing-cache warning depend on it: a missing prestress
+  cache is then expected rather than warned about, and the chambers are re-inflated.
+  `sim.start()` raises a `ConfigError` when `inflate_steps > 0` and the simulation was built
+  without `fresh=True`.
+- `StepHook.before_solve`/`after_solve` must raise on all ranks together, never on one rank
+  alone: the others would wait for it in the next collective call.
+- The re-inflation markers come from `[circulation]`'s chambers, not from the injected coupling:
+  an injected coupling with `[circulation] type = "none"` cannot re-inflate.
+- A prestress applied by `apply_prestress` deforms the geometry in place, so an injected
+  `geometry=` must not be reused across builds.
 
 ## Using pulse from Python
 

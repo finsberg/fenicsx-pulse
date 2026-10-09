@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from mpi4py import MPI
+
 import pytest
 import toml
 from cli_helpers import minimal_config_dict, write_cfg, write_file
@@ -73,7 +75,12 @@ def test_invalid_config_is_config_error(tmp_path):
 def test_dump_round_trips_and_keeps_the_hash(tmp_path):
     conf = load_config(write_cfg(tmp_path), environ={})
     out = tmp_path / "resolved.toml"
-    dump_config(conf, out)
+    # Every rank shares tmp_path: dump on rank 0 only, between barriers, or another rank can
+    # read the file while it is being rewritten (empty -> "geometry: Field required").
+    MPI.COMM_WORLD.barrier()
+    if MPI.COMM_WORLD.rank == 0:
+        dump_config(conf, out)
+    MPI.COMM_WORLD.barrier()
     again = load_config(out, environ={})
     assert physics_hash(again) == physics_hash(conf)
 

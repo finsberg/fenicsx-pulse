@@ -1,8 +1,9 @@
 """Prescribed loads: pressure (Neumann) and activation (Ta) profiles as functions of time.
 
 Every profile is a pure function of ``t`` (seconds) returning SI base units (Pa), so a restart
-needs no load state. Bestel profiles are integrated once at build time, interval by interval on
-the ``[time]`` grid, so their values up to ``t`` never depend on ``end_time``.
+needs no load state. Bestel profiles are integrated once at build time (one period from 0 when
+`period` is set; `peak` normalisation needs it), interval by interval on the ``[time]`` grid, so
+their values up to ``t`` never depend on ``end_time``.
 """
 
 import csv
@@ -88,8 +89,10 @@ def _bestel(profile, t_start: float, t_end: float, dt: float) -> Callable[[float
         model = circulation.bestel.BestelPressure(parameters=profile.si_parameters())
     else:
         model = circulation.bestel.BestelActivation(parameters=profile.si_parameters())
-    n = max(1, round((t_end - t_start) / dt))
-    times = t_start + dt * np.arange(n + 1)
+    period = si(profile.period) if profile.period is not None else None
+    t0, t1 = (0.0, period) if period is not None else (t_start, t_end)
+    n = max(1, round((t1 - t0) / dt))
+    times = t0 + dt * np.arange(n + 1)
     values = np.zeros(n + 1)
     # One solve_ivp per interval: the value at times[k] depends only on times[:k + 1].
     for k in range(n):
@@ -104,6 +107,13 @@ def _bestel(profile, t_start: float, t_end: float, dt: float) -> Callable[[float
         if not res.success:
             raise ConfigError(f"Bestel profile integration failed: {res.message}")
         values[k + 1] = res.y[0, -1]
+    if profile.peak is not None:
+        top = float(np.max(np.abs(values)))
+        if top == 0.0:
+            raise ConfigError("Bestel profile: cannot normalise a trace that is zero everywhere")
+        values = values / top * si(profile.peak)
+    if period is not None:
+        return lambda t: float(np.interp(t % period, times, values))
     return lambda t: float(np.interp(t, times, values))
 
 

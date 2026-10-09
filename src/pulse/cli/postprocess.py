@@ -9,7 +9,7 @@ import csv
 import json
 import logging
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable, Iterable, Sequence
 
 from mpi4py import MPI
 
@@ -18,6 +18,7 @@ import io4dolfinx
 import numpy as np
 import ufl
 
+from ..circulation import mmHg
 from .config import Config, ConfigError
 from .overrides import load_config, physics_hash
 from .runner import (
@@ -210,8 +211,42 @@ def _write_points(sim: MechanicsSimulation, path: Path, times, post: Path) -> No
     _on_rank0(sim.comm, OSError, write)
 
 
-def _plots(folder: Path, post: Path) -> None:
-    """loads.png (loads in kPa, volumes in mL vs t) and one PV loop per cavity marker."""
+#: Background colours of the five cycle phases, PRELOAD..FILLING (pulse.cycle.Phase order).
+PHASE_COLOURS = ("#f0f0f0", "#fde0dd", "#fbb4c4", "#c6dbef", "#e5f5e0")
+
+
+def column_groups(columns: Iterable[str], load_names: Sequence[str]) -> dict[str, list[str]]:
+    """Sort loads.csv's columns by what they are, from their names alone.
+
+    ``loads``: the ``[[load]]`` columns. ``cavities``: markers with both ``volume_<m>`` and
+    ``pressure_<m>`` (a pressure load's column counts as the pressure). ``phases``: markers with
+    a ``phase_<m>`` column. ``circulation``: 0D columns ``circ_<name>``, without the prefix.
+    """
+    columns = list(columns)
+    present = set(columns)
+    volumes = [c[len("volume_") :] for c in columns if c.startswith("volume_")]
+    return {
+        "loads": [c for c in load_names if c in present],
+        "cavities": [m for m in volumes if f"pressure_{m}" in present],
+        "phases": [c[len("phase_") :] for c in columns if c.startswith("phase_")],
+        "circulation": [c[len("circ_") :] for c in columns if c.startswith("circ_")],
+    }
+
+
+def _shade_phases(ax: Any, t: np.ndarray, phase: np.ndarray) -> None:
+    """Shade each run of equal phase. A row's phase is the one its step was solved under, so
+    row i colours the interval (t[i-1], t[i])."""
+    start = 1
+    for i in range(1, len(t) + 1):
+        if i == len(t) or phase[i] != phase[start]:
+            if start < len(t):
+                colour = PHASE_COLOURS[int(phase[start]) % len(PHASE_COLOURS)]
+                ax.axvspan(t[start - 1], t[i - 1], color=colour, linewidth=0, zorder=0)
+            start = i
+
+
+def _plots(folder: Path, post: Path, load_names: Sequence[str]) -> None:
+    """loads.png, cavities.png, pv_loop_<marker>.png and circulation.png from loads.csv."""
     import matplotlib
 
     matplotlib.use("Agg")
@@ -223,36 +258,58 @@ def _plots(folder: Path, post: Path) -> None:
         return
     t = np.array([float(r["t"]) for r in rows])
     columns = {k: np.array([float(r[k]) for r in rows]) for k in rows[0] if k != "t"}
-    volumes = {k: v for k, v in columns.items() if k.startswith("volume_")}
-    loads = {k: v for k, v in columns.items() if not k.startswith("volume_")}
-    fig, axes = plt.subplots(
-        1,
-        2 if volumes else 1,
-        figsize=(10 if volumes else 5, 4),
-        squeeze=False,
-    )
-    for name, values in loads.items():
-        axes[0, 0].plot(t, values / 1e3, label=name)
-    axes[0, 0].set(xlabel="t [s]", ylabel="load [kPa]")
-    axes[0, 0].legend()
-    for name, values in volumes.items():
-        axes[0, 1].plot(t, values * 1e6, label=name)
-    if volumes:
-        axes[0, 1].set(xlabel="t [s]", ylabel="volume [mL]")
-        axes[0, 1].legend()
-    fig.tight_layout()
-    fig.savefig(post / "loads.png")
-    plt.close(fig)
-    for name, values in volumes.items():
-        marker = name[len("volume_") :]
-        pressure = loads.get(f"pressure_{marker}")
-        if pressure is None:
-            continue
+    groups = column_groups(columns, load_names)
+
+    if groups["loads"]:
         fig, ax = plt.subplots(figsize=(5, 4))
-        ax.plot(values * 1e6, pressure / 1e3)
-        ax.set(xlabel="volume [mL]", ylabel="pressure [kPa]", title=f"PV loop {marker}")
+        for name in groups["loads"]:
+            ax.plot(t, columns[name] / 1e3, label=name)
+        ax.set(xlabel="t [s]", ylabel="load [kPa]")
+        ax.legend()
         fig.tight_layout()
-        fig.savefig(post / f"pv_loop_{marker}.png")
+        fig.savefig(post / "loads.png")
+        plt.close(fig)
+
+    markers = groups["cavities"]
+    if markers:
+        fig, (ax_p, ax_v) = plt.subplots(1, 2, figsize=(10, 4))
+        for m in markers:
+            ax_p.plot(t, columns[f"pressure_{m}"] / mmHg, label=m)
+            ax_v.plot(t, columns[f"volume_{m}"] * 1e6, label=m)
+        if groups["phases"]:
+            phase = columns[f"phase_{groups['phases'][0]}"]
+            for ax in (ax_p, ax_v):
+                _shade_phases(ax, t, phase)
+        ax_p.set(xlabel="t [s]", ylabel="pressure [mmHg]")
+        ax_v.set(xlabel="t [s]", ylabel="volume [mL]")
+        ax_p.legend()
+        fig.tight_layout()
+        fig.savefig(post / "cavities.png")
+        plt.close(fig)
+        for m in markers:
+            fig, ax = plt.subplots(figsize=(5, 4))
+            ax.plot(columns[f"volume_{m}"] * 1e6, columns[f"pressure_{m}"] / mmHg)
+            ax.set(xlabel="volume [mL]", ylabel="pressure [mmHg]", title=f"PV loop {m}")
+            fig.tight_layout()
+            fig.savefig(post / f"pv_loop_{m}.png")
+            plt.close(fig)
+
+    circ = groups["circulation"]
+    if circ:
+        kinds = [("V_", "volume"), ("p_", "pressure"), ("Q_", "flow")]
+        panels = [(p, label) for p, label in kinds if any(n.startswith(p) for n in circ)]
+        other = [n for n in circ if not n.startswith(tuple(p for p, _ in kinds))]
+        if other:
+            panels.append(("", "other"))
+        fig, axes = plt.subplots(1, len(panels), figsize=(5 * len(panels), 4), squeeze=False)
+        for ax, (prefix, label) in zip(axes[0], panels):
+            names = [n for n in circ if n.startswith(prefix)] if prefix else other
+            for name in names:
+                ax.plot(t, columns[f"circ_{name}"], label=name)
+            ax.set(xlabel="t [s]", ylabel=f"{label} [.ode units]")
+            ax.legend(fontsize="small")
+        fig.tight_layout()
+        fig.savefig(post / "circulation.png")
         plt.close(fig)
 
 
@@ -278,6 +335,11 @@ def run_post(conf: Config, comm=MPI.COMM_WORLD) -> Path:
         except ImportError:
             logger.warning("matplotlib is not installed; skipping plots")
         else:
-            _rank0_guarded(comm, True, "plots", lambda: _plots(folder, post))
+            _rank0_guarded(
+                comm,
+                True,
+                "plots",
+                lambda: _plots(folder, post, [load.name for load in conf.load]),
+            )
     logger.info(f"Postprocessing written to {post}")
     return post

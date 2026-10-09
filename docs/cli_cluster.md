@@ -60,6 +60,19 @@ output folder already has results in it (e.g. a resubmit after a scheduler-level
 resubmitting the whole array because task 3 failed), `pulse` would otherwise refuse to touch it
 rather than silently deleting a previous task's output from under a differently-indexed rerun.
 
+## Prestress cache
+
+With `[prestress]` the unloaded reference configuration is computed once and cached in
+`prestress.cache_folder/<hash>/`, keyed by the physics that determines it (geometry, material,
+compressibility, boundary conditions, targets, ramp steps, function spaces), not by `[solver]` or
+`[circulation]`. Runs of the same physics therefore share one entry, so for array jobs put
+`prestress.cache_folder` on shared storage, as for the geometry cache. Concurrent tasks may each
+compute a missing entry; the first to finish installs it by an atomic rename, and a valid entry is
+never replaced: the others run with their own result (the same up to round-off), discard it and
+leave the installed entry for later runs and restarts. Only a stale or unreadable entry is
+replaced. Run one task (or `pulse run` once with a short `end_time`) first to warm it.
+`--overwrite` never deletes the cache.
+
 ## Surviving a wall-time kill: `--restart`
 
 For a run whose simulated time exceeds what a single job's wall-time allows, set a checkpoint
