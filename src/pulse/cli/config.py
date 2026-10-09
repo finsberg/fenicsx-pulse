@@ -50,7 +50,7 @@ def _parse(v: Any, what: str) -> Quantity:
     if not isinstance(v, str):
         raise ValueError(f"{what} must be a quantity string like '1 kPa', got {v!r}")
     try:
-        q = ureg.Quantity(v)
+        q: Quantity = ureg.Quantity(v)
     except (pint.errors.PintError, ValueError, TypeError, AttributeError) as e:
         raise ValueError(f"{what} must be a valid quantity, got {v!r}: {e}") from e
     return q
