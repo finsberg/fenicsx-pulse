@@ -7,9 +7,10 @@ them changes only those constants, so the compiled problem is reused.
 
 Each mode is checked against the formulation it should reproduce: volume mode
 against a plain prescribed-volume cavity, pressure mode against a Neumann
-traction. The controlled rows are scaled (volume in mL, pressure in kPa) where
-the Lagrangian rows are not, so Newton stops at a different iterate and the two
-agree to solver tolerance rather than to round-off.
+traction. A controlled cavity's pressure row is scaled to kPa where a Neumann
+traction has no row at all, so Newton stops at a different iterate and the two
+agree to solver tolerance rather than to round-off; the volume rows are both
+in mL, and are compared to the same tolerance.
 
 The cavity surface is every face of the cube but the fixed one. A cavity
 pressure loads the wall through the derivative of the divergence-theorem volume
@@ -42,8 +43,8 @@ import numpy as np
 import pytest
 
 import pulse
-from pulse.circulation import ChamberCoupling
-from pulse.problem import Cavity, CavityControl
+from pulse.circulation import ChamberCoupling, mL
+from pulse.problem import Cavity, CavityControl, volume_scale
 
 #: Solver-tolerance agreement between two formulations of the same problem.
 RTOL = 1e-7
@@ -164,6 +165,28 @@ def test_volume_mode_matches_prescribed_volume(mesh, geometry, dirichlet_bc):
     assert _relative_difference(controlled.u.x.array, reference.u.x.array) < RTOL
     assert _pressure(controlled) == pytest.approx(_pressure(reference), rel=RTOL)
     assert _volume(controlled, geometry) == pytest.approx(target, rel=RTOL)
+
+
+def test_prescribed_volume_follows_a_sub_milliliter_step(mesh, geometry, dirichlet_bc):
+    """A volume change below `snes_atol` in m^3 (1 mL) is still solved for.
+
+    The volume row is measured in mL, as a controlled cavity's is; in m^3 a
+    0.5 mL step starts Newton below its absolute tolerance, and the solve
+    returns without moving the wall.
+    """
+    target = 1.05 * mesh.comm.allreduce(geometry.volume("ENDO"), op=MPI.SUM)
+    volume = dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(target))
+    problem = _problem(geometry, dirichlet_bc, [Cavity("ENDO", volume=volume)])
+    assert problem.solve()
+
+    volume.value = target + 0.5 * mL
+    assert problem.solve()
+    assert _volume(problem, geometry) == pytest.approx(target + 0.5 * mL, rel=0, abs=1e-6 * mL)
+
+
+@pytest.mark.parametrize("mesh_unit, scale", [("m", 1e6), ("cm", 1.0), ("mm", 1e-3)])
+def test_volume_scale_converts_mesh_volumes_to_milliliters(mesh_unit, scale):
+    assert volume_scale(mesh_unit) == pytest.approx(scale, rel=1e-12)
 
 
 def test_pressure_mode_matches_neumann_pressure(mesh, geometry, dirichlet_bc):

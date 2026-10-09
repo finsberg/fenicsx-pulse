@@ -123,10 +123,21 @@ def _assign(constant: dolfinx.fem.Constant, value: float) -> None:
     constant.value = np.asarray(value)
 
 
+def volume_scale(mesh_unit: str) -> float:
+    """The factor turning a volume in ``mesh_unit``^3 into mL.
+
+    Every cavity's volume row is multiplied by it, so the row's residual is in
+    mL whatever the mesh unit. In m^3 a heart's volume changes by less than
+    `snes_atol` (1e-6, i.e. 1 mL) in a typical step, so Newton could stop
+    before the wall had moved at all.
+    """
+    return mesh_factor(mesh_unit) ** 3 / mL
+
+
 #: The rows of a controlled cavity measure the volume in mL and the pressure in
 #: kPa, so that both modes have residuals of order one for a heart and Newton's
 #: tolerance means the same thing whichever mode is active.
-CONTROLLED_VOLUME_SCALE = 1 / mL
+CONTROLLED_VOLUME_SCALE = volume_scale("m")
 #: 1 kPa in pascals -- the pressure analogue of `mL` (1 mL in cubic metres)
 #: above. There is no shared `kPa` constant to import for this, unlike `mL`,
 #: so it is defined right here, next to the one row that uses it.
@@ -739,64 +750,40 @@ class StaticProblem:
             raise RuntimeError("Cavity pressures are only supported for HeartGeometry")
 
         V_u = self.geometry.volume_form(u)
+        scale = volume_scale(str(self.parameters["mesh_unit"]))
 
-        form = ufl.as_ufl(0.0)
-        has_lagrangian = False
-        controlled = self._empty_form()
-
+        # The rows are written out rather than derived from the Lagrangian
+        # p (V - V(u)): the volume row is scaled to mL (see `volume_scale`)
+        # while the pressure stays in Pa, and with B = 0 a controlled cavity's
+        # pressure mode is not the stationary point of one. Differentiating
+        # that Lagrangian would also put a `pendo` term on the row of a
+        # circulation volume state, which is the chamber's own differential
+        # equation and must not have one. The displacement row is the
+        # Lagrangian's; the cavity pressures sit right after u in the block
+        # order.
+        residual = self._empty_form()
         assert cavity_pressures is not None
         assert len(self.cavities) == self.num_cavity_pressure_states
         for i, cavity in enumerate(self.cavities):
             area = self.geometry.surface_area(cavity.marker)
             pendo = cavity_pressures[i]
             ds = self.geometry.ds(self.geometry.markers[cavity.marker][0])
+            residual[0] += ufl.derivative(-pendo * V_u * ds, self.u, self.u_test)
             control = cavity.control
             if control is None:
                 # `_check_cavities` refused a cavity with neither, and a
                 # circuit-coupled one has had its volume set by now.
                 assert cavity.volume is not None
-                form += pendo * (cavity.volume / area - V_u) * ds
-                has_lagrangian = True
-                continue
-
-            # A controlled cavity's rows are written out rather than derived
-            # from a Lagrangian: the two are scaled independently, and with
-            # B = 0 pressure mode is not the stationary point of one. The
-            # displacement row is the one the Lagrangian path produces; the
-            # pressure row blends the two constraints by `mode`, and integrates
-            # to (V_target - V(u)) in mL or (A + B V(u) - p) in kPa. The cavity
-            # pressures sit right after u in the block order.
-            controlled[0] += ufl.derivative(-pendo * V_u * ds, self.u, self.u_test)
-            volume_row = (control.V_target / area - V_u) * CONTROLLED_VOLUME_SCALE
-            pressure_row = ((control.A - pendo) / area + control.B * V_u) * (
-                CONTROLLED_PRESSURE_SCALE
-            )
-            controlled[1 + i] += (
-                (control.mode * volume_row + (1.0 - control.mode) * pressure_row)
-                * self.cavity_pressures_test[i]
-                * ds
-            )
-
-        if has_lagrangian:
-            residual = self._create_residual_form(form)
-        else:
-            # Every cavity is controlled: there is no Lagrangian to differentiate.
-            residual = self._empty_form()
-
-        # `_create_residual_form` differentiates this term against every state,
-        # which is what produces both the pressure traction on the displacement
-        # row and the constraint on the cavity pressure row. When the cavity
-        # volume is a circulation state rather than a prescribed constant, it
-        # also produces a `pendo` term on that state's row -- and that row is
-        # the chamber's own differential equation, not something derived from
-        # this Lagrangian, so the term does not belong there. It is small enough
-        # to look like discretization error (`pendo` times a milliliter) while
-        # quietly changing what is being solved.
-        for i in range(self.num_states - self.num_circulation_states, self.num_states):
-            residual[i] = ufl.as_ufl(0.0)
-
-        for i in range(self.num_states):
-            residual[i] += controlled[i]
+                row = (cavity.volume / area - V_u) * scale
+            else:
+                # Blend the two constraints by `mode`: (V_target - V(u)) in mL
+                # or (A + B V(u) - p) in kPa.
+                volume_row = (control.V_target / area - V_u) * CONTROLLED_VOLUME_SCALE
+                pressure_row = ((control.A - pendo) / area + control.B * V_u) * (
+                    CONTROLLED_PRESSURE_SCALE
+                )
+                row = control.mode * volume_row + (1.0 - control.mode) * pressure_row
+            residual[1 + i] += row * self.cavity_pressures_test[i] * ds
 
         return residual
 
