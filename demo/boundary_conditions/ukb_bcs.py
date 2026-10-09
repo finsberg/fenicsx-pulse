@@ -141,6 +141,12 @@ neumann = [neumann_lv, neumann_rv]
 
 # ### Robin BCs (Spring Support)
 # Elastic springs on the Epicardium and Base to mimic the pericardium and surrounding tissue.
+# The epicardial spring acts along the (reference) normal, as a model of the pericardium
+# (Pfaller et al. 2019), so the epicardium can slide. The Dirichlet condition below already fixes
+# the base's normal displacement $u_x$, so a normal spring there would do nothing: the basal
+# spring instead acts in the basal plane (`perpendicular=True`). It is as soft as the epicardial
+# one, so that it holds the base in place against rigid in-plane motion while still letting it
+# expand and contract.
 
 robin_epi = pulse.RobinBC(
     value=pulse.Variable(
@@ -152,10 +158,11 @@ robin_epi = pulse.RobinBC(
 
 robin_base = pulse.RobinBC(
     value=pulse.Variable(
-        dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(1e6)),
+        dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(1e3)),
         "Pa / m",
     ),
     marker=geometry.markers["BASE"][0],
+    perpendicular=True,
 )
 
 # ### Dirichlet BC (Sliding Base)
@@ -163,8 +170,9 @@ robin_base = pulse.RobinBC(
 # We constrain the displacement in the x-direction ($u_x = 0$) on the Base.
 #
 # * **Why?** This prevents the heart from flying away in the X-direction (Rigid Body Motion).
-# * **Effect**: Since the normal is X, fixing $u_x$ allows the base to expand and contract freely
-#   in the Y and Z directions (in-plane), which is a common approximation for the AV-plane motion constraint.
+# * **Effect**: Since the normal is X, fixing $u_x$ allows the base to expand and contract in the
+#   Y and Z directions (in-plane), resisted only by the basal spring, which is a common
+#   approximation for the AV-plane motion constraint.
 
 def dirichlet_bc(V: dolfinx.fem.FunctionSpace):
     # Find facets for the BASE marker

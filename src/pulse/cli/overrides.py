@@ -279,6 +279,18 @@ def physics_hash(conf: Config) -> str:
         data["geometry"].pop("folder", None)
     if data["geometry"].get("ldrb", 0) is None:  # added after 0.11: keep old hashes
         data["geometry"].pop("ldrb")
+    # `bcs.robin.normal` (added after 0.11) is dropped only where the BC still does what it did
+    # before it existed: springs acted along the current normal; dashpots along the reference
+    # normal, ignoring `perpendicular`. Anything else is new physics and gets a new hash. Its
+    # default (reference) changed what springs do, so a pre-`normal` checkpoint with springs
+    # restarts only with `normal = "current"` set on them.
+    for dumped, robin in zip(data["bcs"]["robin"], conf.bcs.robin):
+        if robin.damping:
+            unchanged = robin.normal == "reference" and not robin.perpendicular
+        else:
+            unchanged = robin.normal == "current"
+        if unchanged:
+            dumped.pop("normal")
     # Sections and fields added after pulse 0.11 are dropped while they hold their defaults,
     # so that checkpoints written before they existed keep the same hash and still restart.
     if conf.circulation.type == "none":
