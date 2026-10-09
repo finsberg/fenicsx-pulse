@@ -18,8 +18,25 @@ def test_geometry_empty_initialization(mesh):
     assert geo.facet_dimension == 2
     assert geo.dim == 3
     assert geo.markers == {}
-    assert geo.dx == ufl.Measure("dx", domain=mesh)
-    assert geo.ds == ufl.Measure("ds", domain=mesh, subdomain_data=geo.facet_tags)
+    md = {"quadrature_degree": pulse.geometry.DEFAULT_QUADRATURE_DEGREE}
+    assert geo.dx == ufl.Measure("dx", domain=mesh, metadata=md)
+    assert geo.ds == ufl.Measure("ds", domain=mesh, subdomain_data=geo.facet_tags, metadata=md)
+
+
+@pytest.mark.parametrize(
+    "metadata, degree",
+    [
+        ({}, pulse.geometry.DEFAULT_QUADRATURE_DEGREE),
+        ({"quadrature_rule": "default"}, pulse.geometry.DEFAULT_QUADRATURE_DEGREE),
+        ({"quadrature_degree": 2}, 2),
+        ({"quadrature_degree": -1}, -1),  # -1: let UFL estimate the degree
+    ],
+)
+def test_geometry_default_quadrature_degree(mesh, metadata, degree):
+    geo = pulse.Geometry(mesh=mesh, metadata=dict(metadata))
+    assert geo.metadata == {**metadata, "quadrature_degree": degree}
+    assert geo.dx.metadata()["quadrature_degree"] == degree
+    assert geo.ds.metadata()["quadrature_degree"] == degree
 
 
 def test_geometry_with_boundary_and_metadata(mesh):

@@ -112,7 +112,9 @@ For a runnable, more complete version see the repo README and the demos listed b
   (`dx`, `ds`), typically built via `Geometry.from_cardiac_geometries(geo, ...)` from a
   `cardiac_geometriesx` object. `HeartGeometry` adds cavity helpers (`volume`, `volume_form`,
   `base_center`) for LV/BiV/cavity problems. Facet/marker lookups raise `MarkerNotFoundError` /
-  `MeshTagNotFoundError` (`pulse.exceptions`) rather than returning `None`.
+  `MeshTagNotFoundError` (`pulse.exceptions`) rather than returning `None`. `dx`/`ds` use
+  `metadata["quadrature_degree"]`, 4 by default. Pass `-1` to get UFL's own estimate, which is
+  very high for cardiac models and makes assembly far slower.
 - **Boundary conditions** (`pulse.boundary_conditions`): `BoundaryConditions` is a `NamedTuple` of
   `neumann` / `dirichlet` / `robin` / `body_force` sequences. `NeumannBC(traction, marker)` and
   `RobinBC(value, marker, damping=False, perpendicular=False)` wrap a `Variable`. Dirichlet BCs are
