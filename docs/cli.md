@@ -492,9 +492,8 @@ beat_phase = { type = "phase", period = "1 s" }
 `circ_<state>` for every state of the reduced `.ode` and `circ_<name>` for each entry of `record`,
 the latter in the `.ode`'s own units (mL, mmHg, mL/s).
 
-The cavity constraint rows of the plain volume constraint are in m^3 and Newton stops at
-`snes_atol = 1e-6`, so the mesh's cavity volume can lag the 0D volume by less than 1e-6 m^3
-(1 mL is 1e-6 m^3).
+The cavity volume constraint rows are in mL, so with the default `snes_atol = 1e-6` the
+mesh's cavity volume matches the 0D volume to within 1e-6 mL.
 
 ### `type = "monolithic"`
 

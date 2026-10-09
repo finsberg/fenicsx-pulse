@@ -304,12 +304,12 @@ def test_split_coupling_equals_the_demo_loop(lv):
     else:  # MUMPS differs in the last bits between two problem instances under MPI
         np.testing.assert_allclose(coupling.y, expected, rtol=1e-9, atol=1e-14)
     record = coupling.record()
-    # The volume rows of the Newton system are in m^3, so the solve is converged to within
-    # `snes_atol` = 1e-6 there (as in the demo loop); a step's volume change can be below it.
+    # The volume rows of the Newton system are in mL, so the mesh volume is converged to
+    # within `snes_atol` = 1e-6 mL of the circuit's.
     assert record["volume_ENDO"] == pytest.approx(
         _cavity_volume(geometry, problem.u),
-        rel=1e-8,
-        abs=1e-6,
+        rel=0,
+        abs=1e-6 * mL,
     )
     assert record["circ_V_LV"] * mL == record["volume_ENDO"]
 
