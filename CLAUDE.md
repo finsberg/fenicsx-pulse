@@ -40,6 +40,34 @@ pytest is configured (in `pyproject.toml`) to always compute coverage (`--cov=pu
 
 Demos under `demo/` are Jupytext `.py` percent-format notebooks built into the Sphinx docs (`_toc.yml`); they are not part of the pytest suite and require the `demo`/`docs` extras (cardiac-geometriesx, fenicsx-ldrb, circulation, gotranx, etc.).
 
+## Check that the demos still give realistic results
+
+The test suite checks that the implementation is right, not that a demo's heart still deforms like a heart. Two changes kept every test green while demos went visibly wrong:
+- a reference-normal `RobinBC` default nearly doubled the inflation in free-base demos and made the fixed-point unloader's unloaded base flare outward;
+- benchmark problem 2 silently stopped converging when `solve()` began returning `False` instead of raising.
+
+So after any change to physics, boundary conditions, solvers or defaults:
+
+- Run the demos it can affect, in a scratch directory with `PYVISTA_OFF_SCREEN=true`. At least run the quick ones in `benchmark/`, `boundary_conditions/`, `geometries/`, `howto/` and `prestress/`. The `time_dependent/` ones take long: say so if you skip them.
+- Grep each demo's output for `Newton did not converge`. `solve()` returns `False` rather than raising, so a demo that ignores the return value carries on past a failed solve.
+- Check the results are still realistic and physiological. Look at:
+  - displacement magnitudes;
+  - which way the base moves (an unloaded base contracts);
+  - apex position;
+  - volumes and ejection fraction, which should be in physiological ranges;
+  - inverted elements.
+- Compare with the behaviour before your change, e.g. by running the demo at the previous commit in a `git worktree`.
+- If a demo now looks unrealistic, report it to the user rather than tuning the demo until it looks right. The demo may have been badly formulated in the first place (for example, a normal spring on a base whose normal displacement is already fixed). Say which you think it is, and let the user decide.
+- **The three benchmark problems (Land et al. 2015) must not change.** Their printed results are:
+
+  | demo | printed result |
+  |---|---|
+  | `demo/benchmark/problem1.py` | `Final Z Position: 4.1735 mm` (`Vertical Deflection (Uz): 3.1735 mm`) |
+  | `demo/benchmark/problem2.py` | endocardial / epicardial apex `-26.521002` / `-28.164017` mm |
+  | `demo/benchmark/problem3.py` | endocardial / epicardial apex `-11.998072` / `-15.234878` mm |
+
+  Any difference means the change altered results it should not have. Find out why before going on.
+
 ## Architecture
 
 A simulation is assembled by composing small, mostly-independent pieces, then handing them to a `Problem` that builds and solves the nonlinear variational form.
@@ -63,7 +91,7 @@ StaticProblem / DynamicProblem(model, geometry, bcs, parameters)
 - **`cardiac_model.py`** — `CardiacModel` is a frozen dataclass that just sums the contributions of the four components above into total `strain_energy`, `S`, `P`, `sigma`. All four components conform to the `Protocol`s defined at the top of this module — new material/active/compressibility/viscoelasticity implementations only need to satisfy that shape, not inherit from anything.
 - **`geometry.py`** — `Geometry` wraps a dolfinx mesh plus facet markers/measures (`dx`, `ds`) built from `Marker` locators (or directly from a `cardiac_geometriesx` object via `Geometry.from_cardiac_geometries`). `HeartGeometry` adds cavity-specific helpers (`volume`, `volume_form`, `base_center`) used for LV/BiV/cavity problems. `dx`/`ds` default to `quadrature_degree` 4 (`DEFAULT_QUADRATURE_DEGREE`, as the CLI); without a degree UFL's estimate is huge for these models and assembly crawls.
 - **`boundary_conditions.py`** — `BoundaryConditions` is a `NamedTuple` bundling `neumann`/`dirichlet`/`robin`/`body_force` sequences. `NeumannBC`/`RobinBC` wrap a `Variable` traction/stiffness value; Dirichlet BCs are plain callables `(V) -> [dolfinx.fem.dirichletbc, ...]` so callers keep full control over DOF location logic.
-  - `RobinBC.normal` (`RobinNormal`) is `reference` by default, `k(u·N)N dA` as in Pfaller et al. 2019, or `current`, `k(u·n)n da`, which was the only form for springs before. All three Robin forms (`StaticProblem` springs, `DynamicProblem` dashpots, `PrestressProblem` springs) go through `RobinBC.projection`, so `normal` and `perpendicular` mean the same everywhere. Don't build a Robin projector inline. The prestress mesh is the *loaded* configuration, so there `reference` means pulling the normal back with Nanson's formula. `tests/test_robin_bc.py` checks this with a forward-then-unload round trip.
+  - `RobinBC.normal` (`RobinNormal`): `current`, `k(u·n)n da`, or `reference`, `k(u·N)N dA` (Pfaller et al. 2019; small rotations only). Left unset (`None`), it is what pulse did before the option existed: `current` for springs, `reference` for dashpots. Every demo is tuned with that. A `reference` default was tried and reverted: in large-deformation demos with a free base it let the base flare, e.g. the fixed-point unloader's unloaded base came out wider than the loaded one. All three Robin forms (`StaticProblem` springs, `DynamicProblem` dashpots, `PrestressProblem` springs) go through `RobinBC.projection`, so `normal` and `perpendicular` mean the same everywhere. Don't build a Robin projector inline. The prestress mesh is the *loaded* configuration, so there `reference` means pulling the normal back with Nanson's formula. `tests/test_robin_bc.py` checks this with a forward-then-unload round trip.
 - **`units.py`** — `Variable` pairs a raw value (`float`/`dolfinx.fem.Constant`/`dolfinx.fem.Function`) with a `pint` unit and normalizes it to base SI units (`to_base_units()`); `Variable.assign(value)` mutates the underlying dolfinx object in place. Nearly all physical parameters passed into the model (pressures, activations, stiffnesses) are `Variable`s, not raw floats.
 - **`problem.py`** — the biggest module. `StaticProblem` builds the UFL residual from a `CardiacModel` + `Geometry` + `BoundaryConditions`, sets up the (possibly mixed, for incompressible) function space, applies BCs, and drives a Newton solve via `dolfinx.nls.petsc`. `DynamicProblem` extends it with time-dependent/inertial terms. `BaseBC` (`fixed`/`free`) selects how the base is constrained by default. Both classes take a `parameters` dict overriding `default_parameters()`.
 - **`unloading.py`** — `PrestressProblem`/`FixedPointUnloader`/`TargetPressure`: iterative schemes to back out an unloaded reference geometry from a loaded one.

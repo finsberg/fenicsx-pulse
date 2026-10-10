@@ -141,9 +141,8 @@ while pressure.value < target_pressure:
 
     pressure.value = value
 
-    try:
-        nit = problem.solve()
-    except RuntimeError:
+    # `solve` returns whether Newton converged (it does not raise by default)
+    if not problem.solve():
         print("Convergence failed, reducing increment")
 
         # Reset state and half the increment
@@ -153,6 +152,7 @@ while pressure.value < target_pressure:
         d_pressure *= 0.5
         problem._init_forms()
     else:
+        nit = problem.problem.solver.getIterationNumber()
         print(f"Converged in {nit} iterations")
         if nit < 3:
             print("Increasing increment")

@@ -76,20 +76,19 @@ neumann = pulse.NeumannBC(traction=traction, marker=geometry.markers["ENDO"][0])
 
 # ### 2. Robin BCs (Elastic Support)
 # We apply springs on the Epicardium and the Base to represent the resistance provided by the
-# pericardium and surrounding tissue. On the Epicardium the spring acts along the (reference)
-# normal $\mathbf{N}$, as a model of the pericardium (Pfaller et al. 2019), leaving the
-# epicardium free to slide:
+# pericardium and surrounding tissue. On the Epicardium the spring acts along the normal
+# $\mathbf{n}$, as a model of the pericardium, leaving the epicardium free to slide:
 #
 # $$
-# \mathbf{P}\mathbf{N} + k (\mathbf{u} \cdot \mathbf{N}) \mathbf{N} = 0
+# \mathbf{P}\mathbf{N} + k (\mathbf{u} \cdot \mathbf{n}) \mathbf{n} = 0
 # $$
 #
 # On the Base, the Dirichlet condition below already fixes the normal displacement $u_x$, so a
-# normal spring there would do nothing. Instead the spring acts in the basal plane
-# (`perpendicular=True`), resisting the in-plane sliding of the base:
+# normal spring there would barely act (only through the tilt of the base). Instead the spring
+# acts in the basal plane (`perpendicular=True`), resisting the in-plane sliding of the base:
 #
 # $$
-# \mathbf{P}\mathbf{N} + k (\mathbf{I} - \mathbf{N} \otimes \mathbf{N}) \mathbf{u} = 0
+# \mathbf{P}\mathbf{N} + k (\mathbf{I} - \mathbf{n} \otimes \mathbf{n}) \mathbf{u} = 0
 # $$
 
 robin_epi = pulse.RobinBC(

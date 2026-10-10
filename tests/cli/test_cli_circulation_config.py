@@ -63,15 +63,17 @@ def ode(tmp_path):
 V1_SPRINGS = {"ukb_bcs": {"BASE": {"value": "1e6 Pa/m", "perpendicular": False}}}
 
 
+def _with_springs(conf, **update):
+    """``conf`` with ``update`` applied to every spring (Robin BC that is not a dashpot)."""
+    robin = [r if r.damping else r.model_copy(update=update) for r in conf.bcs.robin]
+    return conf.model_copy(update={"bcs": conf.bcs.model_copy(update={"robin": robin})})
+
+
 def _v1_config(conf, name):
-    """``conf`` as it was in v1: springs on the current normal, which was the only one before
-    `bcs.robin.normal` existed, and with V1_SPRINGS' edits undone."""
+    """``conf`` with V1_SPRINGS' edits undone."""
+    edits = V1_SPRINGS.get(name, {})
     robin = [
-        r
-        if r.damping
-        else r.model_copy(
-            update={"normal": "current", **V1_SPRINGS.get(name, {}).get(r.marker, {})},
-        )
+        r.model_copy(update=edits[r.marker]) if not r.damping and r.marker in edits else r
         for r in conf.bcs.robin
     ]
     return conf.model_copy(update={"bcs": conf.bcs.model_copy(update={"robin": robin})})
@@ -80,11 +82,14 @@ def _v1_config(conf, name):
 def test_v1_physics_hashes_are_unchanged(tmp_path):
     assert physics_hash(load_config(write_cfg(tmp_path), environ={})) == V1_HASHES["minimal"]
     for name in ("bestel_lv", "ukb_bcs", "spatial_material"):
-        conf = load_config(TEMPLATES_DIR / name / "config.toml", environ={})
-        assert physics_hash(_v1_config(conf, name)) == V1_HASHES[name], name
-        # The default normal (reference) is different physics for springs, so it must not
+        conf = _v1_config(load_config(TEMPLATES_DIR / name / "config.toml", environ={}), name)
+        # `bcs.robin.normal` unset is what Robin BCs did before it existed: the same hash,
+        # and so is naming that normal explicitly
+        assert physics_hash(conf) == V1_HASHES[name], name
+        assert physics_hash(_with_springs(conf, normal="current")) == V1_HASHES[name], name
+        # The other normal is different physics for springs, so it must not
         if any(not r.damping for r in conf.bcs.robin):
-            assert physics_hash(conf) != V1_HASHES[name], name
+            assert physics_hash(_with_springs(conf, normal="reference")) != V1_HASHES[name], name
 
 
 def test_defaults(tmp_path):

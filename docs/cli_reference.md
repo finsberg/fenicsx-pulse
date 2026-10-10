@@ -320,7 +320,7 @@ Zero displacement on a facet marker (all components, or some: a sliding surface)
 | `value` | str | **required** | Stiffness (e.g. '1e3 Pa/m'), or damping ('5e3 Pa*s/m') |
 | `damping` | bool | `False` |  |
 | `perpendicular` | bool | `False` |  |
-| `normal` | 'reference' \| 'current' | `'reference'` | Normal the spring/dashpot acts along: the reference normal N (Pfaller et al. 2019) or the current normal n |
+| `normal` | 'current' \| 'reference' (optional) | – | Normal the spring/dashpot acts along: the current normal n, or the reference normal N (Pfaller et al. 2019; small rotations only). Unset: current for a spring, reference for a dashpot, as before this option existed |
 
 ## `[[load]]`
 

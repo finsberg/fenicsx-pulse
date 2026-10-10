@@ -91,21 +91,22 @@ or surrounding tissue support in cardiac mechanics.
 The general form for a spring is:
 
 $$
-\mathbf{P} \mathbf{N} + k (\mathbf{u} \cdot \mathbf{N}) \mathbf{N} = 0
+\mathbf{P} \mathbf{N} + k (\mathbf{u} \cdot \mathbf{n}) \mathbf{n} = 0
 $$
 
-where $k$ is the stiffness and $\mathbf{N}$ is the normal vector of the reference
-configuration. This is the pericardial boundary condition of Pfaller et al. (2019).
+where $k$ is the stiffness and $\mathbf{n}$ is the normal vector.
 
 Configuration Options:
 - `damping`: If True, force is proportional to velocity (viscous damper).
 - `perpendicular`: If True, force acts in the tangential plane.
                    If False (default), it acts in the normal direction.
-- `normal`: `"reference"` (default) acts along the reference normal $\mathbf{N}$;
-            `"current"` acts along the normal $\mathbf{n}$ of the deformed configuration.
+- `normal`: `"current"` acts along the normal $\mathbf{n}$ of the deformed configuration;
+            `"reference"` acts along the reference normal $\mathbf{N}$, as in Pfaller et al.
+            (2019), which assumes small rotations. Unset (default), springs use `"current"`
+            and dampers `"reference"`.
 
 A normal spring on a surface whose normal displacement is already fixed by a Dirichlet
-condition (for example a sliding base with $u_x = 0$) does nothing. Use
+condition (for example a sliding base with $u_x = 0$) barely acts. Use
 `perpendicular=True` there to resist the in-plane motion instead. A spring that acts in
 all directions is a normal and a perpendicular `RobinBC` with the same stiffness on the
 same marker.
