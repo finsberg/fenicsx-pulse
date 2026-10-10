@@ -31,19 +31,25 @@ class RobinNormal(str, Enum):
     velocity) onto a normal, so neither is the true distance to the surface the
     spring is anchored to.
 
+    ``current``
+        The normal :math:`\mathbf{n}` and area :math:`da` of the current
+        configuration, pushed forward with Nanson's formula,
+        :math:`\mathbf{t} = k (\mathbf{u} \cdot \mathbf{n}) \mathbf{n}`. It
+        derives from no energy. It follows the surface as it deforms, so it
+        also resists displacement that turns normal as the wall rotates.
     ``reference``
         The normal :math:`\mathbf{N}` and area :math:`dA` of the reference
         configuration, :math:`\mathbf{t} = k (\mathbf{u} \cdot \mathbf{N}) \mathbf{N}`
         (Pfaller et al. 2019, eqs. 4-5). It is the derivative of the energy
         :math:`\frac{1}{2} \int k (\mathbf{u} \cdot \mathbf{N})^2 \, dA`, so its
-        Jacobian is symmetric. This is the form most published pericardial
-        stiffnesses were calibrated against.
-    ``current``
-        The normal :math:`\mathbf{n}` and area :math:`da` of the current
-        configuration, pushed forward with Nanson's formula,
-        :math:`\mathbf{t} = k (\mathbf{u} \cdot \mathbf{n}) \mathbf{n}`. It
-        derives from no energy. This was the only form for springs before
-        ``normal`` existed.
+        Jacobian is symmetric. It assumes small rotations of the surface. Under
+        large deformation it lets a free base flare: in the fixed-point unloader
+        demo, the same springs nearly double the inflation, and the unloaded
+        base comes out wider than the loaded one.
+
+    Leaving :attr:`RobinBC.normal` unset keeps what pulse did before the option
+    existed, which the demos and templates were tuned with: springs act along
+    ``current``, dashpots along ``reference``.
 
     On a curved surface both forms register pure tangential sliding as a
     change in the normal gap, of second order in the rotation. So a stiff
@@ -82,25 +88,30 @@ class RobinBC:
     """A spring (``damping=False``) or dashpot (``damping=True``) on the facets ``marker``.
 
     It acts along the surface normal, or, with ``perpendicular=True``, in the tangent plane.
-    ``normal`` chooses the reference or the current normal; see :class:`RobinNormal`. The
-    spring is at rest in the reference configuration.
+    ``normal`` chooses the current or the reference normal; see :class:`RobinNormal`. Left
+    unset, it is ``current`` for a spring and ``reference`` for a dashpot, as before the
+    option existed. The spring is at rest in the reference configuration.
     """
 
     value: Variable
     marker: int
     damping: bool = False
     perpendicular: bool = False
-    normal: RobinNormal = RobinNormal.reference
+    normal: RobinNormal | None = None
 
     def __post_init__(self):
         if not isinstance(self.value, Variable):
             unit = "Pa s / m" if self.damping else "Pa / m"
             logger.warning(f"Value is not a Variable, defaulting to {unit}")
             self.value = Variable(self.value, unit)
-        self.normal = RobinNormal(self.normal)
+        if self.normal is None:
+            normal = RobinNormal.reference if self.damping else RobinNormal.current
+        else:
+            normal = RobinNormal(self.normal)
+        self.normal = normal
         logger.debug(
             f"Created RobinBC on marker {self.marker} with value {self.value} "
-            f"({'damping' if self.damping else 'stiffness'}, {self.normal.value} normal)",
+            f"({'damping' if self.damping else 'stiffness'}, {normal.value} normal)",
         )
 
     def projection(

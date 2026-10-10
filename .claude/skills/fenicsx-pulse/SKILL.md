@@ -117,10 +117,11 @@ For a runnable, more complete version see the repo README and the demos listed b
   very high for cardiac models and makes assembly far slower.
 - **Boundary conditions** (`pulse.boundary_conditions`): `BoundaryConditions` is a `NamedTuple` of
   `neumann` / `dirichlet` / `robin` / `body_force` sequences. `NeumannBC(traction, marker)` and
-  `RobinBC(value, marker, damping=False, perpendicular=False, normal="reference")` wrap a
-  `Variable`. `normal="reference"` (the default, as in Pfaller et al. 2019) acts along the reference
-  normal; `"current"` acts along the deformed normal. On a sliding base (`u_x = 0` Dirichlet), a
-  normal BASE spring is inert: use `perpendicular=True` there. Dirichlet BCs are
+  `RobinBC(value, marker, damping=False, perpendicular=False, normal=None)` wrap a `Variable`.
+  `normal="current"` acts along the deformed normal; `"reference"` acts along the reference normal
+  (Pfaller et al. 2019; valid for small rotations only). Unset, it is `current` for springs and
+  `reference` for dashpots, as before the option existed. On a sliding base (`u_x = 0` Dirichlet),
+  use `perpendicular=True` for BASE springs. Dirichlet BCs are
   plain callables `(V: dolfinx.fem.FunctionSpace) -> list[dolfinx.fem.dirichletbc]` — you own the
   DOF-location logic (see `dirichlet_bc` above), pulse does not infer it for you.
 - **Units** (`pulse.units`): almost every physical parameter (pressures, activations, stiffnesses,

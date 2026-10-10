@@ -460,10 +460,11 @@ class RobinConfig(_Base):
     value: str = Field(description="Stiffness (e.g. '1e3 Pa/m'), or damping ('5e3 Pa*s/m')")
     damping: bool = False
     perpendicular: bool = False
-    normal: Literal["reference", "current"] = Field(
-        default="reference",
-        description="Normal the spring/dashpot acts along: the reference normal N (Pfaller et "
-        "al. 2019) or the current normal n",
+    normal: Literal["current", "reference"] | None = Field(
+        default=None,
+        description="Normal the spring/dashpot acts along: the current normal n, or the "
+        "reference normal N (Pfaller et al. 2019; small rotations only). Unset: current for a "
+        "spring, reference for a dashpot, as before this option existed",
     )
 
     @model_validator(mode="after")

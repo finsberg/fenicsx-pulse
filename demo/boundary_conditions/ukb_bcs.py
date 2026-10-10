@@ -141,12 +141,12 @@ neumann = [neumann_lv, neumann_rv]
 
 # ### Robin BCs (Spring Support)
 # Elastic springs on the Epicardium and Base to mimic the pericardium and surrounding tissue.
-# The epicardial spring acts along the (reference) normal, as a model of the pericardium
-# (Pfaller et al. 2019), so the epicardium can slide. The Dirichlet condition below already fixes
-# the base's normal displacement $u_x$, so a normal spring there would do nothing: the basal
-# spring instead acts in the basal plane (`perpendicular=True`). It is as soft as the epicardial
-# one, so that it holds the base in place against rigid in-plane motion while still letting it
-# expand and contract.
+# The epicardial spring acts along the surface normal, as a model of the pericardium, so the
+# epicardium can slide. The Dirichlet condition below already fixes the base's normal
+# displacement $u_x$, so a normal spring there would barely act: the basal spring instead acts
+# in the basal plane (`perpendicular=True`). It is as soft as the epicardial one, so that it
+# holds the base in place against rigid in-plane motion while still letting it expand and
+# contract.
 
 robin_epi = pulse.RobinBC(
     value=pulse.Variable(

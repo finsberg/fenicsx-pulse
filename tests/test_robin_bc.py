@@ -67,16 +67,19 @@ def _rotate(u, degrees):
     u.interpolate(f)
 
 
-def test_reference_normal_is_the_default():
+def test_default_normal_is_what_pulse_did_before():
+    """Unset, springs act along the current normal and dashpots along the reference one."""
     mesh = dolfinx.mesh.create_unit_cube(MPI.COMM_WORLD, 1, 1, 1)
-    assert _robin(mesh, K).normal == pulse.RobinNormal.reference
-    assert _robin(mesh, K, normal="current").normal == pulse.RobinNormal.current
+    assert _robin(mesh, K).normal == pulse.RobinNormal.current
+    assert _robin(mesh, K, damping=True).normal == pulse.RobinNormal.reference
+    assert _robin(mesh, K, normal="reference").normal == pulse.RobinNormal.reference
+    assert _robin(mesh, K, damping=True, normal="current").normal == pulse.RobinNormal.current
 
 
 @pytest.mark.parametrize("perpendicular", [False, True])
 def test_reference_spring_is_derivative_of_energy(perpendicular):
     geometry = _geometry()
-    robin = _robin(geometry.mesh, K, perpendicular=perpendicular)
+    robin = _robin(geometry.mesh, K, perpendicular=perpendicular, normal="reference")
     problem = pulse.StaticProblem(
         model=_model(),
         geometry=geometry,
