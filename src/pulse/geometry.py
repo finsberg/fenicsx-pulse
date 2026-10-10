@@ -33,10 +33,19 @@ class CardiacGeometriesObject(typing.Protocol):
     def ffun(self) -> dolfinx.mesh.MeshTags | None: ...
 
 
+#: Quadrature degree of ``dx`` and ``ds`` when ``metadata`` names none, as the CLI's
+#: ``geometry.quadrature_degree``. Without one, UFL estimates the degree from each integrand,
+#: which for the exponentials, logarithms and inverses of cardiac models is very high: on a
+#: 4x4x4 cube a 4-iteration Newton solve took 98 s instead of 0.15 s. Pass
+#: ``metadata={"quadrature_degree": -1}`` to get that estimate anyway.
+DEFAULT_QUADRATURE_DEGREE = 4
+
+
 @dataclass(slots=True, kw_only=True)
 class Geometry:
     mesh: dolfinx.mesh.Mesh
     boundaries: typing.Sequence[Marker] = ()
+    # Form metadata of dx and ds; quadrature_degree defaults to DEFAULT_QUADRATURE_DEGREE
     metadata: dict[str, typing.Any] = field(default_factory=dict)
     _facet_indices: npt.NDArray[np.int32] = field(init=False, repr=False)
     _facet_markers: npt.NDArray[np.int32] = field(init=False, repr=False)
@@ -47,6 +56,7 @@ class Geometry:
     ds: ufl.Measure = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
+        self.metadata = {"quadrature_degree": DEFAULT_QUADRATURE_DEGREE, **self.metadata}
         # Check if facet_tags are empty. If so, create them
         if self.facet_tags is None:
             facet_indices, facet_markers = [], []

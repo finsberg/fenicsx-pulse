@@ -75,11 +75,21 @@ traction = pulse.Variable(dolfinx.fem.Constant(geometry.mesh, dolfinx.default_sc
 neumann = pulse.NeumannBC(traction=traction, marker=geometry.markers["ENDO"][0])
 
 # ### 2. Robin BCs (Elastic Support)
-# We apply a spring-like penalty on the Epicardium and the Base to represent the
-# resistance provided by the pericardium and surrounding tissue.
+# We apply springs on the Epicardium and the Base to represent the resistance provided by the
+# pericardium and surrounding tissue. On the Epicardium the spring acts along the (reference)
+# normal $\mathbf{N}$, as a model of the pericardium (Pfaller et al. 2019), leaving the
+# epicardium free to slide:
 #
 # $$
-# \mathbf{P}\mathbf{N} + k \mathbf{u} = 0
+# \mathbf{P}\mathbf{N} + k (\mathbf{u} \cdot \mathbf{N}) \mathbf{N} = 0
+# $$
+#
+# On the Base, the Dirichlet condition below already fixes the normal displacement $u_x$, so a
+# normal spring there would do nothing. Instead the spring acts in the basal plane
+# (`perpendicular=True`), resisting the in-plane sliding of the base:
+#
+# $$
+# \mathbf{P}\mathbf{N} + k (\mathbf{I} - \mathbf{N} \otimes \mathbf{N}) \mathbf{u} = 0
 # $$
 
 robin_epi = pulse.RobinBC(
@@ -96,6 +106,7 @@ robin_base = pulse.RobinBC(
         "Pa / m",
     ),
     marker=geometry.markers["BASE"][0],
+    perpendicular=True,
 )
 
 # ### 3. Manual Dirichlet BC

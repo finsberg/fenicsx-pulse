@@ -91,12 +91,14 @@ robin_epi = pulse.RobinBC(
     ),
     marker=geometry.markers["EPI"][0],
 )
+# u_x = 0 already fixes the base's normal displacement: resist its in-plane motion instead
 robin_base = pulse.RobinBC(
     value=pulse.Variable(
         dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(1e3)),
         "Pa / m",
     ),
     marker=geometry.markers["BASE"][0],
+    perpendicular=True,
 )
 
 bcs = pulse.BoundaryConditions(

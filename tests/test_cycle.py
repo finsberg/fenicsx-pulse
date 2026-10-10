@@ -185,9 +185,37 @@ def _snapshot(problem, controller):
     }
 
 
-def _demand_infeasible_ivc(problem, controller) -> None:
+@pytest.fixture
+def newton_budget():
+    """Set Newton's iteration budget on the solver *and* in the options database.
+
+    The retry that `step` makes after a failed solve refreshes the preconditioner
+    through `SNES.setFromOptions`, which re-reads the problem's options from the
+    (process-global) database. A budget set only on the solver would not survive
+    that retry, and the retry would run with the full budget. The database
+    entries are put back afterwards.
+    """
+    opts = PETSc.Options()
+    saved: dict[str, str | None] = {}
+
+    def set_budget(problem, max_it: int) -> None:
+        snes = problem.problem.solver
+        key = f"{snes.getOptionsPrefix() or ''}snes_max_it"
+        saved.setdefault(key, opts.getString(key) if opts.hasName(key) else None)
+        snes.setTolerances(max_it=max_it)
+        opts[key] = max_it
+
+    yield set_budget
+    for key, value in saved.items():
+        if value is None:
+            opts.delValue(key)
+        else:
+            opts[key] = value
+
+
+def _demand_infeasible_ivc(problem, controller, newton_budget) -> None:
     """One Newton iteration, to reach an IVC volume of half the current one."""
-    problem.problem.solver.setTolerances(max_it=1)
+    newton_budget(problem, 1)
     cyc = controller.cycles["ENDO"]
     cyc.phase = cycle.Phase.ISOVOLUMIC_CONTRACTION
     cyc.end_dia_vol = 0.5 * cyc.volume_n
@@ -204,7 +232,7 @@ def _assert_restored(problem, controller, before) -> None:
     assert controller.records == before["records"]
 
 
-def test_failed_step_restores_state_bit_for_bit(cube_geometry):
+def test_failed_step_restores_state_bit_for_bit(cube_geometry, newton_budget):
     """`step` must return `False` and leave the mechanics state and every
     `CavityCycle` field exactly as they were, when a demanded IVC volume the
     Newton solve is given only one iteration to reach cannot be met.
@@ -218,7 +246,7 @@ def test_failed_step_restores_state_bit_for_bit(cube_geometry):
     controller.initialize(t0=0.0)
     t = _take_converged_steps(controller, 2)
 
-    _demand_infeasible_ivc(problem, controller)
+    _demand_infeasible_ivc(problem, controller, newton_budget)
     before = _snapshot(problem, controller)
     for name in ("u", "u_old", "v_old", "a_old"):
         assert np.any(before[name] != 0.0), name
@@ -233,6 +261,7 @@ def test_failed_step_restores_state_bit_for_bit(cube_geometry):
 def test_failed_step_does_not_raise_or_leak_the_lag_under_raise_on_failure(
     cube_geometry,
     monkeypatch,
+    newton_budget,
 ):
     """With `parameters["raise_on_failure"]`, `problem.solve()` would raise on
     the failed solve; `step` must still return `False` with the state restored,
@@ -251,7 +280,7 @@ def test_failed_step_does_not_raise_or_leak_the_lag_under_raise_on_failure(
     calls = _record_lag_calls(monkeypatch)
     t = _take_converged_steps(controller, 1)
 
-    _demand_infeasible_ivc(problem, controller)
+    _demand_infeasible_ivc(problem, controller, newton_budget)
     before = _snapshot(problem, controller)
     calls.clear()
 
@@ -264,7 +293,7 @@ def test_failed_step_does_not_raise_or_leak_the_lag_under_raise_on_failure(
     assert _lag_key(problem) not in PETSc.Options()
 
     # Retry the step, now feasibly: back in PRELOAD with Newton's budget back.
-    problem.problem.solver.setTolerances(max_it=50)
+    newton_budget(problem, 50)
     controller.cycles["ENDO"].phase = cycle.Phase.PRELOAD
     calls.clear()
     assert controller.step(t=t + 1e-3, dt=1e-3) is True

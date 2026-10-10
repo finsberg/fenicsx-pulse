@@ -34,6 +34,8 @@ value = "1e3 Pa/m"
 [[bcs.robin]]
 marker = "BASE"
 value = "1e3 Pa/m"
+# In the basal plane: u_x = 0 already fixes the normal displacement there
+perpendicular = true
 
 [[load]]
 target = "pressure"

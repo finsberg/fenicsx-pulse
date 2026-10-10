@@ -50,7 +50,7 @@ def _parse(v: Any, what: str) -> Quantity:
     if not isinstance(v, str):
         raise ValueError(f"{what} must be a quantity string like '1 kPa', got {v!r}")
     try:
-        q = ureg.Quantity(v)
+        q: Quantity = ureg.Quantity(v)
     except (pint.errors.PintError, ValueError, TypeError, AttributeError) as e:
         raise ValueError(f"{what} must be a valid quantity, got {v!r}: {e}") from e
     return q
@@ -460,6 +460,11 @@ class RobinConfig(_Base):
     value: str = Field(description="Stiffness (e.g. '1e3 Pa/m'), or damping ('5e3 Pa*s/m')")
     damping: bool = False
     perpendicular: bool = False
+    normal: Literal["reference", "current"] = Field(
+        default="reference",
+        description="Normal the spring/dashpot acts along: the reference normal N (Pfaller et "
+        "al. 2019) or the current normal n",
+    )
 
     @model_validator(mode="after")
     def _units(self) -> "RobinConfig":

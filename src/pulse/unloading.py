@@ -418,21 +418,18 @@ class PrestressProblem:
         v: dolfinx.fem.Function | None = None,
     ) -> list[dolfinx.fem.Form]:
         form = ufl.as_ufl(0.0)
-        N = self.geometry.facet_normal
+        # The mesh is the loaded configuration; f maps it to the unloaded (reference) one
+        n = self.geometry.facet_normal
+        f = ufl.Identity(3) + ufl.grad(u)
 
         for robin in self.bcs.robin:
             if robin.damping:
                 # Should be applied to the velocity
                 continue
             k = robin.value.to_base_units() * mesh_factor(str(self.parameters["mesh_unit"]))
-
-            if robin.perpendicular:
-                nn = ufl.Identity(u.ufl_shape[0]) - ufl.outer(N, N)
-            else:
-                nn = ufl.outer(N, N)
-
-            value = k * nn * u
-            form += -ufl.dot(value, self.u_test) * self.geometry.ds(robin.marker)
+            Q, ratio = robin.projection(n, f, mesh_is_reference=False)
+            # The forward displacement is -u
+            form += -k * ufl.dot(Q * u, self.u_test) * ratio * self.geometry.ds(robin.marker)
 
         forms = self._empty_form()
         forms[0] += form

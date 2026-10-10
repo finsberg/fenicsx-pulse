@@ -681,26 +681,14 @@ class StaticProblem:
         form = ufl.as_ufl(0.0)
         N = self.geometry.facet_normal
         F = ufl.grad(u) + ufl.Identity(3)
-        J = ufl.det(F)
-        # Pull back normal vector to the reference configuration
-        cof = J * ufl.inv(F).T
-        cofnorm = ufl.sqrt(ufl.dot(cof * N, cof * N))
-        NN = 1 / cofnorm * cof * N
 
         for robin in self.bcs.robin:
             if robin.damping:
                 # Should be applied to the velocity
                 continue
             k = robin.value.to_base_units() * mesh_factor(str(self.parameters["mesh_unit"]))
-
-            if robin.perpendicular:
-                nn = ufl.Identity(u.ufl_shape[0]) - ufl.outer(NN, NN)
-            else:
-                nn = ufl.outer(NN, NN)
-
-            value = -nn * k * u
-
-            form += -ufl.dot(value, self.u_test) * cofnorm * self.geometry.ds(robin.marker)
+            Q, ratio = robin.projection(N, F)
+            form += k * ufl.dot(Q * u, self.u_test) * ratio * self.geometry.ds(robin.marker)
 
         forms[0] += form
         return forms
@@ -1319,15 +1307,16 @@ class DynamicProblem(StaticProblem):
         forms = super()._robin_form(u)
 
         N = self.geometry.facet_normal
+        F = ufl.grad(u) + ufl.Identity(3)
 
         for robin in self.bcs.robin:
             if not robin.damping:
                 # Should be applied to the velocity
                 continue
             assert v is not None
-            k = robin.value.to_base_units() * mesh_factor(str(self.parameters["mesh_unit"]))
-            value = ufl.inner(k * v, N)
-            forms[0] += ufl.inner(value * self.u_test, N) * self.geometry.ds(robin.marker)
+            c = robin.value.to_base_units() * mesh_factor(str(self.parameters["mesh_unit"]))
+            Q, ratio = robin.projection(N, F)
+            forms[0] += c * ufl.dot(Q * v, self.u_test) * ratio * self.geometry.ds(robin.marker)
         return forms
 
     @property

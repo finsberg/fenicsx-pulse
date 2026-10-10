@@ -49,6 +49,7 @@ def build_bcs(
             marker=get_marker(geo, r.marker)[0],
             damping=r.damping,
             perpendicular=r.perpendicular,
+            normal=pulse.RobinNormal(r.normal),
         )
         for r in conf.robin
     ]

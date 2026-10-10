@@ -112,10 +112,15 @@ For a runnable, more complete version see the repo README and the demos listed b
   (`dx`, `ds`), typically built via `Geometry.from_cardiac_geometries(geo, ...)` from a
   `cardiac_geometriesx` object. `HeartGeometry` adds cavity helpers (`volume`, `volume_form`,
   `base_center`) for LV/BiV/cavity problems. Facet/marker lookups raise `MarkerNotFoundError` /
-  `MeshTagNotFoundError` (`pulse.exceptions`) rather than returning `None`.
+  `MeshTagNotFoundError` (`pulse.exceptions`) rather than returning `None`. `dx`/`ds` use
+  `metadata["quadrature_degree"]`, 4 by default. Pass `-1` to get UFL's own estimate, which is
+  very high for cardiac models and makes assembly far slower.
 - **Boundary conditions** (`pulse.boundary_conditions`): `BoundaryConditions` is a `NamedTuple` of
   `neumann` / `dirichlet` / `robin` / `body_force` sequences. `NeumannBC(traction, marker)` and
-  `RobinBC(value, marker, damping=False, perpendicular=False)` wrap a `Variable`. Dirichlet BCs are
+  `RobinBC(value, marker, damping=False, perpendicular=False, normal="reference")` wrap a
+  `Variable`. `normal="reference"` (the default, as in Pfaller et al. 2019) acts along the reference
+  normal; `"current"` acts along the deformed normal. On a sliding base (`u_x = 0` Dirichlet), a
+  normal BASE spring is inert: use `perpendicular=True` there. Dirichlet BCs are
   plain callables `(V: dolfinx.fem.FunctionSpace) -> list[dolfinx.fem.dirichletbc]` — you own the
   DOF-location logic (see `dirichlet_bc` above), pulse does not infer it for you.
 - **Units** (`pulse.units`): almost every physical parameter (pressures, activations, stiffnesses,
