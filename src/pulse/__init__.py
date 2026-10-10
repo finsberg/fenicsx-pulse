@@ -39,7 +39,15 @@ from .active_stress import (
     FrankStarlingActiveStress,
     StabilizedActiveStress,
 )
-from .boundary_conditions import BoundaryConditions, NeumannBC, RobinBC, RobinNormal
+from .boundary_conditions import (
+    BoundaryConditions,
+    EllipsoidSurface,
+    NeumannBC,
+    PericardialSurface,
+    PericardiumBC,
+    RobinBC,
+    RobinNormal,
+)
 from .cardiac_model import CardiacModel
 from .circulation import (
     ChamberCoupling,
@@ -103,6 +111,9 @@ __all__ = [
     "NeumannBC",
     "RobinBC",
     "RobinNormal",
+    "PericardiumBC",
+    "PericardialSurface",
+    "EllipsoidSurface",
     "boundary_conditions",
     "BoundaryConditions",
     "Marker",

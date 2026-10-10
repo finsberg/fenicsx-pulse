@@ -15,7 +15,7 @@ import scifem
 import ufl
 from packaging.version import Version
 
-from .boundary_conditions import BoundaryConditions
+from .boundary_conditions import BoundaryConditions, check_pericardium
 from .cardiac_model import CardiacModel
 from .circulation import ChamberCoupling, CirculationModel, mL, mmHg
 from .geometry import HeartGeometry
@@ -193,6 +193,8 @@ class StaticProblem:
         parameters.update(self.parameters)
         self.parameters = parameters
         self._check_cavities()
+        for pericardium in self.bcs.pericardium:
+            check_pericardium(pericardium, self.geometry.mesh, self.geometry.ds)
         self._init_spaces()
         self._init_forms()
         logger.debug("Initialized StaticProblem with parameters:")
@@ -693,6 +695,23 @@ class StaticProblem:
         forms[0] += form
         return forms
 
+    def _pericardium_form(
+        self,
+        u: dolfinx.fem.Function,
+        v: dolfinx.fem.Function | None = None,
+    ) -> list[dolfinx.fem.Form]:
+        """The springs, and with a velocity ``v`` the dashpots, of every `PericardiumBC`."""
+        forms = self._empty_form()
+        if not self.bcs.pericardium:
+            return forms
+        logger.debug("Creating pericardium boundary condition form...")
+        X = ufl.SpatialCoordinate(self.geometry.mesh)
+        scale = mesh_factor(str(self.parameters["mesh_unit"]))
+        for pericardium in self.bcs.pericardium:
+            t = pericardium.traction(X + u, X, scale=scale, velocity=v)
+            forms[0] += ufl.dot(t, self.u_test) * self.geometry.ds(pericardium.marker)
+        return forms
+
     def _neumann_form(self, u: dolfinx.fem.Function) -> list[dolfinx.fem.Form]:
         forms = self._empty_form()
         if not self.bcs.neumann:
@@ -814,6 +833,7 @@ class StaticProblem:
         R_material = self._material_form(self.u, p=self.p)
         R_cavity = self._cavity_pressure_form(self.u, self.cavity_pressures)
         R_robin = self._robin_form(self.u)
+        R_pericardium = self._pericardium_form(self.u)
         R_neumann = self._neumann_form(self.u)
         R_rigid = self._rigid_body_form(self.u)
         R_body_force = self._body_force_form(self.u)
@@ -823,6 +843,7 @@ class StaticProblem:
             R[i] += R_material[i]
             R[i] += R_cavity[i]
             R[i] += R_robin[i]
+            R[i] += R_pericardium[i]
             R[i] += R_neumann[i]
             R[i] += R_rigid[i]
             R[i] += R_body_force[i]
@@ -1212,7 +1233,7 @@ class DynamicProblem(StaticProblem):
 
     - at the :math:`\alpha_f` point (``interpolate(u_old, u, alpha_f)``,
       built in :attr:`R`): the material, compressibility and viscous stress,
-      the Robin and Neumann loads, and the body force -- the genuine
+      the Robin, pericardium and Neumann loads, and the body force -- the genuine
       second-order dynamics, for which alpha_f-interpolation is the
       consistent choice.
     - at the :math:`\alpha_m` point: the inertia term.
@@ -1343,6 +1364,7 @@ class DynamicProblem(StaticProblem):
         # pressure) even under smooth volume forcing.
         R_cavity = self._cavity_pressure_form(self.u, self.cavity_pressures)
         R_robin = self._robin_form(u=u, v=v)
+        R_pericardium = self._pericardium_form(u=u, v=v)
         R_neumann = self._neumann_form(u)
         R_rigid = self._rigid_body_form(u)
         R_body_force = self._body_force_form(u)
@@ -1356,6 +1378,7 @@ class DynamicProblem(StaticProblem):
             R[i] += R_material[i]
             R[i] += R_cavity[i]
             R[i] += R_robin[i]
+            R[i] += R_pericardium[i]
             R[i] += R_neumann[i]
             R[i] += R_rigid[i]
             R[i] += R_body_force[i]

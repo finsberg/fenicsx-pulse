@@ -10,7 +10,7 @@ import numpy as np
 import scifem
 import ufl
 
-from .boundary_conditions import BoundaryConditions
+from .boundary_conditions import BoundaryConditions, check_pericardium, nanson
 from .cardiac_model import CardiacModel
 from .geometry import HeartGeometry
 from .problem import StaticProblem
@@ -278,6 +278,8 @@ class PrestressProblem:
         parameters = type(self).default_parameters()
         parameters.update(self.parameters)
         self.parameters = parameters
+        for pericardium in self.bcs.pericardium:
+            check_pericardium(pericardium, self.geometry.mesh, self.geometry.ds)
         self._init_spaces()
         self._init_forms()
 
@@ -383,11 +385,13 @@ class PrestressProblem:
         R = self._empty_form()
         R_material = self._material_form(self.u)
         R_robin = self._robin_form(self.u)
+        R_pericardium = self._pericardium_form(self.u)
         R_neumann = self._neumann_form(self.u)
 
         for i in range(self.num_states):
             R[i] += R_material[i]
             R[i] += R_robin[i]
+            R[i] += R_pericardium[i]
             R[i] += R_neumann[i]
 
         return R
@@ -433,6 +437,21 @@ class PrestressProblem:
 
         forms = self._empty_form()
         forms[0] += form
+        return forms
+
+    def _pericardium_form(self, u: dolfinx.fem.Function) -> list[dolfinx.fem.Form]:
+        """The `PericardiumBC` springs, at rest in the unloaded configuration X = x + u."""
+        forms = self._empty_form()
+        if not self.bcs.pericardium:
+            return forms
+        # The mesh is the loaded configuration; f maps it to the unloaded (reference) one
+        x = ufl.SpatialCoordinate(self.geometry.mesh)
+        f = ufl.Identity(3) + ufl.grad(u)
+        _, ratio = nanson(f, self.geometry.facet_normal)
+        scale = mesh_factor(str(self.parameters["mesh_unit"]))
+        for pericardium in self.bcs.pericardium:
+            t = pericardium.traction(x, x + u, scale=scale)
+            forms[0] += ufl.dot(t, self.u_test) * ratio * self.geometry.ds(pericardium.marker)
         return forms
 
     def _neumann_form(self, u: dolfinx.fem.Function) -> list[dolfinx.fem.Form]:
