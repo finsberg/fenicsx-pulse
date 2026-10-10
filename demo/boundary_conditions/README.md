@@ -122,7 +122,46 @@ robin_bc = pulse.RobinBC(value=stiffness, marker=3)
 ```
 
 
-## 4. Body Forces
+## 4. Pericardium (Sliding Springs)
+
+A `RobinBC` on the epicardium measures the gap to the pericardium by projecting
+$\mathbf{u}$ onto a normal. On a curved surface, the epicardium sliding along itself then
+counts as a normal gap, of second order in the rotation, so stiff springs hold back the
+twist of the ventricle.
+
+`PericardiumBC` measures the gap as the change in signed distance $d$ to a surface fixed
+in space,
+
+$$
+g = d(\mathbf{X} + \mathbf{u}) - d(\mathbf{X}),
+$$
+
+and stores the energy $\frac{1}{2} \int k g^2 \, dA$. Its traction
+$k g \nabla d(\mathbf{x})$ acts along the normal of the surface, so the epicardium slides
+along it without friction, and its Jacobian is symmetric. The springs are at rest in the
+reference configuration.
+
+- `surface`: an object with a `signed_distance(x)` method returning a UFL expression,
+  positive outside. `pulse.EllipsoidSurface` is an ellipsoid of revolution;
+  `EllipsoidSurface.from_cardiac_geometries(geo)` reads the epicardial radii of a
+  cardiac-geometriesx `lv_ellipsoid`.
+- `damping`: an optional dashpot $c \dot{g} \nabla d$, used by `DynamicProblem`.
+- `unilateral`: act only where the epicardium is outside its reference distance ($g > 0$).
+
+```python
+# surface = pulse.EllipsoidSurface.from_cardiac_geometries(geo)
+surface = pulse.EllipsoidSurface(r_long=0.097, r_short=0.035)  # long axis x, centre 0
+pericardium = pulse.PericardiumBC(
+    stiffness=pulse.Variable(dolfinx.fem.Constant(mesh, 1e7), "Pa / m"),
+    marker=3,
+    surface=surface,
+)
+```
+
+See [](pericardium.py) for a comparison with `RobinBC` on an LV ellipsoid.
+
+
+## 5. Body Forces
 
 Volumetric forces, such as gravity, can be applied to the entire domain.
 
@@ -131,7 +170,7 @@ gravity = dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type((0, 0, -9.81)))
 ```
 
 
-## 5. The BoundaryConditions Container
+## 6. The BoundaryConditions Container
 
 Finally, all defined conditions are collected into the container.
 
@@ -141,11 +180,12 @@ bcs = pulse.BoundaryConditions(
     neumann=(neumann_bc,),
     robin=(robin_bc,),
     body_force=(gravity,),
+    pericardium=(pericardium,),
 )
 ```
 
 
-## 6. Cavity Volume Constraint
+## 7. Cavity Volume Constraint
 
 Instead of specifying a known pressure (Neumann BC), you can enforce a specific
 **cavity volume**. The solver then treats the cavity pressure as a Lagrange
@@ -176,7 +216,7 @@ You can access this computed pressure via `problem.cavity_pressures`.
 
 
 
-## 7. Helper Parameters
+## 8. Helper Parameters
 
 The `StaticProblem` and `DynamicProblem` classes accept a `parameters` dictionary
 that can activate predefined boundary behaviors.
