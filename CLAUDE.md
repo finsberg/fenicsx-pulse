@@ -40,6 +40,34 @@ pytest is configured (in `pyproject.toml`) to always compute coverage (`--cov=pu
 
 Demos under `demo/` are Jupytext `.py` percent-format notebooks built into the Sphinx docs (`_toc.yml`); they are not part of the pytest suite and require the `demo`/`docs` extras (cardiac-geometriesx, fenicsx-ldrb, circulation, gotranx, etc.).
 
+## Check that the demos still give realistic results
+
+The test suite checks that the implementation is right, not that a demo's heart still deforms like a heart. Two changes kept every test green while demos went visibly wrong:
+- a reference-normal `RobinBC` default nearly doubled the inflation in free-base demos and made the fixed-point unloader's unloaded base flare outward;
+- benchmark problem 2 silently stopped converging when `solve()` began returning `False` instead of raising.
+
+So after any change to physics, boundary conditions, solvers or defaults:
+
+- Run the demos it can affect, in a scratch directory with `PYVISTA_OFF_SCREEN=true`. At least run the quick ones in `benchmark/`, `boundary_conditions/`, `geometries/`, `howto/` and `prestress/`. The `time_dependent/` ones take long: say so if you skip them.
+- Grep each demo's output for `Newton did not converge`. `solve()` returns `False` rather than raising, so a demo that ignores the return value carries on past a failed solve.
+- Check the results are still realistic and physiological. Look at:
+  - displacement magnitudes;
+  - which way the base moves (an unloaded base contracts);
+  - apex position;
+  - volumes and ejection fraction, which should be in physiological ranges;
+  - inverted elements.
+- Compare with the behaviour before your change, e.g. by running the demo at the previous commit in a `git worktree`.
+- If a demo now looks unrealistic, report it to the user rather than tuning the demo until it looks right. The demo may have been badly formulated in the first place (for example, a normal spring on a base whose normal displacement is already fixed). Say which you think it is, and let the user decide.
+- **The three benchmark problems (Land et al. 2015) must not change.** Their printed results are:
+
+  | demo | printed result |
+  |---|---|
+  | `demo/benchmark/problem1.py` | `Final Z Position: 4.1735 mm` (`Vertical Deflection (Uz): 3.1735 mm`) |
+  | `demo/benchmark/problem2.py` | endocardial / epicardial apex `-26.521002` / `-28.164017` mm |
+  | `demo/benchmark/problem3.py` | endocardial / epicardial apex `-11.998072` / `-15.234878` mm |
+
+  Any difference means the change altered results it should not have. Find out why before going on.
+
 ## Architecture
 
 A simulation is assembled by composing small, mostly-independent pieces, then handing them to a `Problem` that builds and solves the nonlinear variational form.
