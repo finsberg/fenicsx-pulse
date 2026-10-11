@@ -93,6 +93,13 @@ boundary conditions
     :members:
     :inherited-members:
 
+surface
+-------
+
+.. automodule:: pulse.surface
+    :members:
+    :inherited-members:
+
 units
 -----
 

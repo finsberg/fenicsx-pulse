@@ -319,3 +319,14 @@ pfaller
 millimetre
 millimetres
 mult
+ndindex
+flatnonzero
+varphi
+pijk
+arccos
+tobytes
+axpy
+Vecs
+addv
+kargs
+centimetre

@@ -15,13 +15,13 @@ The boundary conditions are collected in a `BoundaryConditions` object.
 import logging
 import math
 import typing
-from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
 
 import dolfinx
 import ufl
 
+from .surface import PericardialSurface, SampledSurface, TrackedSurface
 from .units import Variable
 
 logger = logging.getLogger(__name__)
@@ -140,76 +140,6 @@ class RobinBC:
         return nn, ratio
 
 
-class PericardialSurface(typing.Protocol):
-    """A surface fixed in space that a :class:`PericardiumBC` holds a boundary against."""
-
-    def signed_distance(self, x: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
-        """The signed distance from the point ``x`` to the surface, positive outside, in
-        mesh units. It must be smooth near the surface, and its gradient there of unit
-        length and normal to the surface."""
-        ...
-
-
-@dataclass(slots=True)
-class EllipsoidSurface:
-    r"""An ellipsoid of revolution with semi-axis ``r_long`` along ``axis`` and ``r_short``
-    across it, centred at ``center``. Lengths are in mesh units.
-
-    The signed distance is the first-order one of the level set
-    :math:`\phi = \sqrt{(s / r_\mathrm{long})^2 + \rho^2 / r_\mathrm{short}^2} - 1`, with
-    :math:`s` and :math:`\rho` the axial and radial coordinates: :math:`d = \phi /
-    |\nabla \phi|`. It is exact on the surface and for a sphere, and its error grows with
-    the square of the distance over the radius of curvature. It is symmetric about the axis,
-    so a rotation about the axis leaves it unchanged everywhere.
-    """
-
-    r_long: float
-    r_short: float
-    center: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    axis: tuple[float, float, float] = (1.0, 0.0, 0.0)
-
-    def __post_init__(self):
-        if self.r_long <= 0 or self.r_short <= 0:
-            raise ValueError(f"Radii must be positive, got {self.r_long}, {self.r_short}")
-        length = math.sqrt(sum(a * a for a in self.axis))
-        if length == 0:
-            raise ValueError("axis must be nonzero")
-        self.axis = typing.cast(
-            tuple[float, float, float],
-            tuple(float(a) / length for a in self.axis),
-        )
-
-    @classmethod
-    def from_cardiac_geometries(
-        cls,
-        geo: typing.Any,
-        surface: str = "epi",
-    ) -> "EllipsoidSurface":
-        """The epicardial (``surface="epi"``) or endocardial (``"endo"``) ellipsoid of a
-        cardiac-geometriesx ``lv_ellipsoid``, from its ``info`` (or the info dict itself).
-        Its long axis is x and its centre the origin. If the mesh was scaled after it was
-        made, scale the radii likewise."""
-        info = geo if isinstance(geo, Mapping) else geo.info
-        mesh_type = info.get("mesh_type")
-        if mesh_type != "lv_ellipsoid":
-            raise ValueError(
-                f"Can only build an EllipsoidSurface from an 'lv_ellipsoid', got {mesh_type!r}",
-            )
-        if surface not in ("epi", "endo"):
-            raise ValueError(f"surface must be 'epi' or 'endo', got {surface!r}")
-        return cls(r_long=info[f"r_long_{surface}"], r_short=info[f"r_short_{surface}"])
-
-    def signed_distance(self, x: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
-        a = ufl.as_vector(self.axis)
-        y = x - ufl.as_vector(self.center)
-        s = ufl.dot(y, a)
-        y_radial = y - s * a
-        psi = (s / self.r_long) ** 2 + ufl.dot(y_radial, y_radial) / self.r_short**2
-        grad_psi = 2 * s / self.r_long**2 * a + 2 * y_radial / self.r_short**2
-        # phi = sqrt(psi) - 1 and grad(phi) = grad(psi) / (2 sqrt(psi))
-        return 2 * (psi - ufl.sqrt(psi)) / ufl.sqrt(ufl.dot(grad_psi, grad_psi))
-
-
 @dataclass(slots=True)
 class PericardiumBC:
     r"""Springs that hold the boundary ``marker`` at its distance from a fixed ``surface``,
@@ -227,8 +157,16 @@ class PericardiumBC:
     springs hold back twist, or, along the current normal, let the boundary drift away from
     the surface. Here a boundary that slides along the surface stays at the same distance
     from it and feels no force; for example an LV rotating about the long axis of an
-    :class:`EllipsoidSurface`. Subtracting :math:`d(\mathbf{X})` puts the springs at rest in
-    the reference configuration, wherever the mesh's facets lie relative to the surface.
+    :class:`~pulse.surface.EllipsoidSurface`. Subtracting :math:`d(\mathbf{X})` puts the
+    springs at rest in the reference configuration, wherever the mesh's facets lie relative
+    to the surface.
+
+    ``surface`` is either a :class:`~pulse.surface.PericardialSurface`, which gives the
+    distance as a UFL expression, like the ``EllipsoidSurface``, or a
+    :class:`~pulse.surface.SampledSurface`, which computes it point by point, like the
+    :class:`~pulse.surface.MeshSurface` through the marked facets of a mesh. With a sampled
+    surface the integral is a sum over the nodes of a degree 2 Lagrange space on the
+    boundary; see :class:`~pulse.surface.TrackedSurface`.
 
     So the springs do not hold a rotation that maps the surface onto itself. Hold it
     elsewhere, for example with springs in the plane of the base (``RobinBC`` with
@@ -249,7 +187,7 @@ class PericardiumBC:
 
     stiffness: Variable
     marker: int
-    surface: PericardialSurface
+    surface: PericardialSurface | SampledSurface
     damping: Variable | None = None
     unilateral: bool = False
 
@@ -271,16 +209,27 @@ class PericardiumBC:
         X: ufl.core.expr.Expr,
         scale: float = 1.0,
         velocity: ufl.core.expr.Expr | None = None,
+        surface: PericardialSurface | None = None,
     ) -> ufl.core.expr.Expr:
         """The traction per reference area on the material point at ``X``, now at ``x``.
 
         ``scale`` converts the mesh unit to metres, as for a :class:`RobinBC`. ``velocity``
-        is the point's velocity, for the dashpot; without it, there is none.
+        is the point's velocity, for the dashpot; without it, there is none. ``surface``
+        gives the distance instead of the surface of this condition: its
+        :class:`~pulse.surface.TrackedSurface`, if that is a sampled one (see
+        :func:`pericardial_surface`).
         """
+        if surface is None:
+            if not hasattr(self.surface, "signed_distance"):
+                raise TypeError(
+                    f"{self.surface} gives no distance as a UFL expression; pass the "
+                    "TrackedSurface that pericardial_surface makes of it",
+                )
+            surface = typing.cast(PericardialSurface, self.surface)
         xv = ufl.variable(x)
-        d = self.surface.signed_distance(xv)
+        d = surface.signed_distance(xv)
         n = ufl.diff(d, xv)
-        g = d - self.surface.signed_distance(X)
+        g = d - surface.signed_distance(X)
         k = self.stiffness.to_base_units() * scale
         if self.unilateral:
             t = k * ufl.max_value(g, 0.0) * n
@@ -295,16 +244,51 @@ class PericardiumBC:
         return t
 
 
-def check_pericardium(bc: PericardiumBC, mesh: dolfinx.mesh.Mesh, ds: ufl.Measure) -> None:
-    """Warn if ``bc.surface`` does not look like the boundary it holds: if the boundary is
-    far from it, or its normal points elsewhere. A surface in the wrong unit, or around the
-    wrong boundary, gives no error otherwise, since the springs are at rest wherever the
-    boundary starts."""
+def pericardial_surface(
+    bc: PericardiumBC,
+    mesh: dolfinx.mesh.Mesh,
+    facet_tags: dolfinx.mesh.MeshTags | None,
+    ds: ufl.Measure,
+) -> tuple[PericardialSurface, ufl.Measure]:
+    """What a problem on ``mesh`` builds the forms of ``bc`` with: the surface to pass to
+    :meth:`PericardiumBC.traction`, and the measure to integrate the traction with over
+    ``bc.marker``.
+
+    They are the surface of ``bc`` and ``ds``, unless the surface is a sampled one. Then
+    they are a new :class:`~pulse.surface.TrackedSurface` of it and its measure, and the
+    problem has to update the tracked surface before it assembles anything.
+    """
+    if hasattr(bc.surface, "signed_distance"):
+        return typing.cast(PericardialSurface, bc.surface), ds
+    if facet_tags is None:
+        raise ValueError("A PericardiumBC with a sampled surface needs facet tags")
+    tracked = TrackedSurface(
+        typing.cast(SampledSurface, bc.surface),
+        mesh,
+        facet_tags.find(bc.marker),
+        ds,
+    )
+    return tracked, tracked.ds
+
+
+def check_pericardium(
+    bc: PericardiumBC,
+    mesh: dolfinx.mesh.Mesh,
+    ds: ufl.Measure,
+    surface: PericardialSurface | None = None,
+) -> None:
+    """Warn if the surface of ``bc`` does not look like the boundary it holds: if the
+    boundary is far from it, or its normal points elsewhere. A surface in the wrong unit, or
+    around the wrong boundary, gives no error otherwise, since the springs are at rest
+    wherever the boundary starts. ``surface`` and ``ds`` are those that
+    :func:`pericardial_surface` gives."""
     from mpi4py import MPI
 
+    if surface is None:
+        surface = typing.cast(PericardialSurface, bc.surface)
     X = ufl.SpatialCoordinate(mesh)
     Xv = ufl.variable(X)
-    d = bc.surface.signed_distance(Xv)
+    d = surface.signed_distance(Xv)
     N = ufl.FacetNormal(mesh)
 
     def integrate(f):

@@ -26,6 +26,7 @@ from . import (
     material_model,
     material_models,
     problem,
+    surface,
     telemetry,
     units,
     unloading,
@@ -41,9 +42,7 @@ from .active_stress import (
 )
 from .boundary_conditions import (
     BoundaryConditions,
-    EllipsoidSurface,
     NeumannBC,
-    PericardialSurface,
     PericardiumBC,
     RobinBC,
     RobinNormal,
@@ -72,6 +71,7 @@ from .material_models import (
     Usyk,
 )
 from .problem import BaseBC, DynamicProblem, StaticProblem
+from .surface import EllipsoidSurface, MeshSurface, PericardialSurface, SampledSurface
 from .telemetry import NullMonitor, PerformanceMonitor
 from .units import Variable, ureg
 from .unloading import FixedPointUnloader, PrestressProblem, TargetPressure
@@ -112,8 +112,11 @@ __all__ = [
     "RobinBC",
     "RobinNormal",
     "PericardiumBC",
+    "surface",
     "PericardialSurface",
+    "SampledSurface",
     "EllipsoidSurface",
+    "MeshSurface",
     "boundary_conditions",
     "BoundaryConditions",
     "Marker",
