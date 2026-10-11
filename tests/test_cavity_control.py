@@ -13,12 +13,13 @@ agree to solver tolerance rather than to round-off; the volume rows are both
 in mL, and are compared to the same tolerance.
 
 The cavity surface is every face of the cube but the fixed one. A cavity
-pressure loads the wall through the derivative of the divergence-theorem volume
-V(u) = (-1/3) int x . n da, which equals a pressure traction only when the
-surface is closed off by a rim lying in a plane through the origin and not
-moving out of it, as an LV endocardium is at a fixed base. Here that rim is the
-edge of the fixed face x = 0; on the x = 1 face alone it moves freely, and the
-load picks up edge terms a Neumann pressure does not have.
+pressure loads the wall through the derivative of the volume of the cavity
+closed by a flat lid over its opening (`HeartGeometry.volume_form`). That is a
+pressure traction on the wall plus the work the pressure does on the lid, so it
+equals a pressure traction only when the rim of the opening does not move, as
+an LV endocardium's does not at a fixed base. Here that rim is the edge of the
+fixed face x = 0; on the x = 1 face alone it moves freely, and the load picks
+up edge terms a Neumann pressure does not have.
 
 The ENDO/FIXED meshtags are built by hand from the mesh's exterior facets,
 classified by facet midpoint -- not from `HeartGeometry`'s usual

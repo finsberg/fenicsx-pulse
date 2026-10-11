@@ -737,7 +737,6 @@ class StaticProblem:
         if not isinstance(self.geometry, HeartGeometry):
             raise RuntimeError("Cavity pressures are only supported for HeartGeometry")
 
-        V_u = self.geometry.volume_form(u)
         scale = volume_scale(str(self.parameters["mesh_unit"]))
 
         # The rows are written out rather than derived from the Lagrangian
@@ -754,6 +753,7 @@ class StaticProblem:
         assert len(self.cavities) == self.num_cavity_pressure_states
         for i, cavity in enumerate(self.cavities):
             area = self.geometry.surface_area(cavity.marker)
+            V_u = self.geometry.volume_form(u, marker=cavity.marker)
             pendo = cavity_pressures[i]
             ds = self.geometry.ds(self.geometry.markers[cavity.marker][0])
             residual[0] += ufl.derivative(-pendo * V_u * ds, self.u, self.u_test)

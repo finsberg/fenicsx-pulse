@@ -296,3 +296,4 @@ nanson
 epicardial
 discretisation
 exponentials
+boldsymbol

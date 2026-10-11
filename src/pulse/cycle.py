@@ -361,7 +361,8 @@ class CycleController:
             raise RuntimeError("CycleController needs a HeartGeometry, for its volume forms")
         self._volume_forms = {
             name: dolfinx.fem.form(
-                geometry.volume_form(problem.u) * geometry.ds(geometry.markers[name][0]),
+                geometry.volume_form(problem.u, marker=name)
+                * geometry.ds(geometry.markers[name][0]),
             )
             for name in self.params
         }

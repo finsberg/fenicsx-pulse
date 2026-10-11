@@ -360,7 +360,9 @@ vtx.write(0.0)
 # We can also calculate the volume of the left ventricle at each time step, so let us first define the volume form
 #
 
-volume_form = dolfinx.fem.form(geometry.volume_form(u=problem.u) * geometry.ds(geometry.markers["ENDO"][0]))
+volume_form = dolfinx.fem.form(
+    geometry.volume_form(u=problem.u, marker="ENDO") * geometry.ds(geometry.markers["ENDO"][0]),
+)
 initial_volume = geo.mesh.comm.allreduce(dolfinx.fem.assemble_scalar(volume_form))
 logger.info(f"Initial volume: {initial_volume}")
 

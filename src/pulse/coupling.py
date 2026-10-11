@@ -261,7 +261,8 @@ def _volume_forms(problem: Any, markers: Sequence[str]) -> dict[str, Any]:
     geometry = problem.geometry
     return {
         marker: dolfinx.fem.form(
-            geometry.volume_form(problem.u) * geometry.ds(geometry.markers[marker][0]),
+            geometry.volume_form(problem.u, marker=marker)
+            * geometry.ds(geometry.markers[marker][0]),
         )
         for marker in markers
     }
