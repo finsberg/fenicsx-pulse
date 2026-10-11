@@ -2,15 +2,16 @@
 
 The Regazzoni circuit's parameters were tuned against its own left-ventricular
 elastance, not against a mesh. Coupling a mesh to it without doing anything
-about that gives a loop that is arithmetically correct and physiologically
-absurd: on the ellipsoid the demos use, the ventricle fills to about 197 mL.
+about that gives a loop that is arithmetically correct and at an operating
+point nobody chose: on the ellipsoid the demos use, the ventricle fills to
+about 166 mL and ejects two thirds of it against 137 mmHg.
 
 The reason is worth stating precisely, because the obvious reading of it is
-wrong. At the volumes the circuit works at, the mesh develops about a fifth of
-the pressure the circuit's elastance would -- 4 mmHg where it expects 19 -- so
-it looks like a much softer ventricle. It is not: its resting `dp/dV` is the
+wrong. At the volumes the circuit works at, the mesh develops about two thirds
+of the pressure the circuit's elastance would -- 13 mmHg where it expects 19 --
+so it looks like a softer ventricle. It is not: its resting `dp/dV` is the
 steeper of the two. What differs is the unstressed volume. The circuit's chamber
-carries no pressure at 42 mL and this mesh carries none until about 125 mL, so
+carries no pressure at 42 mL and this mesh carries none until about 104 mL, so
 the circuit spends the whole of diastole pushing against a chamber that has not
 started to resist yet. Softening the material would not fix that, and stiffening
 it would make matters worse.

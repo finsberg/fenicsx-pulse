@@ -46,10 +46,10 @@
 #
 # The circuit's parameters were tuned against its own LV elastance, and this
 # mesh behaves nothing like that elastance. Its cavity carries no pressure
-# until about 125 mL, whereas the circuit's chamber is already unstressed at
+# until about 104 mL, whereas the circuit's chamber is already unstressed at
 # 42 mL, so throughout diastole the circuit pushes against a ventricle that has
 # not begun to resist. Couple the two as they stand and the cavity fills to
-# roughly 197 mL.
+# roughly 166 mL.
 #
 # So before any time stepping, we measure the cavity pressure over a grid of
 # volumes and activations and tune the loading in pure 0D against that
@@ -127,24 +127,19 @@ if IN_CI:
 FORMULATION = pulse.ActiveStressFormulation.stretch
 
 # This decides whether the mechanics carries inertia. Quasi-static is the
-# default, and it costs us very little here, since its loop stays within about
-# 5 mmHg of the dynamic one at peak, some 5% of peak pressure.
+# default, and it costs us very little here, since its loop stays within
+# 1 mmHg of the dynamic one at peak and within 4 mmHg everywhere else.
 #
-# Switching inertia on changes two things beyond adding the mass term:
-#
-# * We can no longer leave out dissipation, because the cavity pressure is a
-#   Lagrange multiplier on a position constraint and an undamped wall rings
-#   against it. Without the viscous term and the damping Robin conditions that
-#   this flag also enables, the pressure departs from the quasi-static loop by
-#   94 mmHg at worst and peaks at 175 mmHg rather than 99, whereas with them
-#   the worst departure is 33 mmHg. Most of what is left is viscous stress
-#   rather than mass, since sweeping the density over three decades only moves
-#   it by about 5 mmHg.
-# * The step size is now set by the wall rather than by the circuit. Elastic
-#   wave modes scale as 1/sqrt(rho), so we cannot simply turn the density down
-#   to recover the quasi-static answer: at a tenth of it the run stops
-#   converging partway through the beat at DT, and at a hundredth it fails
-#   within a few steps.
+# Switching inertia on changes one thing beyond adding the mass term: we can
+# no longer leave out dissipation, because the cavity pressure is a Lagrange
+# multiplier on a position constraint and an undamped wall rings against it.
+# Without the viscous term and the damping Robin conditions that this flag
+# also enables, the pressure jumps by up to 30 mmHg from one step to the next,
+# departs from the quasi-static loop by 22 mmHg and peaks at 129 mmHg rather
+# than 120, and Newton's method stops converging at t = 0.456 s, late in
+# ejection. With them the worst departure is 3.4 mmHg. What is left is viscous
+# stress rather than mass: at a tenth or a hundredth of the density the
+# pressure moves by less than 0.5 mmHg, and at ten times the density by 5 mmHg.
 #
 # Both arms step the circuit in exactly the same way. `PULSE_DYNAMIC=1` sets
 # the flag without editing the file, so you can run the two back to back off a
@@ -377,11 +372,11 @@ def build_surface():
         # out where that limit lies instead of being given it in advance.
         volumes=np.linspace(0.4 * unloaded_volume, 2.2 * unloaded_volume, 14) / mL,
         # Up to three times the Bestel peak, which is what bounds `Ta_scale`,
-        # and spaced quadratically rather than evenly. The chamber responds to
-        # the first few kilopascals far more than to the last few: the measured
-        # pressure climbs 66 mmHg over the first 39 kPa but only 30 mmHg over
-        # the next 40. An even grid would put most of its points where the
-        # surface is already straight and then interpolate across the bend.
+        # and spaced quadratically rather than evenly. The measured pressure
+        # is close to linear in the activation, 95 mmHg over the first 39 kPa
+        # and 98 mmHg over the next 40, but the loop only visits the low end:
+        # the calibration settles at half the Bestel peak, 61 kPa. An even
+        # grid would put two of its ten levels below that, and this one four.
         activations=3.0 * Ta_ref * np.linspace(0.0, 1.0, 10) ** 2,
         comm=comm,
     )
@@ -397,8 +392,9 @@ def build_surface():
 # The activation ceiling decides how much of the sampled grid we can use. The
 # mesh will not hold its most dilated volumes under the strongest tensions, and
 # any volume that fails anywhere below the ceiling has to be dropped for the
-# rest to form a rectangle, so lowering the ceiling buys back volume range. A
-# factor of two over the contractility the calibration settles on is plenty.
+# rest to form a rectangle, so lowering the ceiling buys back volume range.
+# Twice the Bestel peak is nearly four times the contractility the calibration
+# settles on, which is plenty.
 calibration = calib.load_or_calibrate(
     cachedir / f"calibration-{FORMULATION.value}.json",
     build_surface=build_surface,
@@ -589,9 +585,10 @@ if saved is not None:
 #
 # The dynamic arm carries no such obligation, since its pressure also depends
 # on the rate, through the viscous and damping terms, and on the acceleration
-# through the mass. We therefore expect it to sit off the surface, by about
-# 33 mmHg at worst here, and because the comparison tells us nothing useful in
-# that case we skip it rather than reporting the difference as a discrepancy.
+# through the mass. Here it sits 3.8 mmHg off the surface at worst, no further
+# than the quasi-static arm does, but nothing obliges it to, and because the
+# comparison tells us nothing useful in that case we skip it rather than
+# reporting the difference as a discrepancy.
 
 if calibration is not None and not DYNAMIC:
     agreement = calibration.check_against(history["V_LV"], history["Ta"], history["p_LV"])
@@ -704,9 +701,9 @@ logger.info("Done.")
 # ---
 # name: pv_loop_monolithic_3d0d_lv
 # ---
-# Two beats of the coupled left ventricle: ejection fraction 67%, peak pressure
-# 125 mmHg, stroke work 1.2 J. End-diastolic and end-systolic volumes move by
-# under a percent between the two beats.
+# Two beats of the coupled left ventricle: ejection fraction 45%, peak pressure
+# 120 mmHg, stroke work 0.9 J. The end-diastolic volume moves by 1.3% between
+# the two beats and the end-systolic volume by 0.4%.
 # ```
 #
 # The video shows the moving wall beside the loop it traces. The vertical limbs

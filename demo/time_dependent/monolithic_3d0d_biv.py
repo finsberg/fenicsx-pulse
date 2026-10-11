@@ -22,7 +22,7 @@
 # circuit's loading against that measurement. It has to, because an idealized
 # ellipsoid does not behave like a real ventricle: its unloaded cavity holds
 # far more than a person's, and coupled to the published circuit it fills to
-# nearly 200 mL.
+# about 166 mL.
 #
 # This mesh is a real heart in a real end-diastolic configuration, so we can
 # get the operating point directly. We seed the circuit with the mesh's own
@@ -90,7 +90,7 @@ BEAT_LENGTH = 1.0  # s
 DT = 0.002  # s
 # Two beats are enough to settle the left ventricle: its end-diastolic and
 # end-systolic volumes move by half a percent between the first and the second.
-# The right ventricle is still drifting by about seven percent, since the
+# The right ventricle is still drifting by about six percent, since the
 # pulmonary compartment it fills through is more compliant and takes longer to
 # settle. Increase this if the right side matters for what you are doing.
 NUM_BEATS = 1 if IN_CI else 2
@@ -539,10 +539,10 @@ logger.info("Done.")
 # ---
 # name: pv_loop_monolithic_3d0d_biv
 # ---
-# Both ventricles over two beats. The left ejects 70 mL against a peak of about
-# 100 mmHg, and the right nearly as much against a quarter of that. The left
-# loop closes on itself, while the right is still drifting, for the reason
-# given at `NUM_BEATS`.
+# Both ventricles over two beats. The left ejects 77 mL against a peak of about
+# 105 mmHg, and the right 62 mL against a quarter of that. The left loop closes
+# on itself, while the right is still drifting, for the reason given at
+# `NUM_BEATS`.
 # ```
 #
 # <video width="720" controls loop autoplay muted>
