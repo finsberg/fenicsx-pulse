@@ -141,14 +141,23 @@ $k g \nabla d(\mathbf{x})$ acts along the normal of the surface, so the epicardi
 along it without friction, and its Jacobian is symmetric. The springs are at rest in the
 reference configuration.
 
-- `surface`: an object with a `signed_distance(x)` method returning a UFL expression,
-  positive outside. `pulse.EllipsoidSurface` is an ellipsoid of revolution;
-  `EllipsoidSurface.from_cardiac_geometries(geo)` reads the epicardial radii of a
-  cardiac-geometriesx `lv_ellipsoid`.
+- `surface`: the pericardium. Either of
+  - `pulse.MeshSurface.from_geometry(geo, "EPI")`: a smooth surface through the facets of
+    `geo` (a `pulse.Geometry`) with that marker, where they are when it is made. Use this
+    for a mesh from an image. `radius` is how far from the facets the surface reaches,
+    and the size of the features it smooths out. By default it is two facet sizes, or a
+    tenth of the size of the surface if that is larger.
+  - `pulse.EllipsoidSurface`: an ellipsoid of revolution;
+    `EllipsoidSurface.from_cardiac_geometries(geo)` reads the epicardial radii of a
+    cardiac-geometriesx `lv_ellipsoid`.
+  - any object with a `signed_distance(x)` method that returns a UFL expression, positive
+    outside, or with an `evaluate(points)` method that returns the distance, its gradient
+    and its Hessian as arrays.
 - `damping`: an optional dashpot $c \dot{g} \nabla d$, used by `DynamicProblem`.
 - `unilateral`: act only where the epicardium is outside its reference distance ($g > 0$).
 
 ```python
+# surface = pulse.MeshSurface.from_geometry(geo, "EPI")
 # surface = pulse.EllipsoidSurface.from_cardiac_geometries(geo)
 surface = pulse.EllipsoidSurface(r_long=0.097, r_short=0.035)  # long axis x, centre 0
 pericardium = pulse.PericardiumBC(
@@ -158,7 +167,15 @@ pericardium = pulse.PericardiumBC(
 )
 ```
 
-See [](pericardium.py) for a comparison with `RobinBC` on an LV ellipsoid.
+The distance to a `MeshSurface` is computed point by point, so a form cannot evaluate it
+where the boundary has moved to. The problem keeps the distance and its derivatives at the
+nodes of the boundary instead, and updates them before every evaluation of the residual
+and the Jacobian. Its integral is then a sum over these nodes rather than over the
+quadrature points of `ds`.
+
+See [](pericardium.py) for a comparison with `RobinBC` on an LV ellipsoid, with a movie
+of the two side by side, and [](pericardium_ukb.py) for a pericardium made from the mesh
+of a biventricular geometry.
 
 
 ## 5. Body Forces
