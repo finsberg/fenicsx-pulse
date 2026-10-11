@@ -18,7 +18,9 @@
 # distance to it, and feels no force.
 #
 # This demo contracts an LV ellipsoid held by either epicardial condition, at the same
-# stiffness, and compares the twist, the motion of the base and apex, and the volumes.
+# stiffness, and compares the twist, the motion of the base and apex, and the volumes. It
+# ends with a movie of the two side by side. The pericardium is the epicardial ellipsoid,
+# first as a formula and then, for comparison, as a surface made from the mesh.
 #
 # ---
 
@@ -75,6 +77,14 @@ markers = {name: geometry.markers[name][0] for name in ("ENDO", "EPI", "BASE")}
 surface = pulse.EllipsoidSurface.from_cardiac_geometries(geo)
 print(surface)
 
+# A geometry from an image has no such formula. For that, `pulse.MeshSurface` makes a
+# smooth surface through the facets with a given marker, as they are now; see
+# [the next demo](pericardium_ukb.py). We run it here too, to compare it with the
+# ellipsoid that these facets approximate.
+
+mesh_surface = pulse.MeshSurface.from_geometry(geometry, "EPI")
+print(mesh_surface)
+
 # ## Model
 #
 # A transversely isotropic Holzapfel-Ogden material, contracted by an active stress
@@ -105,8 +115,8 @@ def create_model():
 # The base hangs on springs. They resist its in-plane motion firmly, and its motion along
 # the long axis only weakly, so that the base can descend towards the apex as the
 # ventricle contracts. On the epicardium we put either a `RobinBC` along the current
-# normal (pulse's default for springs) or a `PericardiumBC`, both with
-# $k = 10^7$ Pa/m.
+# normal (pulse's default for springs) or a `PericardiumBC`, with the ellipsoid or with
+# the surface from the mesh, all with $k = 10^7$ Pa/m.
 
 k_epi = 1e7  # Pa/m
 
@@ -128,6 +138,10 @@ def create_bcs(epicardium: str):
         robin.append(pulse.RobinBC(value=k, marker=markers["EPI"]))
     elif epicardium == "PericardiumBC":
         pericardium.append(pulse.PericardiumBC(stiffness=k, marker=markers["EPI"], surface=surface))
+    elif epicardium == "MeshSurface":
+        pericardium.append(
+            pulse.PericardiumBC(stiffness=k, marker=markers["EPI"], surface=mesh_surface),
+        )
     else:
         raise ValueError(epicardium)
     bcs = pulse.BoundaryConditions(neumann=neumann, robin=robin, pericardium=pericardium)
@@ -210,7 +224,11 @@ def measurements(problem):
 #
 # We inflate the ventricle to an end-diastolic pressure of 1.5 kPa, then raise the active
 # tension to 40 kPa at that pressure. `solve` returns `False` if Newton does not
-# converge, so we check every step.
+# converge, so we check every step. After every step we keep the displacement,
+# interpolated onto linear elements, for the movie at the end.
+
+V1 = dolfinx.fem.functionspace(geometry.mesh, ("Lagrange", 1, (3,)))
+frames: dict[str, list[tuple[str, np.ndarray]]] = {}
 
 
 def run(epicardium: str):
@@ -222,22 +240,33 @@ def run(epicardium: str):
         bcs=bcs,
         parameters={"base_bc": pulse.BaseBC.free, "mesh_unit": "m"},
     )
+    u1 = dolfinx.fem.Function(V1)
+    frames[epicardium] = []
 
-    for value in np.linspace(0.0, 1.5, 4)[1:]:
+    def keep(p, ta):
+        u1.interpolate(problem.u)
+        label = f"p = {p:.1f} kPa, Ta = {ta:.0f} kPa"
+        frames[epicardium].append((label, u1.x.array.reshape(-1, 3).copy()))
+
+    keep(0.0, 0.0)
+    for step, value in enumerate(np.linspace(0.0, 1.5, 7)[1:]):
         pressure.assign(value)
         if not problem.solve():
             raise RuntimeError(f"{epicardium}: Newton did not converge at {value} kPa")
+        if step % 2 == 1:
+            keep(value, 0.0)
     end_diastole = measurements(problem)
 
     for value in np.linspace(0.0, 40.0, 9)[1:]:
         Ta.assign(value)
         if not problem.solve():
             raise RuntimeError(f"{epicardium}: Newton did not converge at Ta = {value} kPa")
+        keep(1.5, value)
     end_systole = measurements(problem)
     return end_diastole, end_systole
 
 
-results = {name: run(name) for name in ("RobinBC", "PericardiumBC")}
+results = {name: run(name) for name in ("RobinBC", "PericardiumBC", "MeshSurface")}
 
 # ## Results
 
@@ -263,7 +292,8 @@ if comm.rank == 0:
 
 # The displacements of the base and the apex are along the long axis, from end diastole to
 # end systole; negative is towards the apex. Rotations are positive counterclockwise when
-# seen from the apex.
+# seen from the base. The last column is the `PericardiumBC` with the surface from the mesh;
+# its gap is measured to the ellipsoid, like the others.
 
 try:
     import matplotlib.pyplot as plt
@@ -274,7 +304,8 @@ else:
         fig, ax = plt.subplots(figsize=(6, 4))
         for name, (_, end_systole) in results.items():
             x, rotation = end_systole["profile"]
-            ax.plot(1e3 * x, rotation, marker="o", label=name)
+            style = {"linestyle": "--", "marker": "x"} if name == "MeshSurface" else {"marker": "o"}
+            ax.plot(1e3 * x, rotation, label=name, **style)
         ax.set_xlabel("Position along the long axis [mm] (apex left, base right)")
         ax.set_ylabel("Rotation at end systole [deg]")
         ax.grid(True)
@@ -283,6 +314,103 @@ else:
         fig.savefig(outdir / "rotation.png")
 
 # ![rotation](lv_ellipsoid_pericardium/rotation.png)
+#
+# ## Movie
+#
+# To see the difference, we render the first two runs side by side, from the side (top row)
+# and from the apex (bottom row). The stripes follow the tissue. They run along the long axis
+# in the reference configuration, and wind into helices as the ventricle twists. The grey
+# shape is the reference configuration, and its outer surface is the pericardium.
+
+
+def animate(path, names=("RobinBC", "PericardiumBC"), substeps=6, hold=10, fps=20):
+    cells, cell_types, points = dolfinx.plot.vtk_mesh(V1)
+    grid = pyvista.UnstructuredGrid(cells, cell_types, points)
+    for name in names:
+        for i, (_, u) in enumerate(frames[name]):
+            grid[f"{name} {i}"] = u
+    # Subdivide the surface for sharper stripes. The displacements are interpolated
+    # linearly onto the new points, so the motion is still the computed one.
+    surface = grid.extract_surface().subdivide(2, subfilter="linear")
+    X = surface.points.copy()
+    stripes = np.sin(6 * np.arctan2(X[:, 2], X[:, 1]))
+    labels = [label for label, _ in frames[names[0]]]
+
+    # From the side with the base up, and from the apex: (direction, up, zoom)
+    views = [((0.0, 1.0, 0.3), (1.0, 0.0, 0.0), 1.1), ((-1.0, 0.0, 0.0), (0.0, 0.0, 1.0), 2.0)]
+    plotter = pyvista.Plotter(
+        shape=(len(views), len(names)),
+        row_weights=[1.5, 1.0],
+        window_size=(720, 688),
+        border=False,
+        off_screen=True,
+    )
+    plotter.set_background("white")
+    meshes: dict[str, list[pyvista.PolyData]] = {name: [] for name in names}
+    for row, (view, viewup, zoom) in enumerate(views):
+        for col, name in enumerate(names):
+            plotter.subplot(row, col)
+            if row == 0:
+                plotter.add_text(name, font_size=12, color="black", position="upper_edge")
+            plotter.add_mesh(pyvista.PolyData(X, surface.faces), color="grey", opacity=0.15)
+            mesh = pyvista.PolyData(X.copy(), surface.faces)
+            mesh["stripes"] = stripes
+            plotter.add_mesh(
+                mesh,
+                cmap=["#8b1a2b", "#f2c9cf"],
+                show_scalar_bar=False,
+                smooth_shading=True,
+            )
+            meshes[name].append(mesh)
+            plotter.view_vector(view, viewup=viewup)
+            plotter.camera.zoom(zoom)
+
+    def draw(t):
+        """The picture at load step `t`, interpolated linearly between the steps around it"""
+        i = min(int(t), len(labels) - 2)
+        for name, copies in meshes.items():
+            u = (i + 1 - t) * surface[f"{name} {i}"] + (t - i) * surface[f"{name} {i + 1}"]
+            for mesh in copies:
+                mesh.points = X + u
+        plotter.subplot(len(views) - 1, 0)
+        plotter.add_text(
+            labels[round(t)],
+            font_size=9,
+            color="black",
+            position="lower_left",
+            name="label",
+        )
+        return plotter.screenshot(return_img=True)
+
+    # Forwards, then back so that the movie loops
+    forwards = np.linspace(0, len(labels) - 1, substeps * (len(labels) - 1) + 1)
+    times = np.concatenate([forwards, np.full(hold, forwards[-1]), forwards[::-1], np.zeros(hold)])
+    with imageio.get_writer(path, fps=fps, macro_block_size=8, quality=6) as writer:
+        for t in times:
+            writer.append_data(draw(t))
+    plotter.close()
+
+
+try:
+    import imageio.v2 as imageio
+    import imageio_ffmpeg  # noqa: F401
+    import pyvista
+except ImportError:
+    print("pyvista, imageio and imageio-ffmpeg are needed for the movie")
+else:
+    # In parallel each process has only its own part of the mesh. The page shows a copy
+    # of this file, `_static/pericardium.mp4`.
+    if comm.size == 1:
+        animate(outdir / "pericardium.mp4")
+
+# <video width="720" controls loop autoplay muted>
+#   <source src="../../_static/pericardium.mp4" type="video/mp4">
+#   <p>Video of the ventricle contracting with a RobinBC and with a PericardiumBC.</p>
+# </video>
+#
+# With the `PericardiumBC` the stripes wind further and the base comes further down. With
+# the `RobinBC` the epicardium comes away from the grey shape towards the apex, where the
+# `PericardiumBC` keeps it on the pericardium.
 #
 # ## Discussion
 #
@@ -295,6 +423,11 @@ else:
 # the twist far more, on any mesh. The `PericardiumBC` lets the epicardium slide, keeps it
 # at its distance from the pericardium on any mesh, and lets the ventricle twist at least
 # as much as one without epicardial springs.
+#
+# The surface made from the mesh gives the same as the ellipsoid: the twist differs by
+# 0.03 degrees, the volumes by 0.2 mL and the descent of the base by 0.2 mm. The surface
+# only approximates the ellipsoid, and its integral is a sum over the nodes of the
+# epicardium rather than over the quadrature points; both contribute.
 #
 # Both conditions keep the epicardium near where it is in the reference configuration.
 # Here that is the unloaded ventricle, so stiff springs also resist filling. Softer
