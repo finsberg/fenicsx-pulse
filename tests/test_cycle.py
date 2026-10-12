@@ -13,9 +13,10 @@ LV cycle by `CycleController`, checked against the five-phase order the whole
 design is for.
 
 The other tests use a small unit-cube problem (the same ENDO/FIXED tagging
-`test_cavity_control.py` uses, for the same reason: it keeps the cavity's rim
-in the x = 0 plane through the origin, where the divergence-theorem volume is
-exactly the enclosed volume) -- fast enough to not need `@pytest.mark.slow`.
+`test_cavity_control.py` uses, for the same reason: it keeps the rim of the
+cavity's opening on the fixed face x = 0, where the cavity pressure loads the
+wall exactly as a pressure traction does) -- fast enough to not need
+`@pytest.mark.slow`.
 """
 
 from __future__ import annotations

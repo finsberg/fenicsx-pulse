@@ -1,5 +1,6 @@
 import logging
 import typing
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import NamedTuple
@@ -39,6 +40,9 @@ class CardiacGeometriesObject(typing.Protocol):
 #: 4x4x4 cube a 4-iteration Newton solve took 98 s instead of 0.15 s. Pass
 #: ``metadata={"quadrature_degree": -1}`` to get that estimate anyway.
 DEFAULT_QUADRATURE_DEGREE = 4
+
+#: A cavity surface whose net (vector) area is below this fraction of its area has no opening.
+CLOSED_CAVITY_TOLERANCE = 1e-10
 
 
 @dataclass(slots=True, kw_only=True)
@@ -179,6 +183,14 @@ class Geometry:
 # Note slots doesn't work due to https://github.com/python/cpython/issues/90562
 @dataclass(kw_only=True)
 class HeartGeometry(Geometry):
+    # Compiled forms of the surface integrals `_opening` needs, per cavity. The forms and not
+    # their values: the mesh may move between two calls (`deform`, the fixed-point unloader).
+    _opening_forms: dict[int | tuple[int, ...], list[dolfinx.fem.Form]] = field(
+        init=False,
+        repr=False,
+        default_factory=dict,
+    )
+
     def base_center_form(
         self,
         base: str = "BASE",
@@ -232,43 +244,125 @@ class HeartGeometry(Geometry):
             dtype=dtype,
         )
 
+    def _opening(
+        self,
+        marker_id: int | tuple[int, ...],
+    ) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]] | None:
+        r"""Unit normal and centre of the opening of the cavity bounded by ``marker_id``.
+
+        Both come from the cavity's own surface :math:`\Gamma`, whose normal
+        :math:`\mathbf{N}` points into the cavity. A closed surface has no net area, so
+        :math:`\int_\Gamma \mathbf{N}\, dS = A \mathbf{a}` is the vector area of the lid that
+        would close the cavity, and by the divergence theorem
+        :math:`\int_\Gamma \mathbf{X} (\mathbf{N} \cdot \mathbf{a})\, dS` is, in the plane
+        of the lid, :math:`A` times the lid's centroid. Returns ``None`` when the surface has
+        no opening.
+        """
+        forms = self._opening_forms.get(marker_id)
+        if forms is None:
+            X, N, ds = self.X, self.facet_normal, self.ds(marker_id)
+            integrands = [ufl.as_ufl(1.0), *(N[j] for j in range(3))]
+            integrands += [X[i] * N[j] for i in range(3) for j in range(3)]
+            forms = self._opening_forms[marker_id] = dolfinx.fem.form([f * ds for f in integrands])
+        local = np.array([dolfinx.fem.assemble_scalar(form) for form in forms]).real
+        values = self.mesh.comm.allreduce(local, op=MPI.SUM)
+        area, vector_area, moment = values[0], values[1:4], values[4:].reshape(3, 3)
+
+        opening_area = np.linalg.norm(vector_area)
+        if opening_area <= CLOSED_CAVITY_TOLERANCE * area:
+            return None
+        normal = vector_area / opening_area
+        center = moment @ normal / opening_area
+        center -= np.dot(center, normal) * normal
+        return normal, center
+
     def volume_form(
         self,
         u: dolfinx.fem.Function | None = None,
-    ) -> dolfinx.fem.forms.Form:
-        """Return the form for the volume of the cavity
-        for a given marker
+        marker: str | typing.Sequence[str] | None = None,
+    ) -> ufl.core.expr.Expr:
+        r"""Return the integrand whose integral over the surface ``marker`` is the volume of
+        that cavity.
+
+        A ventricle's cavity is open at the base, so its volume is that of the cavity closed
+        by a flat lid. With :math:`\mathbf{a}` the unit normal of the lid and
+        :math:`\mathbf{b}` its centre, the field
+        :math:`\boldsymbol{\xi} = (\mathbf{I} - \mathbf{a} \otimes \mathbf{a})
+        (\mathbf{x} - \mathbf{b})` has divergence 2 and no flux through the lid, so
+
+        .. math::
+            V = -\frac{1}{2} \int_\Gamma \boldsymbol{\xi} \cdot \mathbf{n}\, da ,
+            \qquad \mathbf{n}\, da = J \mathbf{F}^{-T} \mathbf{N}\, dA ,
+
+        with :math:`\mathbf{n}` pointing into the cavity. :math:`\mathbf{a}` and
+        :math:`\mathbf{b}` are those of the mesh as it is when this is called (see
+        :meth:`_opening`) and do not follow ``u``. The volume then does not depend on where
+        the cavity is: it is the same wherever the origin is and however the mesh is turned,
+        a rigid translation by ``u`` leaves it unchanged, and so does a rigid rotation about
+        the centre of the opening. The cavity pressure is conjugate to this volume, so it
+        exerts no net force on the wall, as if the lid carried its share.
+
+        It is the volume closed by a flat lid while the opening stays normal to
+        :math:`\mathbf{a}`. An opening of area :math:`A` that tilts by :math:`\theta` while
+        its centre moves a distance :math:`d` in its own plane adds an error of at most
+        :math:`\frac{1}{2} A d \sin\theta`.
+
+        A surface with no opening gets :math:`-\frac{1}{3} \mathbf{x} \cdot \mathbf{n}`,
+        which is exact for it.
 
         Parameters
         ----------
         u : dolfinx.fem.Function | None, optional
             Optional displacement field, by default None
+        marker : str | typing.Sequence[str] | None, optional
+            Marker (or markers) of the surface of the cavity. Without it the integrand is
+            :math:`-\frac{1}{3} \mathbf{x} \cdot \mathbf{n}` for any surface, which measures
+            an open cavity from the origin of the coordinates (deprecated).
 
         Returns
         -------
-        dolfinx.fem.forms.Form
-            The form for the volume of the cavity
+        ufl.core.expr.Expr
+            The integrand, to be multiplied by ``ds`` of the cavity's marker
 
         Raises
         ------
         exceptions.MarkerNotFoundError
             If the marker is not found in the geometry
         """
-        X = self.X
-
         if u is None:
-            return (-1 / 3) * ufl.dot(X, self.facet_normal)
+            x, n = self.X, self.facet_normal
         else:
             F = ufl.Identity(3) + ufl.grad(u)
-            J = ufl.det(F)
-            return (-1 / 3) * J * ufl.dot(X + u, ufl.inv(F).T * self.facet_normal)
+            x, n = self.X + u, ufl.det(F) * ufl.inv(F).T * self.facet_normal
+
+        if marker is None:
+            warnings.warn(
+                "volume_form without a marker measures the cavity from the origin of the "
+                "coordinates, so the volume changes when the cavity moves. Pass the marker "
+                "of the cavity's surface.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            opening = None
+        else:
+            opening = self._opening(self.get_marker_ids(marker))
+        if opening is None:
+            return (-1 / 3) * ufl.dot(x, n)
+
+        a, b = (
+            dolfinx.fem.Constant(self.mesh, value.astype(dolfinx.default_scalar_type))
+            for value in opening
+        )
+        xi = x - b
+        return (-1 / 2) * ufl.dot(xi - ufl.dot(xi, a) * a, n)
 
     def volume(
         self,
         marker: str | typing.Sequence[str],
         u: dolfinx.fem.Function | None = None,
     ) -> float:
-        """Return the volume of the cavity for a given marker
+        """Return the volume of the cavity for a given marker, closed by a flat lid over its
+        opening; see :meth:`volume_form`.
 
         Parameters
         ----------
@@ -289,7 +383,7 @@ class HeartGeometry(Geometry):
         """
 
         marker_id = self.get_marker_ids(marker)
-        form = self.volume_form(u=u)
+        form = self.volume_form(u=u, marker=marker)
         return dolfinx.fem.assemble_scalar(dolfinx.fem.form(form * self.ds(marker_id))).real
 
     def get_marker_ids(

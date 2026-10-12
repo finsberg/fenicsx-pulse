@@ -417,13 +417,13 @@ def p_BiV(V_LV: float, V_RV: float, t: float) -> tuple[float, float]:
 #
 # The default initial state of `Regazzoni2020` suits its own 0D ventricles,
 # not this mesh. Its right ventricle holds 166 mL at a pressure of a few
-# mmHg; the 3D right ventricle is much stiffer, and is unloaded at 66 mL. With
+# mmHg; the 3D right ventricle is much stiffer, and is unloaded at 73 mL. With
 # the default blood volume, the blood the ventricles cannot take backs up into
 # the atria and veins, and the filling pressures climb well above normal. So
 # the two ventricular volumes start at the unloaded volumes of the mesh, and
 # the atria, the veins and the pulmonary arteries start at 60% of their
 # default volumes and pressures. All other states keep their defaults. That
-# leaves 1030 mL in the circuit, 588 mL less than the defaults. Even so, the
+# leaves 1048 mL in the circuit, 570 mL less than the defaults. Even so, the
 # first beats move blood between the compartments until the closed loop
 # settles; this is why we run four beats and judge the last.
 #
@@ -608,13 +608,13 @@ if comm.rank == 0:
 # name: pv_loop_land_circulation_biv
 # ---
 # Both ventricles over four beats, the last one drawn solid and the earlier
-# ones faded. In the last beat the left ventricle ejects 70 mL (EF 43%)
-# against a peak of 103 mmHg, and the right 63 mL (EF 61%) against 18 mmHg.
+# ones faded. In the last beat the left ventricle ejects 71 mL (EF 40%)
+# against a peak of 104 mmHg, and the right 65 mL (EF 59%) against 18 mmHg.
 # Just before the calcium transient starts, the left ventricular pressure is
 # 10 mmHg and the right 6 mmHg. The earlier beats drift while the closed loop
-# settles from its initial state: the left ventricular peak falls from 117 to
-# 103 mmHg, and the right ventricular end-diastolic volume grows from 89 to
-# 104 mL. In the last beat both loops close to within about 2 mL.
+# settles from its initial state: the left ventricular peak falls from 116 to
+# 104 mmHg, and the right ventricular end-diastolic volume grows from 97 to
+# 110 mL. In the last beat both loops close to within about 2 mL.
 # ```
 #
 # <video width="720" controls loop autoplay muted>

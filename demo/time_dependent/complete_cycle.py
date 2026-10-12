@@ -272,11 +272,11 @@ logger.info(
 # pressure then drops as PRELOAD takes over; a slower one leaves it short, and
 # the pressure jumps. We set each ventricle's rate so that its pressure at the
 # end of filling is close to `preload_pressure`: when the second beat's
-# PRELOAD starts, the left ventricle holds 96.1 mL at 3.41 mmHg
-# (`preload_pressure` is 500 Pa, 3.75 mmHg), and the right 67.1 mL at
-# 1.53 mmHg (200 Pa, 1.50 mmHg). A constant rate is slower than the wall
+# PRELOAD starts, the left ventricle holds 106.3 mL at 2.80 mmHg
+# (`preload_pressure` is 500 Pa, 3.75 mmHg), and the right 83.7 mL at
+# 1.08 mmHg (200 Pa, 1.50 mmHg). A constant rate is slower than the wall
 # recoils early in filling, so the cavity pressure first dips below zero, to
-# about -2.5 mmHg in the left ventricle and -2.3 mmHg in the right.
+# about -2.1 mmHg in the left ventricle and -2.2 mmHg in the right.
 
 lv_params = cycle.CycleParams(
     t_zero=0.05,
@@ -301,8 +301,8 @@ lv_params = cycle.CycleParams(
 # was raised from 0.15 to 0.5 mmHg s/mL to give a right ventricular systolic
 # pressure of about 24 mmHg. `p_init` is tuned so that the first beat
 # opens the pulmonary valve at about the pressure the compliance has drained to
-# by the second beat (2.50 against 2.33 kPa), so the two beats peak at 24.7 and
-# 23.6 mmHg.
+# by the second beat (2.50 against 2.41 kPa), so the two beats peak at 25.1 and
+# 24.5 mmHg.
 
 rv_params = cycle.CycleParams(
     t_zero=0.05,
@@ -347,9 +347,9 @@ params = {"LV": lv_params, "RV": rv_params}
 # 0.143 s to 0.477 s of each beat and peaks at 0.395 s. It has died out long before the next beat starts. We tuned
 # `T_MAX` by hand, for a left ventricular peak pressure of about 100 mmHg at an
 # ejection fraction of about 50 %. As the tension builds slowly, the left
-# ventricle spends 69 ms of the second beat in isovolumic contraction before
+# ventricle spends 76 ms of the second beat in isovolumic contraction before
 # its pressure exceeds the compliance pressure $P_c$, and it then ejects for
-# 210 ms, until just after the tension peaks.
+# 204 ms, until just after the tension peaks.
 
 T_MAX = 100.0  # kPa, uniform over both ventricles
 
@@ -758,9 +758,9 @@ if comm.rank == 0:
 # name: pv_loop_complete_cycle
 # ---
 # Both ventricles over two beats, the second solid and the first faded. In
-# the second beat the left ventricle ejects 55.4 mL (EF 50%) over 210 ms
-# against a peak of 97.6 mmHg, and the right 28.7 mL (EF 40%) against
-# 23.6 mmHg. The first beat peaks a little higher, at 99.2 and 24.7 mmHg,
+# the second beat the left ventricle ejects 58.5 mL (EF 47%) over 204 ms
+# against a peak of 100.3 mmHg, and the right 32.0 mL (EF 35%) against
+# 24.5 mmHg. The first beat peaks a little higher, at 100.8 and 25.1 mmHg,
 # since its Windkessels start from `p_init` rather than from the pressures
 # they have drained to. The first loops close through PRELOAD, which ramps the
 # pressure back up to end diastole; the second ones stay open because the run

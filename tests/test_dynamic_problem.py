@@ -19,6 +19,8 @@ up: if the constraint were (incorrectly) enforced against the alpha_f blend,
 these assertions would fail by a large margin, not just a rounding error.
 """
 
+import math
+
 from mpi4py import MPI
 
 import dolfinx
@@ -26,6 +28,8 @@ import numpy as np
 import pytest
 import ufl
 
+import cardiac_geometries
+import cardiac_geometries.geometry
 import pulse
 
 
@@ -36,19 +40,10 @@ def mesh():
 
 @pytest.fixture
 def geometry(mesh):
-    def endo(x):
-        # Not the x=0 face: there, X = (0, y, z) is orthogonal to the outward
-        # normal (-1, 0, 0), so the divergence-theorem volume integrand
-        # (-1/3) X . n vanishes identically and "volume" would trivially be 0.
-        return np.isclose(x[0], 1.0)
-
     def fixed_face(x):
         return np.isclose(x[0], 0.0)
 
-    boundaries = [
-        pulse.Marker(name="ENDO", marker=1, dim=2, locator=endo),
-        pulse.Marker(name="FIXED", marker=2, dim=2, locator=fixed_face),
-    ]
+    boundaries = [pulse.Marker(name="FIXED", marker=2, dim=2, locator=fixed_face)]
     return pulse.HeartGeometry(mesh=mesh, boundaries=boundaries)
 
 
@@ -56,6 +51,48 @@ def geometry(mesh):
 def dirichlet_bc(geometry):
     def bc(V):
         facets = geometry.facet_tags.find(2)
+        dofs = dolfinx.fem.locate_dofs_topological(V, 2, facets)
+        u_fixed = dolfinx.fem.Function(V)
+        u_fixed.x.array[:] = 0.0
+        return [dolfinx.fem.dirichletbc(u_fixed, dofs)]
+
+    return bc
+
+
+@pytest.fixture(scope="module")
+def ventricle(tmp_path_factory):
+    """An LV ellipsoid, the size of `test_circulation_coupling.py`'s.
+
+    The two constraint tests need a cavity whose volume an incompressible wall
+    can change. The volume is that of the cavity closed by a flat lid over its
+    opening, so on the cube above one flat face encloses none, and the five
+    faces around the fixed one enclose the cube itself.
+    """
+    geodir = tmp_path_factory.mktemp("lv_dynamic")
+    comm = MPI.COMM_WORLD
+    if not (geodir / "mesh.xdmf").exists():
+        comm.barrier()
+        cardiac_geometries.mesh.lv_ellipsoid(
+            outdir=geodir,
+            r_short_endo=0.025,
+            r_short_epi=0.035,
+            r_long_endo=0.09,
+            r_long_epi=0.097,
+            psize_ref=0.05,
+            mu_apex_endo=-math.pi,
+            mu_base_endo=-math.acos(5 / 17),
+            mu_apex_epi=-math.pi,
+            mu_base_epi=-math.acos(5 / 20),
+            comm=comm,
+        )
+    geo = cardiac_geometries.geometry.Geometry.from_folder(comm=comm, folder=geodir)
+    return pulse.HeartGeometry.from_cardiac_geometries(geo)
+
+
+@pytest.fixture
+def fixed_base(ventricle):
+    def bc(V):
+        facets = ventricle.facet_tags.find(ventricle.markers["BASE"][0])
         dofs = dolfinx.fem.locate_dofs_topological(V, 2, facets)
         u_fixed = dolfinx.fem.Function(V)
         u_fixed.x.array[:] = 0.0
@@ -84,9 +121,10 @@ def _run_volume_ramp(problem, geometry, Volume, volumes):
     )
 
 
-def test_dynamic_cavity_constraint_matches_true_configuration(mesh, geometry, dirichlet_bc):
+def test_dynamic_cavity_constraint_matches_true_configuration(ventricle, fixed_base):
     """The cavity-volume constraint must pin the *actual* current volume
     V(self.u) to the target, not just the alpha_f-interpolated blend."""
+    geometry, mesh, dirichlet_bc = ventricle, ventricle.mesh, fixed_base
     comp_model = pulse.compressibility.Compressible2()
     model = _cardiac_model(mesh, comp_model)
 
@@ -132,11 +170,7 @@ def _incompressibility_defect(problem, geometry):
     return geometry.mesh.comm.allreduce(dolfinx.fem.assemble_scalar(form), op=MPI.SUM) ** 0.5
 
 
-def test_dynamic_incompressibility_constraint_matches_static_reference(
-    mesh,
-    geometry,
-    dirichlet_bc,
-):
+def test_dynamic_incompressibility_constraint_matches_static_reference(ventricle, fixed_base):
     """DynamicProblem's incompressibility defect J(self.u)-1 should be the
     same order of magnitude as StaticProblem's on the identical ramp.
 
@@ -149,6 +183,7 @@ def test_dynamic_incompressibility_constraint_matches_static_reference(
     StaticProblem (unaffected by any alpha-filtering question at all) is
     the meaningful invariant: DynamicProblem must not be dramatically worse.
     """
+    geometry, mesh, dirichlet_bc = ventricle, ventricle.mesh, fixed_base
     comp_model = pulse.compressibility.Incompressible()
     # Kept short: the incompressible mixed problem is expensive to solve,
     # and two steps (an initial jump, then a change of direction) is enough

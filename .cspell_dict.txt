@@ -296,6 +296,7 @@ nanson
 epicardial
 discretisation
 exponentials
+boldsymbol
 Hörmann
 Weigl
 Nagler

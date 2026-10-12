@@ -111,7 +111,10 @@ For a runnable, more complete version see the repo README and the demos listed b
 - **Geometry** (`pulse.geometry`): `Geometry` wraps a dolfinx mesh plus facet markers/measures
   (`dx`, `ds`), typically built via `Geometry.from_cardiac_geometries(geo, ...)` from a
   `cardiac_geometriesx` object. `HeartGeometry` adds cavity helpers (`volume`, `volume_form`,
-  `base_center`) for LV/BiV/cavity problems. Facet/marker lookups raise `MarkerNotFoundError` /
+  `base_center`) for LV/BiV/cavity problems. `volume(marker, u)` and
+  `volume_form(u, marker=...)` measure the cavity closed by a flat lid over its opening, wherever
+  the mesh sits; always pass the marker to `volume_form` (without it the volume is measured from
+  the origin, which is deprecated). Facet/marker lookups raise `MarkerNotFoundError` /
   `MeshTagNotFoundError` (`pulse.exceptions`) rather than returning `None`. `dx`/`ds` use
   `metadata["quadrature_degree"]`, 4 by default. Pass `-1` to get UFL's own estimate, which is
   very high for cardiac models and makes assembly far slower.

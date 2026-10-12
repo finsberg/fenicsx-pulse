@@ -182,9 +182,12 @@ fig.savefig(outdir / "pressure_activation.png")
 vtx = dolfinx.io.VTXWriter(geometry.mesh.comm, outdir / "displacement.bp", [problem.u], engine="BP4")
 vtx.write(0.0)
 
-volume_form = geometry.volume_form(u=problem.u)
-lv_volume_form = dolfinx.fem.form(volume_form * geometry.ds(geometry.markers["LV"][0]))
-rv_volume_form = dolfinx.fem.form(volume_form * geometry.ds(geometry.markers["RV"][0]))
+lv_volume_form = dolfinx.fem.form(
+    geometry.volume_form(u=problem.u, marker="LV") * geometry.ds(geometry.markers["LV"][0]),
+)
+rv_volume_form = dolfinx.fem.form(
+    geometry.volume_form(u=problem.u, marker="RV") * geometry.ds(geometry.markers["RV"][0]),
+)
 
 lv_volumes = []
 rv_volumes = []
