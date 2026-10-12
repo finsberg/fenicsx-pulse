@@ -396,6 +396,17 @@ def _monolithic_coupled(lv, record=(), scheme="backward_euler"):
     return coupling, problem
 
 
+def test_monolithic_coupling_gives_every_block_its_own_space(lv):
+    """The cavity pressure and each circuit state are blocks of the system, each on a space of
+    its own. dolfinx refuses a blocked form whose rows share a space, so with one shared real
+    space the solver cannot be built there."""
+    _, problem = _monolithic_coupled(lv)
+    spaces = [test.ufl_function_space()._cpp_object for test in problem.test_functions]
+    assert len(spaces) > 2
+    for i, Vi in enumerate(spaces):
+        assert all(Vi is not Vj for Vj in spaces[:i])
+
+
 def test_monolithic_coupling_holds_the_constraint(lv):
     _, geometry = lv
     coupling, problem = _monolithic_coupled(lv, record=("Q_in",))
