@@ -15,10 +15,11 @@ import scifem
 import ufl
 from packaging.version import Version
 
-from .boundary_conditions import BoundaryConditions
+from .boundary_conditions import BoundaryConditions, check_pericardium, pericardial_surface
 from .cardiac_model import CardiacModel
 from .circulation import ChamberCoupling, CirculationModel, mL, mmHg
 from .geometry import HeartGeometry
+from .surface import PericardialSurface, TrackedSurface
 from .telemetry import BaseMonitor, NullMonitor
 from .units import Variable, mesh_factor
 
@@ -145,6 +146,48 @@ kPa = 1e3
 CONTROLLED_PRESSURE_SCALE = 1 / kPa
 
 
+def _update_before_assembly(
+    snes,
+    u: dolfinx.fem.Function | typing.Sequence[dolfinx.fem.Function],
+    surfaces: typing.Sequence[TrackedSurface],
+) -> None:
+    """Have ``snes`` update the tracked ``surfaces`` to the point it evaluates the residual or
+    the Jacobian at, before it assembles either. ``u`` is what the forms hold that point in.
+
+    A line search evaluates the residual at trial points too, so this wraps the callbacks of
+    the solver rather than run once per iteration.
+    """
+    from petsc4py import PETSc
+
+    def update(x, hessian: bool) -> None:
+        # As dolfinx's callbacks do before they assemble
+        if x.getType() == PETSc.Vec.Type.NEST:
+            for x_sub in x.getNestSubVecs():
+                x_sub.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
+        else:
+            x.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
+        dolfinx.fem.petsc.assign(x, u)  # type: ignore[arg-type]
+        for surface in surfaces:
+            surface.update(hessian=hessian)
+
+    b, (assemble_residual, residual_args, residual_kargs) = snes.getFunction()
+    J, P, (assemble_jacobian, jacobian_args, jacobian_kargs) = snes.getJacobian()
+
+    def residual(snes, x, b, *args, **kargs):
+        # The Hessians of the surfaces multiply what is zero where they were updated
+        update(x, hessian=False)
+        return assemble_residual(snes, x, b, *args, **kargs)
+
+    def jacobian(snes, x, J, P, *args, **kargs):
+        update(x, hessian=True)
+        return assemble_jacobian(snes, x, J, P, *args, **kargs)
+
+    snes.setFunction(residual, b, args=residual_args, kargs=residual_kargs)
+    snes.setJacobian(jacobian, J, P, args=jacobian_args, kargs=jacobian_kargs)
+    for surface in surfaces:
+        surface.update(fixed=True)
+
+
 class Cavity(typing.NamedTuple):
     """A chamber whose pressure is an unknown of the problem, and its constraint.
 
@@ -193,6 +236,7 @@ class StaticProblem:
         parameters.update(self.parameters)
         self.parameters = parameters
         self._check_cavities()
+        self._init_pericardial_surfaces()
         self._init_spaces()
         self._init_forms()
         logger.debug("Initialized StaticProblem with parameters:")
@@ -204,6 +248,23 @@ class StaticProblem:
                 f"Circulation states: {list(self.circulation.state_names)}",
             )
         logger.debug(f"Boundary conditions: {self.bcs}")
+
+    def _init_pericardial_surfaces(self):
+        """The surface and the measure to build the form of every `PericardiumBC` with."""
+        self._pericardial_surfaces: list[tuple[PericardialSurface, ufl.Measure]] = []
+        for pericardium in self.bcs.pericardium:
+            surface, ds = pericardial_surface(
+                pericardium,
+                self.geometry.mesh,
+                self.geometry.facet_tags,
+                self.geometry.ds,
+            )
+            check_pericardium(pericardium, self.geometry.mesh, ds, surface)
+            self._pericardial_surfaces.append((surface, ds))
+
+    @property
+    def _tracked_surfaces(self) -> list[TrackedSurface]:
+        return [s for s, _ in self._pericardial_surfaces if isinstance(s, TrackedSurface)]
 
     def _check_cavities(self):
         """Refuse a cavity that is not constrained exactly once, or a control the mesh_unit breaks.
@@ -384,9 +445,9 @@ class StaticProblem:
     def _init_circulation_spaces(self):
         """Give every circulation state its own unknown, and tie the chambers.
 
-        Each state gets one degree of freedom on the real space, the same space
-        the cavity pressures already use, since a circuit state is a single
-        global number rather than a field.
+        Each state gets one degree of freedom on a real space of its own (see
+        `_new_real_space`), as the cavity pressures do, since a circuit state is
+        a single global number rather than a field.
 
         Coupling a chamber then needs no new machinery. The cavity constraint
         row already reads ``pendo * (volume / area - V(u)) * ds``, which fixes
@@ -411,8 +472,6 @@ class StaticProblem:
             )
 
         logger.debug(f"Number of circulation states: {self.num_circulation_states}")
-        if getattr(self, "real_space", None) is None:
-            self.real_space = scifem.create_real_functionspace(self.geometry.mesh)
 
         initial = np.asarray(self.circulation.initial_states, dtype=np.float64)
         for name, value in zip(self.circulation.state_names, initial):
@@ -574,7 +633,6 @@ class StaticProblem:
 
         if self.num_cavity_pressure_states > 0:
             logger.debug(f"Number of cavity pressure states: {self.num_cavity_pressure_states}")
-            self.real_space = scifem.create_real_functionspace(self.geometry.mesh)
             for _ in range(self.num_cavity_pressure_states):
                 space = self._block_space()
                 cavity_pressure = self.Function(space)
@@ -704,6 +762,23 @@ class StaticProblem:
         forms[0] += form
         return forms
 
+    def _pericardium_form(
+        self,
+        u: dolfinx.fem.Function,
+        v: dolfinx.fem.Function | None = None,
+    ) -> list[dolfinx.fem.Form]:
+        """The springs, and with a velocity ``v`` the dashpots, of every `PericardiumBC`."""
+        forms = self._empty_form()
+        if not self.bcs.pericardium:
+            return forms
+        logger.debug("Creating pericardium boundary condition form...")
+        X = ufl.SpatialCoordinate(self.geometry.mesh)
+        scale = mesh_factor(str(self.parameters["mesh_unit"]))
+        for pericardium, (surface, ds) in zip(self.bcs.pericardium, self._pericardial_surfaces):
+            t = pericardium.traction(X + u, X, scale=scale, velocity=v, surface=surface)
+            forms[0] += ufl.dot(t, self.u_test) * ds(pericardium.marker)
+        return forms
+
     def _neumann_form(self, u: dolfinx.fem.Function) -> list[dolfinx.fem.Form]:
         forms = self._empty_form()
         if not self.bcs.neumann:
@@ -825,6 +900,7 @@ class StaticProblem:
         R_material = self._material_form(self.u, p=self.p)
         R_cavity = self._cavity_pressure_form(self.u, self.cavity_pressures)
         R_robin = self._robin_form(self.u)
+        R_pericardium = self._pericardium_form(self.u)
         R_neumann = self._neumann_form(self.u)
         R_rigid = self._rigid_body_form(self.u)
         R_body_force = self._body_force_form(self.u)
@@ -834,6 +910,7 @@ class StaticProblem:
             R[i] += R_material[i]
             R[i] += R_cavity[i]
             R[i] += R_robin[i]
+            R[i] += R_pericardium[i]
             R[i] += R_neumann[i]
             R[i] += R_rigid[i]
             R[i] += R_body_force[i]
@@ -1076,6 +1153,9 @@ class StaticProblem:
 
                 # Apply options so PETSc registers the MATIS matrix before setup
                 snes.setFromOptions()
+
+            if self._tracked_surfaces:
+                _update_before_assembly(self.problem.solver, u, self._tracked_surfaces)
         else:
             petsc_options = self.parameters["petsc_options"]
             # Pop options that are not supported in older dolfinx versions
@@ -1096,6 +1176,16 @@ class StaticProblem:
                 max_iterations=25,
                 petsc_options=petsc_options,
             )
+            if surfaces := self._tracked_surfaces:
+
+                def update(solver, surfaces=surfaces):
+                    for surface in surfaces:
+                        surface.update()
+
+                for surface in surfaces:
+                    surface.update(fixed=True)
+                # Called before the residual and the Jacobian of every iteration are assembled
+                self._solver.set_pre_solve_callback(update)
 
     def update_fields(self):
         """Shift the circuit's second history level, for BDF2.
@@ -1223,7 +1313,7 @@ class DynamicProblem(StaticProblem):
 
     - at the :math:`\alpha_f` point (``interpolate(u_old, u, alpha_f)``,
       built in :attr:`R`): the material, compressibility and viscous stress,
-      the Robin and Neumann loads, and the body force -- the genuine
+      the Robin, pericardium and Neumann loads, and the body force -- the genuine
       second-order dynamics, for which alpha_f-interpolation is the
       consistent choice.
     - at the :math:`\alpha_m` point: the inertia term.
@@ -1353,6 +1443,7 @@ class DynamicProblem(StaticProblem):
         # pressure) even under smooth volume forcing.
         R_cavity = self._cavity_pressure_form(self.u, self.cavity_pressures)
         R_robin = self._robin_form(u=u, v=v)
+        R_pericardium = self._pericardium_form(u=u, v=v)
         R_neumann = self._neumann_form(u)
         R_rigid = self._rigid_body_form(u)
         R_body_force = self._body_force_form(u)
@@ -1366,6 +1457,7 @@ class DynamicProblem(StaticProblem):
             R[i] += R_material[i]
             R[i] += R_cavity[i]
             R[i] += R_robin[i]
+            R[i] += R_pericardium[i]
             R[i] += R_neumann[i]
             R[i] += R_rigid[i]
             R[i] += R_body_force[i]
