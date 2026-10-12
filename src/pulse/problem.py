@@ -416,17 +416,18 @@ class StaticProblem:
 
         initial = np.asarray(self.circulation.initial_states, dtype=np.float64)
         for name, value in zip(self.circulation.state_names, initial):
-            state = self.Function(self.real_space, name=name)
-            state_old = self.Function(self.real_space, name=f"{name}_old")
-            state_prev = self.Function(self.real_space, name=f"{name}_prev")
+            space = self._block_space()
+            state = self.Function(space, name=name)
+            state_old = self.Function(space, name=f"{name}_old")
+            state_prev = self.Function(space, name=f"{name}_prev")
             state.x.array[:] = value
             state_old.x.array[:] = value
             state_prev.x.array[:] = value
             self.circulation_states.append(state)
             self.circulation_states_old.append(state_old)
             self.circulation_states_prev.append(state_prev)
-            self.circulation_states_test.append(ufl.TestFunction(self.real_space))
-            self.circulation_states_trial.append(ufl.TrialFunction(self.real_space))
+            self.circulation_states_test.append(ufl.TestFunction(space))
+            self.circulation_states_trial.append(ufl.TrialFunction(space))
 
         # Coefficients of (y, y_old, y_prev) in dt * dy/dt. Constants rather
         # than literals so BDF2 can take its first step as backward Euler
@@ -575,10 +576,11 @@ class StaticProblem:
             logger.debug(f"Number of cavity pressure states: {self.num_cavity_pressure_states}")
             self.real_space = scifem.create_real_functionspace(self.geometry.mesh)
             for _ in range(self.num_cavity_pressure_states):
-                cavity_pressure = self.Function(self.real_space)
-                cavity_pressure_old = self.Function(self.real_space)
-                cavity_pressure_test = ufl.TestFunction(self.real_space)
-                cavity_pressure_trial = ufl.TrialFunction(self.real_space)
+                space = self._block_space()
+                cavity_pressure = self.Function(space)
+                cavity_pressure_old = self.Function(space)
+                cavity_pressure_test = ufl.TestFunction(space)
+                cavity_pressure_trial = ufl.TrialFunction(space)
 
                 self.cavity_pressures.append(cavity_pressure)
                 self.cavity_pressures_old.append(cavity_pressure_old)
@@ -586,6 +588,15 @@ class StaticProblem:
                 self.cavity_pressures_trial.append(cavity_pressure_trial)
         else:
             logger.debug("No cavity pressure states needed")
+
+    def _block_space(self) -> dolfinx.fem.FunctionSpace:
+        """A space of its own for one real-valued block (a cavity pressure or 0D state).
+
+        Every block of the Newton system must be on its own space object: dolfinx's
+        blocked assembly refuses rows or columns that share one. A clone shares the
+        element and dofmap of `real_space`, so it costs nothing.
+        """
+        return self.real_space.clone()
 
     def _init_rigid_body(self):
         logger.debug("Initializing rigid body function space...")
@@ -1252,10 +1263,9 @@ class DynamicProblem(StaticProblem):
 
     def _init_cavity_pressure_spaces(self):
         super()._init_cavity_pressure_spaces()
-        self.cavity_pressures_old = []
-        for _ in range(self.num_cavity_pressure_states):
-            cavity_pressure_old = self.Function(self.real_space)
-            self.cavity_pressures_old.append(cavity_pressure_old)
+        self.cavity_pressures_old = [
+            self.Function(pressure.function_space) for pressure in self.cavity_pressures
+        ]
 
     def _material_form(self, u, v, p):
         F = ufl.grad(u) + ufl.Identity(3)

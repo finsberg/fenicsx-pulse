@@ -290,3 +290,24 @@ def test_controlled_cavity_needs_mesh_unit_m(mesh, geometry, dirichlet_bc):
             [Cavity("ENDO", control=control)],
             parameters={"mesh_unit": "mm"},
         )
+
+
+@pytest.mark.parametrize("cls", [pulse.problem.StaticProblem, pulse.problem.DynamicProblem])
+def test_two_cavities_have_their_own_spaces(
+    mesh,
+    geometry,
+    dirichlet_bc,
+    cls,
+    assert_one_space_per_block,
+):
+    """Two cavity pressures (as in a BiV) are two blocks, so two spaces."""
+    volume = dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(1.0))
+    cavities = [Cavity("ENDO", volume=volume), Cavity("ENDO", control=CavityControl(mesh))]
+    problem = cls(
+        model=_model(),
+        geometry=geometry,
+        bcs=pulse.BoundaryConditions(dirichlet=(dirichlet_bc,)),
+        cavities=cavities,
+        parameters={"mesh_unit": "m"},
+    )
+    assert_one_space_per_block(problem)
