@@ -156,6 +156,11 @@ def test_block_system_has_one_row_per_unknown(problem):
     assert all(len(row) == problem.num_states for row in K)
 
 
+def test_every_block_row_has_its_own_space(problem, assert_one_space_per_block):
+    """dolfinx (0.11 nightly on) refuses a blocked form whose rows share one space object."""
+    assert_one_space_per_block(problem)
+
+
 def test_cavity_volume_is_the_chamber_state(problem):
     """The constraint must point at the circuit's volume state, not a constant."""
     index = list(problem.circulation.state_names).index("V_LV")
