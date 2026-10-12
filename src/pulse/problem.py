@@ -475,7 +475,7 @@ class StaticProblem:
 
         initial = np.asarray(self.circulation.initial_states, dtype=np.float64)
         for name, value in zip(self.circulation.state_names, initial):
-            space = self._block_space()
+            space = self._new_real_space()
             state = self.Function(space, name=name)
             state_old = self.Function(space, name=f"{name}_old")
             state_prev = self.Function(space, name=f"{name}_prev")
@@ -624,6 +624,19 @@ class StaticProblem:
             )
         return form
 
+    def _new_real_space(self) -> dolfinx.fem.FunctionSpace:
+        """A real space of its own, for one global unknown.
+
+        Every cavity pressure and circulation state is a single number on the
+        real space, and each is a block of its own in the system. dolfinx
+        refuses a blocked form whose rows (or columns) share a space, so each
+        gets a clone of `real_space`, which shares its element and dofmap but
+        is a distinct space.
+        """
+        if getattr(self, "real_space", None) is None:
+            self.real_space = scifem.create_real_functionspace(self.geometry.mesh)
+        return self.real_space.clone()
+
     def _init_cavity_pressure_spaces(self):
         logger.debug("Initializing cavity pressure function spaces...")
         self.cavity_pressures = []
@@ -634,7 +647,7 @@ class StaticProblem:
         if self.num_cavity_pressure_states > 0:
             logger.debug(f"Number of cavity pressure states: {self.num_cavity_pressure_states}")
             for _ in range(self.num_cavity_pressure_states):
-                space = self._block_space()
+                space = self._new_real_space()
                 cavity_pressure = self.Function(space)
                 cavity_pressure_old = self.Function(space)
                 cavity_pressure_test = ufl.TestFunction(space)
@@ -646,15 +659,6 @@ class StaticProblem:
                 self.cavity_pressures_trial.append(cavity_pressure_trial)
         else:
             logger.debug("No cavity pressure states needed")
-
-    def _block_space(self) -> dolfinx.fem.FunctionSpace:
-        """A space of its own for one real-valued block (a cavity pressure or 0D state).
-
-        Every block of the Newton system must be on its own space object: dolfinx's
-        blocked assembly refuses rows or columns that share one. A clone shares the
-        element and dofmap of `real_space`, so it costs nothing.
-        """
-        return self.real_space.clone()
 
     def _init_rigid_body(self):
         logger.debug("Initializing rigid body function space...")
