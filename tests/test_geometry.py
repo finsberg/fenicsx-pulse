@@ -288,3 +288,30 @@ def test_flat_surface_encloses_no_volume(mesh):
     geo = pulse.HeartGeometry(mesh=mesh, boundaries=[face])
 
     assert np.isclose(_volume(geo, marker="FACE"), 0.0, atol=1e-14)
+
+
+def test_deform_moves_every_copy_of_a_node_alike():
+    """A node shared between processes has a copy on each. `deform` must move them all to
+    the same coordinates, bit for bit, and each by the displacement at the node."""
+    mesh = dolfinx.mesh.create_unit_cube(
+        MPI.COMM_WORLD, 4, 4, 4, ghost_mode=dolfinx.mesh.GhostMode.shared_facet
+    )
+    geometry = pulse.Geometry(mesh=mesh)
+    V = dolfinx.fem.functionspace(mesh, ("Lagrange", 2, (3,)))
+    u = dolfinx.fem.Function(V)
+
+    def displacement(x):
+        return 0.1 * np.vstack((np.sin(3 * x[1]), x[0] * x[2], np.cos(2 * x[0]) * x[1]))
+
+    u.interpolate(displacement)
+    x0 = mesh.geometry.x.copy()
+    geometry.deform(u)
+    # The vertices are dofs of u, so u is exact there
+    np.testing.assert_allclose(mesh.geometry.x, x0 + displacement(x0.T).T, rtol=0, atol=1e-14)
+
+    ids = np.concatenate(mesh.comm.allgather(np.asarray(mesh.geometry.input_global_indices)))
+    x = np.concatenate(mesh.comm.allgather(mesh.geometry.x))
+    order = np.argsort(ids, kind="stable")
+    ids, x = ids[order], x[order]
+    first = np.searchsorted(ids, ids)
+    np.testing.assert_array_equal(x, x[first])

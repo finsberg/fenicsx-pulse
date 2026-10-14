@@ -420,6 +420,69 @@ def test_strips_beyond_the_edge_of_a_square():
     assert len(pulse.surface._beyond_the_edge(faces, np.ones((4, 3)), 1.0)[0]) == 0
 
 
+def test_corners_are_the_same_vertex_by_id_not_by_coordinates():
+    """Copies of a node on different processes can differ by round-off, after
+    `Geometry.deform` for example. Matched by coordinates, the diagonal of the square is then
+    two edges of one triangle each, and strips run across the square. Matched by vertex id,
+    it is one edge of two, as it should be."""
+    corners = np.array(
+        [
+            [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0]],
+            [[0.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]],
+        ],
+    )
+    # The second triangle's copy of (1, 1, 0) is one ulp off
+    corners[1, 1, 0] = np.nextafter(1.0, 2.0)
+    vertices = np.array([[0, 1, 2], [0, 2, 3]])
+    normals = np.array([[0.0, 0.0, 0.5], [0.0, 0.0, 0.5]])
+
+    by_coordinates = pulse.surface._beyond_the_edge(corners, normals, 2.5)[0]
+    by_vertex = pulse.surface._beyond_the_edge(corners, normals, 2.5, vertices)[0]
+    assert len(by_coordinates) > 4 * 3
+    assert len(by_vertex) == 4 * 3
+    outside = ((by_vertex[:, :2] < 0) | (by_vertex[:, :2] > 1)).any(axis=1)
+    assert outside.all()
+
+
+def test_a_surface_through_a_deformed_mesh_has_only_its_own_edge(lv):
+    """The epicardium of the LV ellipsoid has one edge, at the base. Deformed, on any number
+    of processes, it still has: the strips beyond it number as many as when the same
+    surface is made in one piece. That is not so when the copies of the nodes on the
+    process boundaries move apart by round-off and their corners are matched by
+    coordinates."""
+    _, geometry, _ = lv
+    mesh = geometry.mesh
+    x0 = mesh.geometry.x.copy()
+    V = dolfinx.fem.functionspace(mesh, ("Lagrange", 2, (3,)))
+    u = dolfinx.fem.Function(V)
+    u.interpolate(
+        lambda x: (
+            1e-3 * np.vstack((np.sin(30 * x[1]), np.cos(20 * x[2]) * x[0] * 10, np.sin(40 * x[0])))
+        ),
+    )
+    try:
+        geometry.deform(u)
+        surface = pulse.MeshSurface.from_geometry(geometry, "EPI", radius=0.01)
+        # The same facets, in one piece on every process: the corners of the triangles
+        # that meet at an edge then come from the same node, so coordinates match
+        facets = geometry.facet_tags.find(geometry.markers["EPI"][0])
+        facets = facets[facets < mesh.topology.index_map(2).size_local]
+        nodes = dolfinx.mesh.entities_to_geometry(mesh, 2, facets)[:, :3]
+        ids = np.concatenate(
+            mesh.comm.allgather(np.asarray(mesh.geometry.input_global_indices)[nodes])
+        )
+        points = np.concatenate(mesh.comm.allgather(mesh.geometry.x[nodes]))
+        # Every id gets the coordinates of its first copy
+        _, first = np.unique(ids.reshape(-1), return_index=True)
+        canonical = dict(zip(ids.reshape(-1)[first], points.reshape(-1, 3)[first]))
+        one_piece = np.array([[canonical[i] for i in row] for row in ids])
+        normals = np.cross(one_piece[:, 1] - one_piece[:, 0], one_piece[:, 2] - one_piece[:, 0])
+        expected = pulse.surface._beyond_the_edge(one_piece, normals, 2 * surface.radius)[0]
+        assert surface.rim == len(expected)
+    finally:
+        mesh.geometry.x[:] = x0
+
+
 def test_mesh_surface_is_the_ellipsoid_it_was_meshed_from(lv):
     """On and near the ellipsoid, away from the apex, where the facets are too coarse for its
     curvature, and from the rim at the base."""
