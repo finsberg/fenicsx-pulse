@@ -294,7 +294,11 @@ def test_deform_moves_every_copy_of_a_node_alike():
     """A node shared between processes has a copy on each. `deform` must move them all to
     the same coordinates, bit for bit, and each by the displacement at the node."""
     mesh = dolfinx.mesh.create_unit_cube(
-        MPI.COMM_WORLD, 4, 4, 4, ghost_mode=dolfinx.mesh.GhostMode.shared_facet
+        MPI.COMM_WORLD,
+        4,
+        4,
+        4,
+        ghost_mode=dolfinx.mesh.GhostMode.shared_facet,
     )
     geometry = pulse.Geometry(mesh=mesh)
     V = dolfinx.fem.functionspace(mesh, ("Lagrange", 2, (3,)))

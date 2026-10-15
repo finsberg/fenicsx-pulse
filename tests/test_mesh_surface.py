@@ -469,7 +469,7 @@ def test_a_surface_through_a_deformed_mesh_has_only_its_own_edge(lv):
         facets = facets[facets < mesh.topology.index_map(2).size_local]
         nodes = dolfinx.mesh.entities_to_geometry(mesh, 2, facets)[:, :3]
         ids = np.concatenate(
-            mesh.comm.allgather(np.asarray(mesh.geometry.input_global_indices)[nodes])
+            mesh.comm.allgather(np.asarray(mesh.geometry.input_global_indices)[nodes]),
         )
         points = np.concatenate(mesh.comm.allgather(mesh.geometry.x[nodes]))
         # Every id gets the coordinates of its first copy

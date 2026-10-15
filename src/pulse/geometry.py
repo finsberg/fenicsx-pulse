@@ -138,7 +138,11 @@ class Geometry:
         cmap = geometry.cmaps[0] if hasattr(geometry, "cmaps") else geometry.cmap
         dofmap = geometry.dofmaps[0] if hasattr(geometry, "dofmaps") else geometry.dofmap
         element = basix.ufl.element(
-            "Lagrange", self.mesh.basix_cell(), cmap.degree, cmap.variant, shape=(gdim,)
+            "Lagrange",
+            self.mesh.basix_cell(),
+            cmap.degree,
+            basix.LagrangeVariant(cmap.variant),
+            shape=(gdim,),
         )
         V = dolfinx.fem.functionspace(self.mesh, element)
         nodes = dofmap.reshape(-1)

@@ -259,7 +259,8 @@ def test_smoothing_rounds_off_the_kink_and_keeps_the_reference_at_rest(lv):
     geo, geometry = lv
     eps = 1e-5
     smoothed = _static(
-        geometry, pericardium=[_pericardium(geo, geometry, **_switch(geometry, "smoothed", eps))]
+        geometry,
+        pericardium=[_pericardium(geo, geometry, **_switch(geometry, "smoothed", eps))],
     )
     kinked = _static(geometry, pericardium=[_pericardium(geo, geometry, unilateral=True)])
     n = _ellipsoid_normal(smoothed.bcs.pericardium[0].surface, ufl.SpatialCoordinate(geometry.mesh))
@@ -298,7 +299,8 @@ def test_mesh_unit_scales_like_robin(lv_folder):
 def test_jacobian_is_symmetric_and_matches_finite_differences(lv, kind):
     geo, geometry = lv
     problem = _static(
-        geometry, pericardium=[_pericardium(geo, geometry, **_switch(geometry, kind))]
+        geometry,
+        pericardium=[_pericardium(geo, geometry, **_switch(geometry, kind))],
     )
     _rotate(problem.u, 15.0)
     residual = problem._pericardium_form(problem.u)[0]
