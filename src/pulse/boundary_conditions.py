@@ -180,6 +180,17 @@ class PericardiumBC:
     :math:`g > 0`, so it can come away from the surface freely. In systole the heart moves
     inward, so a unilateral pericardium then does nothing.
 
+    The unilateral switch :math:`\max(g, 0)` has a kink at :math:`g = 0`, and a boundary that
+    crosses its reference distance there, as the epicardium does in early systole, can stall
+    Newton. ``smoothing``, a length :math:`\epsilon`, rounds the kink off: the springs store
+    :math:`W = \int k \Phi(g) \, dA` with :math:`\Phi' = r`, where :math:`r(g) = 0` for
+    :math:`g \le 0`, :math:`g^2 / 2\epsilon` for :math:`0 < g < \epsilon` and
+    :math:`g - \epsilon / 2` beyond. So the traction :math:`k\, r(g) \nabla d` is once
+    differentiable, still zero in the reference configuration, and short of the unsmoothed
+    one by :math:`k \epsilon / 2` once the gap passes :math:`\epsilon`. The dashpot is gated
+    by :math:`r'(g)`, which goes from 0 to 1 across the same band. It applies only with
+    ``unilateral=True``; ``None`` keeps the kink.
+
     In the inverse problem (:class:`~pulse.unloading.PrestressProblem`) the mesh is the
     loaded configuration, and the springs are still at rest in the unloaded one, as a
     :class:`RobinBC`'s are.
@@ -190,6 +201,7 @@ class PericardiumBC:
     surface: PericardialSurface | SampledSurface
     damping: Variable | None = None
     unilateral: bool = False
+    smoothing: Variable | None = None
 
     def __post_init__(self):
         if not isinstance(self.stiffness, Variable):
@@ -198,9 +210,16 @@ class PericardiumBC:
         if self.damping is not None and not isinstance(self.damping, Variable):
             logger.warning("Damping is not a Variable, defaulting to Pa s / m")
             self.damping = Variable(self.damping, "Pa s / m")
+        if self.smoothing is not None:
+            if not self.unilateral:
+                raise ValueError("smoothing applies only to a unilateral PericardiumBC")
+            if not isinstance(self.smoothing, Variable):
+                logger.warning("Smoothing is not a Variable, defaulting to m")
+                self.smoothing = Variable(self.smoothing, "m")
         logger.debug(
             f"Created PericardiumBC on marker {self.marker} with stiffness {self.stiffness}, "
-            f"damping {self.damping}, unilateral={self.unilateral}, surface {self.surface}",
+            f"damping {self.damping}, unilateral={self.unilateral}, "
+            f"smoothing {self.smoothing}, surface {self.surface}",
         )
 
     def traction(
@@ -231,16 +250,25 @@ class PericardiumBC:
         n = ufl.diff(d, xv)
         g = d - surface.signed_distance(X)
         k = self.stiffness.to_base_units() * scale
-        if self.unilateral:
-            t = k * ufl.max_value(g, 0.0) * n
+        if self.unilateral and self.smoothing is not None:
+            # In mesh units, as g is
+            eps = self.smoothing.to_base_units() / scale
+            spring = ufl.conditional(
+                ufl.le(g, 0.0),
+                0.0,
+                ufl.conditional(ufl.ge(g, eps), g - eps / 2, g**2 / (2 * eps)),
+            )
+            gate = ufl.max_value(ufl.min_value(g / eps, 1.0), 0.0)
+        elif self.unilateral:
+            spring = ufl.max_value(g, 0.0)
+            gate = ufl.conditional(ufl.gt(g, 0.0), 1.0, 0.0)
         else:
-            t = k * g * n
+            spring = g
+            gate = 1.0
+        t = k * spring * n
         if self.damping is not None and velocity is not None:
             c = self.damping.to_base_units() * scale
-            rate = ufl.dot(n, velocity)
-            if self.unilateral:
-                rate = ufl.conditional(ufl.gt(g, 0.0), rate, 0.0)
-            t += c * rate * n
+            t += c * gate * ufl.dot(n, velocity) * n
         return t
 
 

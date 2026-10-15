@@ -64,6 +64,7 @@ import logging
 import numpy as np
 import pulse
 import io4dolfinx
+import scifem
 import cardiac_geometries
 import cardiac_geometries.geometry
 
@@ -272,6 +273,7 @@ io4dolfinx.read_function(
 # If the prestressing was successful, the deformed geometry at full load should match the original target mesh.
 
 print("\nDeforming mesh to recovered reference configuration...")
+x_target = geometry.mesh.geometry.x.copy()
 geometry.deform(u_pre)
 
 # Map fiber fields to the new configuration
@@ -308,24 +310,65 @@ vtx = dolfinx.io.VTXWriter(
 print("\nSolving forward problem: Initial state (Reference)...")
 pressure_lv_unloaded.assign(0.0)
 pressure_biv_unloaded.assign(0.0)
-forward_problem.solve()
+if not forward_problem.solve():
+    raise RuntimeError("Newton did not converge at zero pressure")
 vtx.write(0.0)
 
 # Step 2: Reload to Target Pressure
 # We apply the original target pressures. The mesh should deform from Reference -> Target.
-print("Solving forward problem: Reloading to target pressure...")
-ramp_steps = 20
-for ramp in np.linspace(0.0, 1.0, ramp_steps):
-    current_p = target_pressure_unloaded * ramp
+#
+# `solve` returns `False` when Newton does not converge, and leaves the failed iterate behind.
+# Twenty equal steps are not always enough: gmsh does not make the same mesh every time, and on
+# some of them Newton fails part way up. So when a step fails, we go back to the last pressure
+# that converged and take two half steps instead.
+
+
+def solve_at(fraction, previous, halvings=4):
+    """Solve at `fraction` of the target pressures, starting from the solution at `previous`."""
+    current_p = target_pressure_unloaded * fraction
     pressure_lv_unloaded.assign(current_p)
     pressure_biv_unloaded.assign(current_p * 0.5)
+    if forward_problem.solve():
+        return
+    forward_problem.reset_states()
+    if halvings == 0:
+        raise RuntimeError(f"Newton did not converge at P_LV = {current_p:.2f} Pa")
+    print(f"No convergence at P_LV = {current_p:.2f} Pa; trying two half steps")
+    middle = 0.5 * (previous + fraction)
+    solve_at(middle, previous, halvings - 1)
+    solve_at(fraction, middle, halvings - 1)
 
+
+print("Solving forward problem: Reloading to target pressure...")
+ramp_steps = 20
+previous = 0.0
+for ramp in np.linspace(0.0, 1.0, ramp_steps):
+    current_p = target_pressure_unloaded * ramp
     print(f"Solving for pressure fraction: {ramp:.2f} (P_LV = {current_p:.2f} Pa)")
-    forward_problem.solve()
+    solve_at(ramp, previous)
+    previous = ramp
 
     vtx.write(ramp * ramp_steps + 1)
 
 vtx.close()
+
+# The reloaded geometry, $\mathbf{X} + \mathbf{u}$, should be the target geometry we started from.
+# The mesh is in millimetres.
+
+num_owned = geometry.mesh.geometry.index_map().size_local
+X = geometry.mesh.geometry.x[:num_owned]
+x_reloaded = X + scifem.evaluate_function(forward_problem.u, X, broadcast=False)
+distance = np.linalg.norm(x_reloaded - x_target[:num_owned], axis=1)
+unloading = np.linalg.norm(X - x_target[:num_owned], axis=1)
+num_nodes = comm.allreduce(num_owned)
+print(
+    "Distance between the reloaded and the target geometry: "
+    f"mean {comm.allreduce(distance.sum()) / num_nodes:.2f} mm, "
+    f"largest {comm.allreduce(distance.max(initial=0.0), op=MPI.MAX):.2f} mm. "
+    "The unloading moved the nodes "
+    f"{comm.allreduce(unloading.sum()) / num_nodes:.2f} mm on average, "
+    f"{comm.allreduce(unloading.max(initial=0.0), op=MPI.MAX):.2f} mm at most.",
+)
 
 # Save final state. This displacement maps **Reference** -> **Recovered Target**.
 with dolfinx.io.VTXWriter(

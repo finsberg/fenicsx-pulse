@@ -34,6 +34,12 @@ jobs:
       - name: Run CLI tests on 2 ranks
         run: mpirun -n 2 python3 -m pytest tests/cli -m "not skip_in_parallel" --no-cov
 
+      - name: Run the tests of a mesh moved in parallel on 2 ranks
+        run: >-
+          mpirun -n 2 python3 -m pytest --no-cov
+          tests/test_geometry.py::test_deform_moves_every_copy_of_a_node_alike
+          tests/test_mesh_surface.py::test_a_surface_through_a_deformed_mesh_has_only_its_own_edge
+
       - name: CLI restart on a different number of ranks
         run: |
           pulse init /tmp/cli-restart/config.toml --template unit_cube

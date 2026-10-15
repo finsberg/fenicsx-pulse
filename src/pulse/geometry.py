@@ -121,13 +121,37 @@ class Geometry:
         if not isinstance(u, dolfinx.fem.Function):
             raise TypeError("Displacement field must be a dolfinx.fem.Function")
 
+        import basix.ufl
         import scifem
 
-        self.mesh.geometry.x[:] += scifem.evaluate_function(
-            u,
-            self.mesh.geometry.x,
-            broadcast=False,
+        geometry = self.mesh.geometry
+        gdim = geometry.dim
+        displacement = scifem.evaluate_function(u, geometry.x, broadcast=False)[:, :gdim]
+
+        # A node shared between processes is evaluated on each of them, in different cells,
+        # so its copies can differ by round-off. Put the displacement in the space of the
+        # coordinate element, whose dofs are the nodes, and let each owner overwrite its
+        # ghosts: then every copy of a node moves to the same coordinates, bit for bit. A
+        # mesh whose copies differ breaks anything that matches points across processes by
+        # their coordinates.
+        # dolfinx 0.10 deprecated `cmap` and `dofmap` for the lists of mixed-topology meshes
+        cmap = geometry.cmaps[0] if hasattr(geometry, "cmaps") else geometry.cmap
+        dofmap = geometry.dofmaps[0] if hasattr(geometry, "dofmaps") else geometry.dofmap
+        element = basix.ufl.element(
+            "Lagrange",
+            self.mesh.basix_cell(),
+            cmap.degree,
+            basix.LagrangeVariant(cmap.variant),
+            shape=(gdim,),
         )
+        V = dolfinx.fem.functionspace(self.mesh, element)
+        nodes = dofmap.reshape(-1)
+        dofs = V.dofmap.list.reshape(-1)
+        w = dolfinx.fem.Function(V)
+        values = w.x.array.reshape(-1, gdim)
+        values[dofs] = displacement[nodes]
+        w.x.scatter_forward()
+        geometry.x[nodes, :gdim] = geometry.x[nodes, :gdim] + values[dofs]
 
     @classmethod
     def from_cardiac_geometries(
