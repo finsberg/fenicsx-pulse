@@ -201,6 +201,7 @@ def _beyond_the_edge(
     corners: npt.NDArray[np.float64],
     normals: npt.NDArray[np.float64],
     extension: float,
+    vertices: npt.NDArray[np.int64] | None = None,
 ):
     """Samples that continue a surface of triangles past its edge, for ``extension``.
 
@@ -209,11 +210,18 @@ def _beyond_the_edge(
     as wide as the edge runs outwards in the plane of its triangle, at right angles to the
     edge, with samples a width apart. Returns their points, normals (as long as their areas)
     and areas.
+
+    ``vertices``, one row of three ids per triangle, says which corners are the same vertex.
+    Without it, corners are the same if their coordinates are. That fails on a mesh whose
+    copies of a node on different processes differ by round-off: the edges between the
+    processes then look like edges of the surface, and strips run across it.
     """
     if extension <= 0:
         return np.zeros((0, 3)), np.zeros((0, 3)), np.zeros(0)
-    # Vertices are the same if their coordinates are, also across processes
-    _, vertex = np.unique(corners.reshape(-1, 3), axis=0, return_inverse=True)
+    if vertices is None:
+        _, vertex = np.unique(corners.reshape(-1, 3), axis=0, return_inverse=True)
+    else:
+        _, vertex = np.unique(np.asarray(vertices).reshape(-1), return_inverse=True)
     vertex = vertex.reshape(-1, 3)
     triangle = np.repeat(np.arange(len(corners)), 3)
     local = np.tile(np.array([[0, 1, 2], [1, 2, 0], [2, 0, 1]]), (len(corners), 1))
@@ -345,7 +353,11 @@ class MeshSurface:
         facets = facets[facets < mesh.topology.index_map(fdim).size_local]
         X = mesh.geometry.x
         # The vertices come first among the nodes of a facet
-        corners = X[dolfinx.mesh.entities_to_geometry(mesh, fdim, facets)[:, :3]]
+        nodes = dolfinx.mesh.entities_to_geometry(mesh, fdim, facets)[:, :3]
+        corners = X[nodes]
+        # The same on every process that holds the node, unlike its coordinates, which can
+        # differ by round-off there (see `_beyond_the_edge`)
+        vertices = np.asarray(mesh.geometry.input_global_indices, dtype=np.int64)[nodes]
         normals = 0.5 * np.cross(corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0])
         facet_to_cell = mesh.topology.connectivity(fdim, tdim)
         cells = facet_to_cell.array[facet_to_cell.offsets[facets]]
@@ -355,6 +367,7 @@ class MeshSurface:
         # Every process gets all the facets, in the same order
         corners = np.concatenate(mesh.comm.allgather(corners))
         normals = np.concatenate(mesh.comm.allgather(normals))
+        vertices = np.concatenate(mesh.comm.allgather(vertices))
         if len(corners) == 0:
             raise ValueError("No facets to make a MeshSurface from")
         points = corners.mean(axis=1)
@@ -364,7 +377,7 @@ class MeshSurface:
             radius = max(2 * facet_size, 0.1 * math.sqrt(areas.sum()))
         if extension is None:
             extension = 2 * radius
-        rim_points, rim_normals, rim_areas = _beyond_the_edge(corners, normals, extension)
+        rim_points, rim_normals, rim_areas = _beyond_the_edge(corners, normals, extension, vertices)
         return cls(
             points=np.concatenate((points, rim_points)),
             normals=np.concatenate((normals, rim_normals)),
