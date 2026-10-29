@@ -278,6 +278,15 @@ def test_smoothing_needs_a_unilateral_pericardium(lv):
         _pericardium(geo, geometry, smoothing=_constant(geometry.mesh, EPS, "m"))
 
 
+@pytest.mark.parametrize("eps", [0.0, -EPS])
+def test_smoothing_must_be_positive(lv, eps):
+    """Zero divides by zero, and a negative band makes the traction jump at g = 0."""
+    geo, geometry = lv
+    for smoothing in (eps, _constant(geometry.mesh, eps, "m")):
+        with pytest.raises(ValueError, match="positive"):
+            _pericardium(geo, geometry, unilateral=True, smoothing=smoothing)
+
+
 def test_mesh_unit_scales_like_robin(lv_folder):
     """The same problem in millimetres: each residual entry is a force times a length, which
     is 1e6 larger in N mm than in N m, since the traction is the same."""
@@ -368,6 +377,67 @@ def test_dashpot_opposes_normal_velocity_and_ignores_sliding(lv, kind):
     # A static problem has no velocity, so no dashpot
     static = _static(geometry, pericardium=[bc])
     assert _norm(_assemble(static._pericardium_form(u)[0])) < 1e-10
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_dashpot_jacobian_matches_finite_differences(lv, kind):
+    """In the band of a smoothed switch, the dashpot's gate r'(g) = g / eps depends on u, so
+    its Jacobian has a term c (n . v) / eps n x n, of either sign. With a velocity that
+    depends on u, as in a DynamicProblem, the Jacobian matches finite differences. In a
+    narrow band that term dominates, so Newton sees the gate: holding the gate's u fixed
+    changes the Jacobian more than it leaves."""
+    geo, geometry = lv
+    eps = 1e-6
+    dt = 1e-3
+    bc = _pericardium(
+        geo,
+        geometry,
+        stiffness=0.0,
+        damping=_constant(geometry.mesh, 5e3, "Pa s / m"),
+        **_switch(geometry, kind, eps),
+    )
+    problem = _static(geometry, pericardium=[bc])
+    V = problem.u_space
+    X = ufl.SpatialCoordinate(geometry.mesh)
+    # Outward by half the band, so the gap is in it
+    n = _ellipsoid_normal(bc.surface, X)
+    problem.u.interpolate(dolfinx.fem.Expression(0.5 * eps * n, V.element.interpolation_points))
+    # A velocity w whose normal part changes sign over the epicardium
+    w = dolfinx.fem.Function(V)
+    w.interpolate(lambda x: np.vstack((x[1] * x[2], x[0] * x[2], x[0] * x[1])) * 10.0)
+    u_old = dolfinx.fem.Function(V)
+    u_old.x.array[:] = problem.u.x.array - dt * w.x.array
+    v = (problem.u - u_old) / dt
+    frozen = dolfinx.fem.Function(V)
+    frozen.x.array[:] = problem.u.x.array
+
+    def action(residual, direction):
+        A = dolfinx.fem.petsc.assemble_matrix(
+            dolfinx.fem.form(ufl.derivative(residual, problem.u, problem.du)),
+        )
+        A.assemble()
+        Aw = A.createVecLeft()
+        A.mult(direction.x.petsc_vec, Aw)
+        return Aw.array.copy()
+
+    residual = problem._pericardium_form(problem.u, v)[0]
+    direction = dolfinx.fem.Function(V)
+    direction.interpolate(lambda x: np.vstack((x[1] * x[2], x[0] * x[2], x[0] * x[1])) * 1e-1)
+    Aw = action(residual, direction)
+    u0 = problem.u.x.array.copy()
+    h = 1e-7
+    problem.u.x.array[:] = u0 + h * direction.x.array
+    plus = _assemble(residual)
+    problem.u.x.array[:] = u0 - h * direction.x.array
+    minus = _assemble(residual)
+    problem.u.x.array[:] = u0
+    fd = (plus - minus) / (2 * h)
+    assert _norm(fd) > 0
+    np.testing.assert_allclose(Aw, fd, rtol=0, atol=1e-6 * _norm(fd))
+
+    if kind == "smoothed":
+        held = action(problem._pericardium_form(frozen, v)[0], direction)
+        assert _norm(Aw - held) > _norm(held)
 
 
 def _clamp_base(geometry):

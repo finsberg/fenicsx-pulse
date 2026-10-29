@@ -182,9 +182,10 @@ class PericardiumBC:
 
     The unilateral switch :math:`\max(g, 0)` has a kink at :math:`g = 0`, and a boundary that
     crosses its reference distance there, as the epicardium does in early systole, can stall
-    Newton. ``smoothing``, a length :math:`\epsilon`, rounds the kink off: the springs store
-    :math:`W = \int k \Phi(g) \, dA` with :math:`\Phi' = r`, where :math:`r(g) = 0` for
-    :math:`g \le 0`, :math:`g^2 / 2\epsilon` for :math:`0 < g < \epsilon` and
+    Newton. ``smoothing``, a positive length :math:`\epsilon`, rounds the kink off: the
+    springs store :math:`W = \int k \Phi(g) \, dA` with :math:`\Phi' = r`, where
+    :math:`r(g) = 0` for :math:`g \le 0`, :math:`g^2 / 2\epsilon` for
+    :math:`0 < g < \epsilon` and
     :math:`g - \epsilon / 2` beyond. So the traction :math:`k\, r(g) \nabla d` is once
     differentiable, still zero in the reference configuration, and short of the unsmoothed
     one by :math:`k \epsilon / 2` once the gap passes :math:`\epsilon`. The dashpot is gated
@@ -216,6 +217,15 @@ class PericardiumBC:
             if not isinstance(self.smoothing, Variable):
                 logger.warning("Smoothing is not a Variable, defaulting to m")
                 self.smoothing = Variable(self.smoothing, "m")
+            # Zero divides by zero, and a negative band makes the traction jump at g = 0
+            value = self.smoothing.value
+            if isinstance(value, dolfinx.fem.Constant):
+                value = value.value
+            if not isinstance(value, dolfinx.fem.Function) and not float(value) > 0:
+                raise ValueError(
+                    f"smoothing must be a positive length, not {self.smoothing}; "
+                    "leave it unset to keep the kink",
+                )
         logger.debug(
             f"Created PericardiumBC on marker {self.marker} with stiffness {self.stiffness}, "
             f"damping {self.damping}, unilateral={self.unilateral}, "
