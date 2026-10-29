@@ -168,8 +168,35 @@ class Geometry:
             xdmf.write_meshtags(self.facet_tags, x=self.mesh.geometry)
 
     @property
-    def facet_normal(self) -> ufl.FacetNormal:
+    def facet_normal(self) -> ufl.core.expr.Expr:
         return ufl.FacetNormal(self.mesh)
+
+    @property
+    def axisymmetric(self) -> bool:
+        return False
+
+    @property
+    def displacement_shape(self) -> tuple[int, ...]:
+        """Value shape of the displacement."""
+        return (self.mesh.topology.dim,)
+
+    def deformation_gradient(self, u: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
+        """The deformation gradient of the displacement ``u``."""
+        return ufl.Identity(3) + ufl.grad(u)
+
+    def displacement_variation(
+        self,
+        u: ufl.core.expr.Expr,
+        v: ufl.core.expr.Expr,
+    ) -> ufl.core.expr.Expr:
+        """The variation of the current position in the direction ``v`` of the displacement,
+        at ``u``, in the components the tractions are in. A load ``t`` does the virtual work
+        ``t . displacement_variation(u, v)``."""
+        return v
+
+    def symmetry_dirichlet(self, V: dolfinx.fem.FunctionSpace) -> list[dolfinx.fem.DirichletBC]:
+        """Dirichlet conditions the geometry itself needs on the displacement space ``V``."""
+        return []
 
     @property
     def X(self) -> ufl.SpatialCoordinate:
@@ -332,7 +359,7 @@ class HeartGeometry(Geometry):
         if u is None:
             x, n = self.X, self.facet_normal
         else:
-            F = ufl.Identity(3) + ufl.grad(u)
+            F = self.deformation_gradient(u)
             x, n = self.X + u, ufl.det(F) * ufl.inv(F).T * self.facet_normal
 
         if marker is None:
@@ -401,3 +428,225 @@ class HeartGeometry(Geometry):
                     raise exceptions.MarkerNotFoundError(m)
                 ids.append(self.markers[m][0])
             return tuple(ids)
+
+
+class WeightedMeasure(ufl.Measure):
+    """A measure that multiplies every integrand by ``weight`` before integrating it.
+
+    ``integrand * measure`` and ``measure(marker)`` work as for ``ufl.Measure``, so code that
+    integrates with a geometry's ``dx`` and ``ds`` needs no change for a weighted one.
+    """
+
+    def __init__(self, *args, weight: ufl.core.expr.Expr, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.weight = weight
+
+    def reconstruct(self, *args, **kwargs) -> "WeightedMeasure":
+        measure = super().reconstruct(*args, **kwargs)
+        return WeightedMeasure(
+            measure.integral_type(),
+            domain=measure.ufl_domain(),
+            subdomain_id=measure.subdomain_id(),
+            metadata=measure.metadata(),
+            subdomain_data=measure.subdomain_data(),
+            intersect_measures=measure.intersect_measures(),
+            weight=self.weight,
+        )
+
+    def __rmul__(self, integrand):
+        if isinstance(integrand, int | float):
+            integrand = ufl.as_ufl(integrand)
+        if not isinstance(integrand, ufl.core.expr.Expr):
+            return NotImplemented
+        # Integrate against the unweighted measure, which for a tuple of subdomains builds
+        # its integrals by multiplying again: the weight must go in once
+        return (self.weight * integrand) * ufl.Measure.reconstruct(self)
+
+    def __eq__(self, other) -> bool:
+        return (
+            isinstance(other, WeightedMeasure)
+            and super().__eq__(other)
+            and self.weight == other.weight
+        )
+
+    def __hash__(self) -> int:
+        return hash((super().__hash__(), self.weight))
+
+
+@dataclass(kw_only=True)
+class AxisymmetricHeartGeometry(HeartGeometry):
+    r"""The meridian of a heart geometry that is symmetric about an axis.
+
+    The mesh is two-dimensional, with coordinates :math:`(Z, R)`: the axis is :math:`R = 0`
+    and the mesh lies in :math:`R \geq 0`. A point of the meridian stands for the circle
+    it sweeps about the axis, so ``dx`` and ``ds`` are weighted by :math:`2 \pi R` and
+    integrate over the volume and the surfaces of revolution.
+
+    The displacement has three components :math:`(u_Z, u_R, \phi)`: the axial and radial
+    displacement, and the twist :math:`\phi`, the angle the point turns by about the
+    axis. The deformation is then
+
+    .. math::
+        z = Z + u_Z, \quad r = R + u_R, \quad \theta = \Theta + \phi(Z, R),
+
+    and its gradient, in the orthonormal bases :math:`(\mathbf{E}_Z, \mathbf{E}_R,
+    \mathbf{E}_\Theta)` of the reference point and :math:`(\mathbf{e}_z, \mathbf{e}_r,
+    \mathbf{e}_\theta)` of the current one,
+
+    .. math::
+        \mathbf{F} = \begin{pmatrix}
+            z_{,Z} & z_{,R} & 0 \\
+            r_{,Z} & r_{,R} & 0 \\
+            r \phi_{,Z} & r \phi_{,R} & r / R
+        \end{pmatrix} .
+
+    Fibers and other vectors of the reference configuration are given in
+    :math:`(\mathbf{E}_Z, \mathbf{E}_R, \mathbf{E}_\Theta)`, as
+    ``cardiac_geometries.mesh.lv_ellipsoid_2D`` makes them.
+
+    The points on the axis must stay on it: `symmetry_dirichlet` sets :math:`u_R = 0` on
+    the facets marked ``axis_marker``. Set it to ``None`` for a mesh that does not touch the
+    axis, as the meridian of a hollow cylinder.
+    """
+
+    axis_marker: str | None = "APEX"
+
+    def __post_init__(self) -> None:
+        if self.mesh.geometry.dim != 2:
+            raise ValueError(
+                "An AxisymmetricHeartGeometry needs a mesh of geometric dimension 2, "
+                f"(Z, R), got {self.mesh.geometry.dim}",
+            )
+        super().__post_init__()
+
+    def _set_measures(self) -> None:
+        weight = 2 * np.pi * self.X[1]
+        self.dx = WeightedMeasure("dx", domain=self.mesh, metadata=self.metadata, weight=weight)
+        self.ds = WeightedMeasure(
+            "ds",
+            domain=self.mesh,
+            subdomain_data=self.facet_tags,
+            metadata=self.metadata,
+            weight=weight,
+        )
+
+    @classmethod
+    def from_cardiac_geometries(
+        cls,
+        geo: CardiacGeometriesObject,
+        metadata: dict[str, typing.Any] | None = None,
+        axis_marker: str | None = "APEX",
+    ):
+        metadata = metadata or {}
+        return cls(
+            mesh=geo.mesh,
+            metadata=metadata,
+            facet_tags=geo.ffun,
+            markers=geo.markers,
+            axis_marker=axis_marker,
+        )
+
+    @property
+    def axisymmetric(self) -> bool:
+        return True
+
+    @property
+    def displacement_shape(self) -> tuple[int, ...]:
+        return (3,)
+
+    @property
+    def facet_normal(self) -> ufl.core.expr.Expr:
+        N = ufl.FacetNormal(self.mesh)
+        return ufl.as_vector([N[0], N[1], 0.0])
+
+    def deformation_gradient(self, u: ufl.core.expr.Expr) -> ufl.core.expr.Expr:
+        R = self.X[1]
+        r = R + u[1]
+        grad_u = ufl.grad(u)
+        return ufl.as_matrix(
+            [
+                [1.0 + grad_u[0, 0], grad_u[0, 1], 0.0],
+                [grad_u[1, 0], 1.0 + grad_u[1, 1], 0.0],
+                [r * grad_u[2, 0], r * grad_u[2, 1], r / R],
+            ],
+        )
+
+    def displacement_variation(
+        self,
+        u: ufl.core.expr.Expr,
+        v: ufl.core.expr.Expr,
+    ) -> ufl.core.expr.Expr:
+        # A change of the twist moves the point along its circle, of radius r
+        r = self.X[1] + u[1]
+        return ufl.as_vector([v[0], v[1], r * v[2]])
+
+    def symmetry_dirichlet(self, V: dolfinx.fem.FunctionSpace) -> list[dolfinx.fem.DirichletBC]:
+        if self.axis_marker is None:
+            return []
+        if self.axis_marker not in self.markers:
+            raise exceptions.MarkerNotFoundError(self.axis_marker)
+        assert self.facet_tags is not None
+        facets = self.facet_tags.find(self.markers[self.axis_marker][0])
+        V_R = V.sub(1)
+        dofs = dolfinx.fem.locate_dofs_topological(V_R, self.facet_dimension, facets)
+        return [dolfinx.fem.dirichletbc(0.0, dofs, V_R)]
+
+    def volume_form(
+        self,
+        u: dolfinx.fem.Function | None = None,
+        marker: str | typing.Sequence[str] | None = None,
+    ) -> ufl.core.expr.Expr:
+        r"""Return the integrand whose integral over the surface ``marker`` is the volume of
+        that cavity.
+
+        The cavity is closed by the axis, and by flat lids normal to it over any opening.
+        The field :math:`r \mathbf{e}_r` has divergence 2, no flux through such a lid and
+        none through the axis, so
+
+        .. math::
+            V = -\frac{1}{2} \int_\Gamma r \, \mathbf{e}_r \cdot \mathbf{n}\, da ,
+
+        with :math:`\mathbf{n}` pointing into the cavity. It does not depend on where the
+        lids are, nor on a translation along the axis or a twist.
+
+        Parameters
+        ----------
+        u : dolfinx.fem.Function | None, optional
+            Optional displacement field, by default None
+        marker : str | typing.Sequence[str] | None, optional
+            Marker (or markers) of the surface of the cavity. Not needed here, as the
+            integrand is the same for every cavity.
+
+        Returns
+        -------
+        ufl.core.expr.Expr
+            The integrand, to be multiplied by ``ds`` of the cavity's marker
+        """
+        if marker is not None:
+            self.get_marker_ids(marker)
+        if u is None:
+            r, n = self.X[1], self.facet_normal
+        else:
+            F = self.deformation_gradient(u)
+            r, n = self.X[1] + u[1], ufl.det(F) * ufl.inv(F).T * self.facet_normal
+        return (-1 / 2) * r * n[1]
+
+    def base_center_form(
+        self,
+        base: str = "BASE",
+        u: dolfinx.fem.Function | None = None,
+    ) -> list[dolfinx.fem.forms.Form]:
+        """The axial component of the centre of the base: the others are zero."""
+        z = self.X[0] if u is None else self.X[0] + u[0]
+        return [dolfinx.fem.form(z * self.ds(self.markers[base][0]))]
+
+    def base_center(
+        self,
+        base: str = "BASE",
+        u: dolfinx.fem.Function | None = None,
+        dtype=np.float64,
+    ) -> npt.NDArray[np.float64]:
+        """Return the centre of the base, which is on the axis."""
+        (form,) = self.base_center_form(base=base, u=u)
+        z = self.mesh.comm.allreduce(dolfinx.fem.assemble_scalar(form), op=MPI.SUM)
+        return np.array([z / self.surface_area(base), 0.0, 0.0], dtype=dtype)

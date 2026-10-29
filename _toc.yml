@@ -17,6 +17,7 @@ parts:
       - file: "demo/benchmark/problem1"
       - file: "demo/benchmark/problem2"
       - file: "demo/benchmark/problem3"
+      - file: "demo/benchmark/problem3_axisymmetric"
     - file: "demo/boundary_conditions/README"
       sections:
       - file: "demo/boundary_conditions/lv_ellipsoid_fixed_x"

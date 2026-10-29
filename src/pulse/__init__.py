@@ -61,7 +61,7 @@ from .compressibility import (
     Compressible3,
     Incompressible,
 )
-from .geometry import Geometry, HeartGeometry, Marker
+from .geometry import AxisymmetricHeartGeometry, Geometry, HeartGeometry, Marker
 from .material_model import HyperElasticMaterial, Material
 from .material_models import (
     Guccione,
@@ -130,6 +130,7 @@ __all__ = [
     "utils",
     "Variable",
     "HeartGeometry",
+    "AxisymmetricHeartGeometry",
     "problem",
     "StaticProblem",
     "DynamicProblem",

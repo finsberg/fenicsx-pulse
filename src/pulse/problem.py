@@ -66,7 +66,29 @@ class Geometry(typing.Protocol):
     markers: dict[str, tuple[int, int]]
 
     @property
-    def facet_normal(self) -> ufl.FacetNormal: ...
+    def facet_normal(self) -> ufl.core.expr.Expr: ...
+
+    @property
+    def facet_dimension(self) -> int: ...
+
+    @property
+    def axisymmetric(self) -> bool: ...
+
+    @property
+    def displacement_shape(self) -> tuple[int, ...]: ...
+
+    def deformation_gradient(self, u: ufl.core.expr.Expr) -> ufl.core.expr.Expr: ...
+
+    def displacement_variation(
+        self,
+        u: ufl.core.expr.Expr,
+        v: ufl.core.expr.Expr,
+    ) -> ufl.core.expr.Expr: ...
+
+    def symmetry_dirichlet(
+        self,
+        V: dolfinx.fem.FunctionSpace,
+    ) -> list[dolfinx.fem.DirichletBC]: ...
 
     def surface_area(self, marker: str) -> float: ...
 
@@ -235,6 +257,7 @@ class StaticProblem:
         parameters = type(self).default_parameters()
         parameters.update(self.parameters)
         self.parameters = parameters
+        self._check_axisymmetric()
         self._check_cavities()
         self._init_pericardial_surfaces()
         self._init_spaces()
@@ -265,6 +288,27 @@ class StaticProblem:
     @property
     def _tracked_surfaces(self) -> list[TrackedSurface]:
         return [s for s, _ in self._pericardial_surfaces if isinstance(s, TrackedSurface)]
+
+    def _check_axisymmetric(self):
+        """Refuse what the axisymmetric formulation does not support yet.
+
+        The material, the Neumann loads, the cavities and the Dirichlet conditions go
+        through the geometry's kinematics (`Geometry.deformation_gradient`,
+        `Geometry.displacement_variation`) and its weighted measures. The rest still treats
+        the displacement as a Cartesian vector, which the twist of an axisymmetric one is
+        not.
+        """
+        if not self.geometry.axisymmetric:
+            return
+        unsupported = {
+            "Robin boundary conditions": bool(self.bcs.robin),
+            "pericardium boundary conditions": bool(self.bcs.pericardium),
+            "body forces": bool(self.bcs.body_force),
+            "the rigid body constraint": bool(self.parameters["rigid_body_constraint"]),
+        }
+        for name, used in unsupported.items():
+            if used:
+                raise NotImplementedError(f"An axisymmetric geometry does not support {name}")
 
     def _check_cavities(self):
         """Refuse a cavity that is not constrained exactly once, or a control the mesh_unit breaks.
@@ -359,7 +403,7 @@ class StaticProblem:
             family=u_family,
             cell=self.geometry.mesh.basix_cell(),
             degree=int(u_degree),
-            shape=(self.geometry.mesh.topology.dim,),
+            shape=self.geometry.displacement_shape,
         )
         self.u_space = dolfinx.fem.functionspace(self.geometry.mesh, u_element)
         self.u = self.Function(self.u_space, name="u")
@@ -724,8 +768,7 @@ class StaticProblem:
     def _material_form(self, u: dolfinx.fem.Function, p: dolfinx.fem.Function):
         logger.debug("Creating material form...")
 
-        I = ufl.Identity(3)
-        F = I + ufl.grad(u)
+        F = self.geometry.deformation_gradient(u)
 
         C = ufl.variable(F.T * F)
         J = ufl.det(F)
@@ -753,7 +796,7 @@ class StaticProblem:
         logger.debug("Creating Robin boundary condition form...")
         form = ufl.as_ufl(0.0)
         N = self.geometry.facet_normal
-        F = ufl.grad(u) + ufl.Identity(3)
+        F = self.geometry.deformation_gradient(u)
 
         for robin in self.bcs.robin:
             if robin.damping:
@@ -788,17 +831,17 @@ class StaticProblem:
         if not self.bcs.neumann:
             return forms
         logger.debug("Creating Neumann boundary condition form...")
-        I = ufl.Identity(3)
-        F = I + ufl.grad(u)
+        F = self.geometry.deformation_gradient(u)
 
         N = self.geometry.facet_normal
         ds = self.geometry.ds
+        v = self.geometry.displacement_variation(u, self.u_test)
 
         form = ufl.as_ufl(0.0)
         for neumann in self.bcs.neumann:
             t = neumann.traction.to_base_units()
             n = t * ufl.det(F) * ufl.inv(F).T * N
-            form += ufl.inner(self.u_test, n) * ds(neumann.marker)
+            form += ufl.inner(v, n) * ds(neumann.marker)
 
         forms[0] += form
         return forms
@@ -873,10 +916,16 @@ class StaticProblem:
         if self.parameters["base_bc"] == BaseBC.fixed:
             marker = self.geometry.markers[self.parameters["base_marker"]][0]
             base_facets = self.geometry.facet_tags.find(marker)
-            dofs_base = dolfinx.fem.locate_dofs_topological(self.u_space, 2, base_facets)
+            dofs_base = dolfinx.fem.locate_dofs_topological(
+                self.u_space,
+                self.geometry.facet_dimension,
+                base_facets,
+            )
             u_bc_base = self.Function(self.u_space)
             u_bc_base.x.array[:] = 0
             bcs.append(dolfinx.fem.dirichletbc(u_bc_base, dofs_base))
+
+        bcs += self.geometry.symmetry_dirichlet(self.u_space)
 
         # Now check if we have any for bcs
 
@@ -1336,6 +1385,8 @@ class DynamicProblem(StaticProblem):
     """
 
     def __post_init__(self):
+        if self.geometry.axisymmetric:
+            raise NotImplementedError("DynamicProblem does not support axisymmetric geometries")
         super().__post_init__()
         # Just make sure we have units on rho and dt
         for key, default_unit in [("rho", "kg/m^3"), ("dt", "s")]:
