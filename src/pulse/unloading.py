@@ -223,8 +223,11 @@ class FixedPointUnloader:
 
             # Deforming the fields seems to cause issues with convergence, so we skip it for now.
             if update_model_fields:
-                u.x.array[:] *= -1.0
-                self._update_model_fields(u)
+                # A copy: flipping u itself would flip what is returned if this was the
+                # last iteration
+                backward = u.copy()
+                backward.x.array[:] *= -1.0
+                self._update_model_fields(backward)
 
         else:
             logger.warning("FixedPointUnloader reached maximum iterations without converging.")

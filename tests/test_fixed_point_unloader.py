@@ -50,21 +50,31 @@ def _traction(mesh):
     return pulse.Variable(dolfinx.fem.Constant(mesh, dolfinx.default_scalar_type(0.0)), "Pa")
 
 
-def test_loading_the_unloaded_geometry_gives_the_loaded_one():
+def _unload(**parameters):
     geometry = _geometry()
-    mesh = geometry.mesh
-    loaded = mesh.geometry.x.copy()
-    traction = _traction(mesh)
+    loaded = geometry.mesh.geometry.x.copy()
+    traction = _traction(geometry.mesh)
     unloader = pulse.FixedPointUnloader(
         geometry=geometry,
         model=_model(),
         bcs=_bcs(geometry, traction),
         targets=[pulse.unloading.TargetPressure(traction=traction, target=PRESSURE)],
-        unload_parameters={"max_iter": 20, "tol": 1e-8, "ramp_steps": 3},
+        unload_parameters={"ramp_steps": 3, **parameters},
     )
     u_pre = unloader.unload()
     # The unloader puts the mesh back where it found it
-    np.testing.assert_array_equal(mesh.geometry.x, loaded)
+    np.testing.assert_array_equal(geometry.mesh.geometry.x, loaded)
+    return geometry, u_pre
+
+
+def _max(comm, array):
+    return comm.allreduce(np.abs(array).max(initial=0.0), op=MPI.MAX)
+
+
+def test_loading_the_unloaded_geometry_gives_the_loaded_one():
+    geometry, u_pre = _unload(max_iter=20, tol=1e-8)
+    mesh = geometry.mesh
+    loaded = mesh.geometry.x.copy()
 
     geometry.deform(u_pre)
     traction = _traction(mesh)
@@ -74,8 +84,17 @@ def test_loading_the_unloaded_geometry_gives_the_loaded_one():
         assert problem.solve()
 
     reloaded = mesh.geometry.x + pulse.geometry.nodal_values(problem.u)
-    comm = mesh.comm
-    error = comm.allreduce(np.abs(reloaded - loaded).max(), op=MPI.MAX)
-    displacement = comm.allreduce(np.abs(u_pre.x.array).max(), op=MPI.MAX)
+    displacement = _max(mesh.comm, u_pre.x.array)
     assert displacement > 1e-2
-    assert error < 1e-6 * displacement
+    assert _max(mesh.comm, reloaded - loaded) < 1e-6 * displacement
+
+
+def test_an_unloader_that_runs_out_of_iterations_returns_its_last_estimate():
+    """Out of iterations, the unloader returns the displacement to its last estimate of the
+    unloaded geometry, close to the converged one. It used to return the opposite when it
+    also updated the model's fields (the default): it flipped u in place for them."""
+    _, converged = _unload(max_iter=20, tol=1e-8)
+    geometry, last = _unload(max_iter=3, tol=0.0, update_model_fields=True)
+    comm = geometry.mesh.comm
+    # About 0.2% off after 3 iterations; 200% when the sign was flipped
+    assert _max(comm, last.x.array - converged.x.array) < 1e-2 * _max(comm, converged.x.array)
