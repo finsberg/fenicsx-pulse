@@ -45,6 +45,66 @@ DEFAULT_QUADRATURE_DEGREE = 4
 CLOSED_CAVITY_TOLERANCE = 1e-10
 
 
+def _coordinate_space(
+    mesh: dolfinx.mesh.Mesh,
+) -> tuple[dolfinx.fem.FunctionSpace, npt.NDArray[np.int32]]:
+    """The space of the coordinate element of ``mesh``, whose dofs are its nodes, and the dof
+    that each node is, by row of ``mesh.geometry.x``."""
+    geometry = mesh.geometry
+    # dolfinx 0.10 deprecated `dofmap` for the list of mixed-topology meshes
+    dofmap = geometry.dofmaps[0] if hasattr(geometry, "dofmaps") else geometry.dofmap
+    domain = mesh.ufl_domain()
+    assert domain is not None
+    V = dolfinx.fem.functionspace(mesh, domain.ufl_coordinate_element())
+    dof = np.empty(len(geometry.x), dtype=np.int32)
+    dof[dofmap.reshape(-1)] = V.dofmap.list.reshape(-1)
+    return V, dof
+
+
+def nodal_values(
+    u: dolfinx.fem.Function,
+    mesh: dolfinx.mesh.Mesh | None = None,
+) -> npt.NDArray[np.floating]:
+    """``u`` at the nodes of ``mesh``, by default its own, one row per row of
+    ``mesh.geometry.x``.
+
+    ``u`` may also live on another mesh that covers ``mesh``, such as a copy of it, whether
+    partitioned the same way or not. Every process that holds a node gets the value its owner
+    computes: evaluated on each process, in different cells, the copies of a node shared
+    between processes can differ by round-off.
+    """
+    mesh = u.function_space.mesh if mesh is None else mesh
+    V, dof = _coordinate_space(mesh)
+    w = dolfinx.fem.Function(V)
+    if u.function_space.mesh is mesh:
+        w.interpolate(u)
+    else:
+        cells = np.arange(mesh.topology.index_map(mesh.topology.dim).size_local, dtype=np.int32)
+        w.interpolate_nonmatching(
+            u,
+            cells,
+            dolfinx.fem.create_interpolation_data(V, u.function_space, cells),
+        )
+    w.x.scatter_forward()
+    return w.x.array.reshape(-1, mesh.geometry.dim)[dof]
+
+
+def move_nodes(mesh: dolfinx.mesh.Mesh, x: npt.NDArray[np.floating]) -> None:
+    """Move the nodes of ``mesh`` to ``x``, one row per row of ``mesh.geometry.x``.
+
+    Every process that holds a node puts it where its owner does, so all copies of a node end
+    up at the same coordinates, bit for bit, even if they started apart. A mesh whose copies
+    differ breaks anything that matches points across processes by their coordinates.
+    """
+    V, dof = _coordinate_space(mesh)
+    gdim = mesh.geometry.dim
+    w = dolfinx.fem.Function(V)
+    values = w.x.array.reshape(-1, gdim)
+    values[dof] = x
+    w.x.scatter_forward()
+    mesh.geometry.x[:, :gdim] = values[dof]
+
+
 @dataclass(slots=True, kw_only=True)
 class Geometry:
     mesh: dolfinx.mesh.Mesh
@@ -114,44 +174,17 @@ class Geometry:
         Parameters
         ----------
         u : dolfinx.fem.Function
-            Displacement field to deform the geometry with.
+            Displacement field to deform the geometry with. It may live on a copy of the
+            mesh.
         """
         if u is None:
             return
         if not isinstance(u, dolfinx.fem.Function):
             raise TypeError("Displacement field must be a dolfinx.fem.Function")
 
-        import basix.ufl
-        import scifem
-
-        geometry = self.mesh.geometry
-        gdim = geometry.dim
-        displacement = scifem.evaluate_function(u, geometry.x, broadcast=False)[:, :gdim]
-
-        # A node shared between processes is evaluated on each of them, in different cells,
-        # so its copies can differ by round-off. Put the displacement in the space of the
-        # coordinate element, whose dofs are the nodes, and let each owner overwrite its
-        # ghosts: then every copy of a node moves to the same coordinates, bit for bit. A
-        # mesh whose copies differ breaks anything that matches points across processes by
-        # their coordinates.
-        # dolfinx 0.10 deprecated `cmap` and `dofmap` for the lists of mixed-topology meshes
-        cmap = geometry.cmaps[0] if hasattr(geometry, "cmaps") else geometry.cmap
-        dofmap = geometry.dofmaps[0] if hasattr(geometry, "dofmaps") else geometry.dofmap
-        element = basix.ufl.element(
-            "Lagrange",
-            self.mesh.basix_cell(),
-            cmap.degree,
-            basix.LagrangeVariant(cmap.variant),
-            shape=(gdim,),
-        )
-        V = dolfinx.fem.functionspace(self.mesh, element)
-        nodes = dofmap.reshape(-1)
-        dofs = V.dofmap.list.reshape(-1)
-        w = dolfinx.fem.Function(V)
-        values = w.x.array.reshape(-1, gdim)
-        values[dofs] = displacement[nodes]
-        w.x.scatter_forward()
-        geometry.x[nodes, :gdim] = geometry.x[nodes, :gdim] + values[dofs]
+        # Every copy of a node moves to the same coordinates (see `move_nodes`)
+        gdim = self.mesh.geometry.dim
+        move_nodes(self.mesh, self.mesh.geometry.x[:, :gdim] + nodal_values(u, self.mesh))
 
     @classmethod
     def from_cardiac_geometries(
