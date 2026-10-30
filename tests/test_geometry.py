@@ -288,3 +288,69 @@ def test_flat_surface_encloses_no_volume(mesh):
     geo = pulse.HeartGeometry(mesh=mesh, boundaries=[face])
 
     assert np.isclose(_volume(geo, marker="FACE"), 0.0, atol=1e-14)
+
+
+def _ghosted_cube():
+    return dolfinx.mesh.create_unit_cube(
+        MPI.COMM_WORLD,
+        4,
+        4,
+        4,
+        ghost_mode=dolfinx.mesh.GhostMode.shared_facet,
+    )
+
+
+def _displacement(x):
+    return 0.1 * np.vstack((np.sin(3 * x[1]), x[0] * x[2], np.cos(2 * x[0]) * x[1]))
+
+
+def _assert_every_copy_of_a_node_is_alike(mesh):
+    ids = np.concatenate(mesh.comm.allgather(np.asarray(mesh.geometry.input_global_indices)))
+    x = np.concatenate(mesh.comm.allgather(mesh.geometry.x))
+    order = np.argsort(ids, kind="stable")
+    ids, x = ids[order], x[order]
+    first = np.searchsorted(ids, ids)
+    np.testing.assert_array_equal(x, x[first])
+
+
+def test_deform_moves_every_copy_of_a_node_alike():
+    """A node shared between processes has a copy on each. `deform` must move them all to
+    the same coordinates, bit for bit, and each by the displacement at the node."""
+    mesh = _ghosted_cube()
+    geometry = pulse.Geometry(mesh=mesh)
+    V = dolfinx.fem.functionspace(mesh, ("Lagrange", 2, (3,)))
+    u = dolfinx.fem.Function(V)
+    u.interpolate(_displacement)
+    x0 = mesh.geometry.x.copy()
+    geometry.deform(u)
+    # The vertices are dofs of u, so u is exact there
+    np.testing.assert_allclose(mesh.geometry.x, x0 + _displacement(x0.T).T, rtol=0, atol=1e-14)
+    _assert_every_copy_of_a_node_is_alike(mesh)
+
+
+def test_deform_brings_copies_of_a_node_that_were_apart_together():
+    """Copies of a node can be apart before `deform`, moved by other code. Afterwards they
+    are where the owner's copy is: `deform` moves the nodes, not just the displacement, to
+    the same coordinates on every process."""
+    mesh = _ghosted_cube()
+    geometry = pulse.Geometry(mesh=mesh)
+    owned = mesh.geometry.index_map().size_local
+    x0 = mesh.geometry.x.copy()
+    # Each ghost copy one ulp off its owner's
+    mesh.geometry.x[owned:] = np.nextafter(x0[owned:], np.inf)
+    geometry.deform(dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ("Lagrange", 1, (3,)))))
+    np.testing.assert_array_equal(mesh.geometry.x, x0)
+    _assert_every_copy_of_a_node_is_alike(mesh)
+
+
+def test_deform_by_a_displacement_on_a_copy_of_the_mesh():
+    """A displacement may live on a copy of the mesh, as when a loaded geometry is loaded
+    again to unload it. It moves the nodes as it does on its own mesh."""
+    mesh, copy = _ghosted_cube(), _ghosted_cube()
+    V = dolfinx.fem.functionspace(copy, ("Lagrange", 2, (3,)))
+    u = dolfinx.fem.Function(V)
+    u.interpolate(_displacement)
+    x0 = mesh.geometry.x.copy()
+    pulse.Geometry(mesh=mesh).deform(u)
+    np.testing.assert_allclose(mesh.geometry.x, x0 + _displacement(x0.T).T, rtol=0, atol=1e-14)
+    _assert_every_copy_of_a_node_is_alike(mesh)

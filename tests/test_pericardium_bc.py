@@ -3,9 +3,11 @@
 A rigid rotation of an LV ellipsoid about its long axis slides the epicardium along itself, so
 the springs must feel nothing, where a RobinBC registers a gap. The springs must be the
 derivative of the energy 1/2 k g^2 dA, with a symmetric Jacobian that Newton sees, and a normal
-displacement delta must give the traction k delta. The dashpot must oppose the normal velocity
-and ignore sliding. The inverse (prestress) problem must put the springs at rest in the same
-configuration as the forward problem, so unloading a forward solution recovers the mesh.
+displacement delta must give the traction k delta. A unilateral pericardium's smoothed switch
+must be the derivative of its own energy and leave the reference configuration at rest. The
+dashpot must oppose the normal velocity and ignore sliding. The inverse (prestress) problem
+must put the springs at rest in the same configuration as the forward problem, so unloading a
+forward solution recovers the mesh.
 """
 
 import logging
@@ -81,6 +83,19 @@ def _pericardium(geo, geometry, stiffness=K, scale=1.0, **kwargs):
         surface=surface,
         **kwargs,
     )
+
+
+#: The three switches: none, pulse's max(g, 0), and that with its kink smoothed over EPS
+KINDS = ["bilateral", "unilateral", "smoothed"]
+EPS = 1e-3  # m
+
+
+def _switch(geometry, kind, eps=EPS):
+    if kind == "bilateral":
+        return {}
+    if kind == "unilateral":
+        return {"unilateral": True}
+    return {"unilateral": True, "smoothing": _constant(geometry.mesh, eps, "m")}
 
 
 def _static(geometry, **bcs):
@@ -179,18 +194,31 @@ def test_rigid_rotation_about_the_long_axis_costs_nothing(lv):
         assert _norm(residual) < 1e-10 * robin_residual
 
 
-@pytest.mark.parametrize("unilateral", [False, True])
-def test_springs_are_derivative_of_energy(lv, unilateral):
+@pytest.mark.parametrize("kind", KINDS)
+def test_springs_are_derivative_of_energy(lv, kind):
     geo, geometry = lv
-    bc = _pericardium(geo, geometry, unilateral=unilateral)
+    bc = _pericardium(geo, geometry, **_switch(geometry, kind))
     problem = _static(geometry, pericardium=[bc])
     _rotate(problem.u, 15.0)
 
     X = ufl.SpatialCoordinate(geometry.mesh)
     g = bc.surface.signed_distance(X + problem.u) - bc.surface.signed_distance(X)
-    if unilateral:
-        g = ufl.max_value(g, 0.0)
-    energy = 0.5 * K * g**2 * geometry.ds(bc.marker)
+    if kind == "bilateral":
+        density = 0.5 * g**2
+    elif kind == "unilateral":
+        density = 0.5 * ufl.max_value(g, 0.0) ** 2
+    else:
+        # Phi with Phi' = r: 0, g^3 / 6 eps, g^2 / 2 - eps g / 2 + eps^2 / 6
+        density = ufl.conditional(
+            ufl.le(g, 0.0),
+            0.0,
+            ufl.conditional(
+                ufl.ge(g, EPS),
+                g**2 / 2 - EPS * g / 2 + EPS**2 / 6,
+                g**3 / (6 * EPS),
+            ),
+        )
+    energy = K * density * geometry.ds(bc.marker)
     expected = _assemble(ufl.derivative(energy, problem.u, problem.u_test))
     actual = _assemble(problem._pericardium_form(problem.u)[0])
 
@@ -198,28 +226,65 @@ def test_springs_are_derivative_of_energy(lv, unilateral):
     np.testing.assert_allclose(actual, expected, rtol=1e-10, atol=1e-10 * _norm(expected))
 
 
-@pytest.mark.parametrize("unilateral", [False, True])
-def test_normal_displacement_gives_k_delta(lv, unilateral):
+@pytest.mark.parametrize("kind", KINDS)
+def test_normal_displacement_gives_k_delta(lv, kind):
     """Moving each epicardial point delta along the surface normal gives the traction k delta
-    along it, to O(delta / radius). Unilateral springs only resist outward displacement."""
+    along it, to O(delta / radius). Unilateral springs only resist outward displacement, and
+    smoothed ones, past their band, k (delta - eps / 2)."""
     geo, geometry = lv
-    bc = _pericardium(geo, geometry, unilateral=unilateral)
+    delta = 1e-5
+    eps = delta / 10
+    bc = _pericardium(geo, geometry, **_switch(geometry, kind, eps))
     problem = _static(geometry, pericardium=[bc])
     X = ufl.SpatialCoordinate(geometry.mesh)
     n = _ellipsoid_normal(bc.surface, X)
     ds = geometry.ds(bc.marker)
 
-    delta = 1e-5
-    expected = _assemble(K * delta * ufl.dot(n, problem.u_test) * ds)
+    gap = delta - eps / 2 if kind == "smoothed" else delta
+    expected = _assemble(K * gap * ufl.dot(n, problem.u_test) * ds)
     outward = _assemble(problem._pericardium_form(delta * n)[0])
     inward = _assemble(problem._pericardium_form(-delta * n)[0])
 
     # About 1% on this coarse mesh, whose facets lie up to a millimetre off the surface
     assert _norm(outward - expected) < 3e-2 * _norm(expected)
-    if unilateral:
-        assert _norm(inward) == 0
-    else:
+    if kind == "bilateral":
         assert _norm(inward + expected) < 3e-2 * _norm(expected)
+    else:
+        assert _norm(inward) == 0
+
+
+def test_smoothing_rounds_off_the_kink_and_keeps_the_reference_at_rest(lv):
+    """Within its band the smoothed spring is g^2 / 2 eps, half of pulse's max(g, 0) at
+    g = eps, and it is zero in the reference configuration."""
+    geo, geometry = lv
+    eps = 1e-5
+    smoothed = _static(
+        geometry,
+        pericardium=[_pericardium(geo, geometry, **_switch(geometry, "smoothed", eps))],
+    )
+    kinked = _static(geometry, pericardium=[_pericardium(geo, geometry, unilateral=True)])
+    n = _ellipsoid_normal(smoothed.bcs.pericardium[0].surface, ufl.SpatialCoordinate(geometry.mesh))
+
+    assert _norm(_assemble(smoothed._pericardium_form(0.0 * n)[0])) == 0
+    # At g = eps / 2: (eps / 2)^2 / 2 eps = eps / 8, a quarter of the kinked eps / 2
+    half = _assemble(smoothed._pericardium_form(0.5 * eps * n)[0])
+    full = _assemble(kinked._pericardium_form(0.5 * eps * n)[0])
+    assert _norm(half - 0.25 * full) < 3e-2 * _norm(full)
+
+
+def test_smoothing_needs_a_unilateral_pericardium(lv):
+    geo, geometry = lv
+    with pytest.raises(ValueError, match="unilateral"):
+        _pericardium(geo, geometry, smoothing=_constant(geometry.mesh, EPS, "m"))
+
+
+@pytest.mark.parametrize("eps", [0.0, -EPS])
+def test_smoothing_must_be_positive(lv, eps):
+    """Zero divides by zero, and a negative band makes the traction jump at g = 0."""
+    geo, geometry = lv
+    for smoothing in (eps, _constant(geometry.mesh, eps, "m")):
+        with pytest.raises(ValueError, match="positive"):
+            _pericardium(geo, geometry, unilateral=True, smoothing=smoothing)
 
 
 def test_mesh_unit_scales_like_robin(lv_folder):
@@ -239,10 +304,13 @@ def test_mesh_unit_scales_like_robin(lv_folder):
     assert residuals[1] == pytest.approx(1e6 * residuals[0], rel=1e-8)
 
 
-@pytest.mark.parametrize("unilateral", [False, True])
-def test_jacobian_is_symmetric_and_matches_finite_differences(lv, unilateral):
+@pytest.mark.parametrize("kind", KINDS)
+def test_jacobian_is_symmetric_and_matches_finite_differences(lv, kind):
     geo, geometry = lv
-    problem = _static(geometry, pericardium=[_pericardium(geo, geometry, unilateral=unilateral)])
+    problem = _static(
+        geometry,
+        pericardium=[_pericardium(geo, geometry, **_switch(geometry, kind))],
+    )
     _rotate(problem.u, 15.0)
     residual = problem._pericardium_form(problem.u)[0]
     jacobian = ufl.derivative(residual, problem.u, problem.du)
@@ -268,8 +336,8 @@ def test_jacobian_is_symmetric_and_matches_finite_differences(lv, unilateral):
     np.testing.assert_allclose(Aw.array, fd, rtol=0, atol=1e-5 * _norm(fd))
 
 
-@pytest.mark.parametrize("unilateral", [False, True])
-def test_dashpot_opposes_normal_velocity_and_ignores_sliding(lv, unilateral):
+@pytest.mark.parametrize("kind", KINDS)
+def test_dashpot_opposes_normal_velocity_and_ignores_sliding(lv, kind):
     geo, geometry = lv
     c = 5e3
     bc = _pericardium(
@@ -277,7 +345,8 @@ def test_dashpot_opposes_normal_velocity_and_ignores_sliding(lv, unilateral):
         geometry,
         stiffness=0.0,
         damping=_constant(geometry.mesh, c, "Pa s / m"),
-        unilateral=unilateral,
+        # A band narrower than the displacement below, so the dashpot is fully engaged
+        **_switch(geometry, kind, eps=1e-7),
     )
     problem = pulse.DynamicProblem(
         model=_model(),
@@ -308,6 +377,67 @@ def test_dashpot_opposes_normal_velocity_and_ignores_sliding(lv, unilateral):
     # A static problem has no velocity, so no dashpot
     static = _static(geometry, pericardium=[bc])
     assert _norm(_assemble(static._pericardium_form(u)[0])) < 1e-10
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_dashpot_jacobian_matches_finite_differences(lv, kind):
+    """In the band of a smoothed switch, the dashpot's gate r'(g) = g / eps depends on u, so
+    its Jacobian has a term c (n . v) / eps n x n, of either sign. With a velocity that
+    depends on u, as in a DynamicProblem, the Jacobian matches finite differences. In a
+    narrow band that term dominates, so Newton sees the gate: holding the gate's u fixed
+    changes the Jacobian more than it leaves."""
+    geo, geometry = lv
+    eps = 1e-6
+    dt = 1e-3
+    bc = _pericardium(
+        geo,
+        geometry,
+        stiffness=0.0,
+        damping=_constant(geometry.mesh, 5e3, "Pa s / m"),
+        **_switch(geometry, kind, eps),
+    )
+    problem = _static(geometry, pericardium=[bc])
+    V = problem.u_space
+    X = ufl.SpatialCoordinate(geometry.mesh)
+    # Outward by half the band, so the gap is in it
+    n = _ellipsoid_normal(bc.surface, X)
+    problem.u.interpolate(dolfinx.fem.Expression(0.5 * eps * n, V.element.interpolation_points))
+    # A velocity w whose normal part changes sign over the epicardium
+    w = dolfinx.fem.Function(V)
+    w.interpolate(lambda x: np.vstack((x[1] * x[2], x[0] * x[2], x[0] * x[1])) * 10.0)
+    u_old = dolfinx.fem.Function(V)
+    u_old.x.array[:] = problem.u.x.array - dt * w.x.array
+    v = (problem.u - u_old) / dt
+    frozen = dolfinx.fem.Function(V)
+    frozen.x.array[:] = problem.u.x.array
+
+    def action(residual, direction):
+        A = dolfinx.fem.petsc.assemble_matrix(
+            dolfinx.fem.form(ufl.derivative(residual, problem.u, problem.du)),
+        )
+        A.assemble()
+        Aw = A.createVecLeft()
+        A.mult(direction.x.petsc_vec, Aw)
+        return Aw.array.copy()
+
+    residual = problem._pericardium_form(problem.u, v)[0]
+    direction = dolfinx.fem.Function(V)
+    direction.interpolate(lambda x: np.vstack((x[1] * x[2], x[0] * x[2], x[0] * x[1])) * 1e-1)
+    Aw = action(residual, direction)
+    u0 = problem.u.x.array.copy()
+    h = 1e-7
+    problem.u.x.array[:] = u0 + h * direction.x.array
+    plus = _assemble(residual)
+    problem.u.x.array[:] = u0 - h * direction.x.array
+    minus = _assemble(residual)
+    problem.u.x.array[:] = u0
+    fd = (plus - minus) / (2 * h)
+    assert _norm(fd) > 0
+    np.testing.assert_allclose(Aw, fd, rtol=0, atol=1e-6 * _norm(fd))
+
+    if kind == "smoothed":
+        held = action(problem._pericardium_form(frozen, v)[0], direction)
+        assert _norm(Aw - held) > _norm(held)
 
 
 def _clamp_base(geometry):

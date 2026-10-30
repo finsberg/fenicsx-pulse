@@ -47,6 +47,8 @@ cfun
 Chiara
 Chichester
 CMAME
+cmap
+cmaps
 cnm
 cntl
 codegen
@@ -65,6 +67,7 @@ Dilsizian
 dirichletbc
 dlmbda
 dofmap
+dofmaps
 dofs
 dolfinx
 Doste
@@ -94,6 +97,7 @@ finsberg
 Francesco
 functionspace
 Gebauer
+gdim
 geodir
 geometriesx
 Gernot
@@ -176,8 +180,10 @@ neohookean
 Neumann
 newtonls
 newtontr
+nextafter
 Niederer
 Nolte
+nonmatching
 ntasks
 nullspace
 numpy
@@ -252,6 +258,7 @@ transmural
 Trayanova
 unassembled
 undeformed
+unsmoothed
 unstabilized
 ureg
 Usyk
@@ -334,4 +341,3 @@ centimetre
 axisymmetric
 pmatrix
 setdiff
-gdim

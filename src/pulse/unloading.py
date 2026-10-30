@@ -17,7 +17,7 @@ from .boundary_conditions import (
     pericardial_surface,
 )
 from .cardiac_model import CardiacModel
-from .geometry import HeartGeometry
+from .geometry import HeartGeometry, move_nodes, nodal_values
 from .problem import StaticProblem
 from .surface import PericardialSurface, TrackedSurface
 from .units import Variable, assign, mesh_factor
@@ -186,15 +186,21 @@ class FixedPointUnloader:
 
             # 2. Evaluate displacement u at the mesh nodes
             # u lives on a function space (e.g. P2), mesh nodes are coordinate element (e.g. P1)
-            # This returns the values of u at the current nodal positions X_k
-            u_at_nodes = scifem.evaluate_function(u, self.geometry.mesh.geometry.x, broadcast=True)
+            # This returns the values of u at the current nodal positions X_k, the same on
+            # every process that holds the node
+            mesh = self.geometry.mesh
+            gdim = mesh.geometry.dim
+            u_at_nodes = nodal_values(u)
 
             # 3. Compute Error (Geometric Discrepancy)
             # The deformed position is X_k + u(X_k)
             # We want this to match X_target
             # Error vector R = (X_k + u) - X_target
-            current_coords = self.geometry.mesh.geometry.x
-            error_vec = (current_coords + u_at_nodes) - self._target_coords
+            # Each node counted once, on its owner: the owned nodes come first
+            owned = mesh.geometry.index_map().size_local
+            target = self._target_coords[:owned, :gdim]
+            current_coords = mesh.geometry.x[:owned, :gdim]
+            error_vec = (current_coords + u_at_nodes[:owned]) - target
 
             # Compute L2 norm of the error vector
             local_error_sq = np.sum(error_vec**2)
@@ -204,7 +210,7 @@ class FixedPointUnloader:
             # Normalize error by number of nodes or domain size for consistency?
             # Usually simple L2 norm or relative norm is fine.
             # Let's use relative norm with respect to target coords norm.
-            target_norm_sq = comm.allreduce(np.sum(self._target_coords**2), op=MPI.SUM)
+            target_norm_sq = comm.allreduce(np.sum(target**2), op=MPI.SUM)
             rel_error = error_norm / np.sqrt(target_norm_sq) if target_norm_sq > 0 else error_norm
 
             logger.info(f"  Geometric Error (rel): {rel_error:.2e} (abs: {error_norm:.2e})")
@@ -217,12 +223,15 @@ class FixedPointUnloader:
             # Update rule: X_{k+1} = X_{target} - u(X_k)
             # This effectively moves the reference configuration 'backwards' by the displacement
             # required to reach the target from the current guess.
-            self.geometry.mesh.geometry.x[:] = self._target_coords - u_at_nodes
+            move_nodes(mesh, self._target_coords[:, :gdim] - u_at_nodes)
 
             # Deforming the fields seems to cause issues with convergence, so we skip it for now.
             if update_model_fields:
-                u.x.array[:] *= -1.0
-                self._update_model_fields(u)
+                # A copy: flipping u itself would flip what is returned if this was the
+                # last iteration
+                backward = u.copy()
+                backward.x.array[:] *= -1.0
+                self._update_model_fields(backward)
 
         else:
             logger.warning("FixedPointUnloader reached maximum iterations without converging.")
