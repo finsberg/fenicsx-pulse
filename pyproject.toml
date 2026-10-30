@@ -51,7 +51,7 @@ dev = [
     "fenicsx-pulse[docs]",
 ]
 demo = [
-    "cardiac-geometriesx",
+    "cardiac-geometriesx>=0.18.0",
     "fenicsx-ldrb",
     "circulation",
     "gotranx",

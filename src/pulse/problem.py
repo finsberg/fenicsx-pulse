@@ -15,6 +15,7 @@ import scifem
 import ufl
 from packaging.version import Version
 
+from .active_stress import FrankStarlingActiveStress, StabilizedActiveStress
 from .boundary_conditions import BoundaryConditions, check_pericardium, pericardial_surface
 from .cardiac_model import CardiacModel
 from .circulation import ChamberCoupling, CirculationModel, mL, mmHg
@@ -296,7 +297,8 @@ class StaticProblem:
         through the geometry's kinematics (`Geometry.deformation_gradient`,
         `Geometry.displacement_variation`) and its weighted measures. The rest still treats
         the displacement as a Cartesian vector, which the twist of an axisymmetric one is
-        not.
+        not. So do the active models that compute the fiber stretch from ``u`` themselves:
+        `FrankStarlingActiveStress.register` and `StabilizedActiveStress.update_prev`.
         """
         if not self.geometry.axisymmetric:
             return
@@ -305,6 +307,11 @@ class StaticProblem:
             "pericardium boundary conditions": bool(self.bcs.pericardium),
             "body forces": bool(self.bcs.body_force),
             "the rigid body constraint": bool(self.parameters["rigid_body_constraint"]),
+            "FrankStarlingActiveStress": isinstance(
+                self.model.active,
+                FrankStarlingActiveStress,
+            ),
+            "StabilizedActiveStress": isinstance(self.model.active, StabilizedActiveStress),
         }
         for name, used in unsupported.items():
             if used:

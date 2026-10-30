@@ -202,20 +202,11 @@ else:
     V1 = dolfinx.fem.functionspace(mesh, ("Lagrange", 1, (3,)))
     u1 = dolfinx.fem.Function(V1)
     u1.interpolate(u)
-    x = mesh.geometry.x
-    tdim = mesh.topology.dim
-    num_vertices = mesh.topology.index_map(0).size_local + mesh.topology.index_map(0).num_ghosts
-    vertices = dolfinx.mesh.entities_to_geometry(
-        mesh,
-        0,
-        np.arange(num_vertices, dtype=np.int32),
-    ).ravel()
-    cells = mesh.topology.connectivity(tdim, 0).array.reshape(-1, 3)
-    X, R = x[vertices, 0], x[vertices, 1]
-    v2d = V1.dofmap.list[:, :3].ravel()
-    c2v = cells.ravel()
-    U = np.zeros((num_vertices, 3))
-    U[c2v] = u1.x.array.reshape(-1, 3)[v2d]
+    # The triangles and coordinates of the dofs of V1, in the order of u1's values
+    topology, _, x = dolfinx.plot.vtk_mesh(V1)
+    cells = topology.reshape(-1, 4)[:, 1:]
+    X, R = x[:, 0], x[:, 1]
+    U = u1.x.array.reshape(-1, 3)
 
     fig, ax = plt.subplots()
     ax.triplot(X, R, cells, color="0.7", linewidth=0.5, label="Reference")

@@ -334,3 +334,4 @@ centimetre
 axisymmetric
 pmatrix
 setdiff
+gdim

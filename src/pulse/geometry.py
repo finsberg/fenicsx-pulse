@@ -123,11 +123,15 @@ class Geometry:
 
         import scifem
 
-        self.mesh.geometry.x[:] += scifem.evaluate_function(
+        # Only the components along the mesh's own coordinates move it: the third component
+        # of an axisymmetric displacement is the twist, which leaves the meridian as it is.
+        # scifem pads the points of a mesh of lower dimension with zeros itself.
+        gdim = self.mesh.geometry.dim
+        self.mesh.geometry.x[:, :gdim] += scifem.evaluate_function(
             u,
-            self.mesh.geometry.x,
+            self.mesh.geometry.x[:, :gdim],
             broadcast=False,
-        )
+        )[:, :gdim]
 
     @classmethod
     def from_cardiac_geometries(
@@ -589,7 +593,8 @@ class AxisymmetricHeartGeometry(HeartGeometry):
         facets = self.facet_tags.find(self.markers[self.axis_marker][0])
         V_R = V.sub(1)
         dofs = dolfinx.fem.locate_dofs_topological(V_R, self.facet_dimension, facets)
-        return [dolfinx.fem.dirichletbc(0.0, dofs, V_R)]
+        zero = np.array(0.0, dtype=dolfinx.default_scalar_type)
+        return [dolfinx.fem.dirichletbc(zero, dofs, V_R)]
 
     def volume_form(
         self,

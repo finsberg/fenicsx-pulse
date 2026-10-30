@@ -43,6 +43,11 @@ def assemble(form) -> float:
     )
 
 
+def volume(geo, marker, u=None) -> float:
+    # HeartGeometry.volume returns this process's part
+    return MPI.COMM_WORLD.allreduce(geo.volume(marker, u), op=MPI.SUM)
+
+
 def displacement(geo, expr) -> dolfinx.fem.Function:
     V = dolfinx.fem.functionspace(geo.mesh, ("Lagrange", 2, geo.displacement_shape))
     u = dolfinx.fem.Function(V)
@@ -64,7 +69,7 @@ def test_measures_integrate_over_solid_of_revolution():
     assert np.isclose(geo.surface_area("ENDO"), 2 * np.pi * A * L)
     # A tuple of subdomains is weighted once
     assert np.isclose(assemble(1.0 * geo.ds((ENDO, EPI))), 2 * np.pi * (A + B) * L)
-    assert np.isclose(geo.volume("ENDO"), np.pi * A**2 * L)
+    assert np.isclose(volume(geo, "ENDO"), np.pi * A**2 * L)
     assert np.allclose(geo.base_center("BOTTOM"), [0.0, 0.0, 0.0])
     assert np.allclose(geo.base_center("TOP"), [L, 0.0, 0.0])
 
@@ -75,7 +80,7 @@ def test_rigid_motions_do_not_strain():
     u = displacement(geo, lambda x: (0.3 + 0 * x[0], 0 * x[0], 0.7 + 0 * x[0]))
     F = geo.deformation_gradient(u)
     assert np.isclose(assemble(ufl.inner(F - ufl.Identity(3), F - ufl.Identity(3)) * geo.dx), 0)
-    assert np.isclose(geo.volume("ENDO", u), np.pi * A**2 * L)
+    assert np.isclose(volume(geo, "ENDO", u), np.pi * A**2 * L)
 
 
 @pytest.mark.parametrize("eps, delta, kappa", [(0.1, 0.0, 0.0), (0.1, 0.2, 0.0), (0, 0, 0.3)])
@@ -95,7 +100,7 @@ def test_deformation_gradient(eps, delta, kappa):
     F = geo.deformation_gradient(u)
     assert np.isclose(assemble(ufl.inner(F - F_exact, F - F_exact) * geo.dx), 0.0)
     assert np.isclose(
-        geo.volume("ENDO", u),
+        volume(geo, "ENDO", u),
         np.pi * ((1 + eps) * A) ** 2 * (1 + delta) * L,
     )
 
@@ -175,7 +180,7 @@ def test_inflation_of_incompressible_tube():
         pressure.value = value
         assert problem.solve()
 
-    r_A2 = geo.volume("ENDO", problem.u) / (np.pi * L)
+    r_A2 = volume(geo, "ENDO", problem.u) / (np.pi * L)
     c = r_A2 - A**2
     assert c > 0.1  # inflated
     r = np.linspace(np.sqrt(A**2 + c), np.sqrt(B**2 + c), 20001)
@@ -184,31 +189,92 @@ def test_inflation_of_incompressible_tube():
     assert np.isclose(p_exact, p, rtol=1e-4)
 
 
+def passive_model(active=None) -> pulse.CardiacModel:
+    return pulse.CardiacModel(
+        material=pulse.NeoHookean(),
+        active=active or pulse.Passive(),
+        compressibility=pulse.Compressible(),
+    )
+
+
 @pytest.mark.parametrize(
     "bcs, parameters, match",
     [
         (
-            dict(robin=(pulse.RobinBC(value=pulse.Variable(1.0, "Pa / m"), marker=EPI),)),
+            lambda geo: dict(
+                robin=(pulse.RobinBC(value=pulse.Variable(1.0, "Pa / m"), marker=EPI),),
+            ),
             {},
             "Robin",
         ),
-        ({}, {"rigid_body_constraint": True}, "rigid body"),
+        (
+            lambda geo: dict(
+                pericardium=(
+                    pulse.PericardiumBC(
+                        stiffness=pulse.Variable(1.0, "Pa / m"),
+                        marker=EPI,
+                        surface=pulse.EllipsoidSurface(r_long=2 * L, r_short=B),
+                    ),
+                ),
+            ),
+            {},
+            "pericardium",
+        ),
+        (
+            lambda geo: dict(body_force=(dolfinx.fem.Constant(geo.mesh, np.zeros(3)),)),
+            {},
+            "body forces",
+        ),
+        (lambda geo: {}, {"rigid_body_constraint": True}, "rigid body"),
     ],
 )
 def test_unsupported(bcs, parameters, match):
     geo = cylinder_geometry(n=1)
-    model = pulse.CardiacModel(
-        material=pulse.NeoHookean(),
-        active=pulse.Passive(),
-        compressibility=pulse.Compressible(),
-    )
     with pytest.raises(NotImplementedError, match=match):
         pulse.StaticProblem(
-            model=model,
+            model=passive_model(),
             geometry=geo,
-            bcs=pulse.BoundaryConditions(**bcs),
+            bcs=pulse.BoundaryConditions(**bcs(geo)),
             parameters=parameters,
         )
+
+
+@pytest.mark.parametrize(
+    "active_model",
+    [pulse.FrankStarlingActiveStress, pulse.StabilizedActiveStress],
+)
+def test_unsupported_active_models(active_model):
+    """Both compute the fiber stretch from a Cartesian deformation gradient of ``u``."""
+    geo = cylinder_geometry(n=1)
+    f0 = dolfinx.fem.Constant(geo.mesh, np.array([0.0, 0.0, 1.0]))
+    model = passive_model(active=active_model(f0))
+    with pytest.raises(NotImplementedError, match=active_model.__name__):
+        pulse.StaticProblem(model=model, geometry=geo)
+
+
+@pytest.mark.parametrize(
+    "problem",
+    [pulse.DynamicProblem, pulse.FixedPointUnloader, pulse.PrestressProblem],
+)
+def test_unsupported_problems(problem):
+    geo = cylinder_geometry(n=1)
+    with pytest.raises(NotImplementedError, match="axisymmetric"):
+        problem(model=passive_model(), geometry=geo, bcs=pulse.BoundaryConditions())
+
+
+def test_deform_moves_meridian_only():
+    """The twist turns the points about the axis, which leaves the meridian as it is."""
+    geo = cylinder_geometry()
+    eps, delta = 0.1, 0.2
+    u = displacement(geo, lambda x: (delta * x[0], eps * x[1], 0.7 + 0 * x[0]))
+    expected = volume(geo, "ENDO", u)
+    x0 = geo.mesh.geometry.x.copy()
+    geo.deform(u)
+    x = geo.mesh.geometry.x
+    assert np.allclose(x[:, 0], (1 + delta) * x0[:, 0])
+    assert np.allclose(x[:, 1], (1 + eps) * x0[:, 1])
+    assert np.allclose(x[:, 2], 0.0)
+    assert np.isclose(volume(geo, "ENDO"), expected)
 
 
 def test_symmetry_dirichlet_needs_axis_marker():
