@@ -75,6 +75,10 @@ class FixedPointUnloader:
     targets: typing.Sequence[TargetPressure] = field(default_factory=list)
 
     def __post_init__(self):
+        if self.geometry.axisymmetric:
+            raise NotImplementedError(
+                f"{type(self).__name__} does not support axisymmetric geometries",
+            )
         # Set default parameters for the unloader
         defaults = self.default_parameters()
         defaults.update(self.unload_parameters)
@@ -290,6 +294,10 @@ class PrestressProblem:
     ramp_steps: int = 20
 
     def __post_init__(self):
+        if self.geometry.axisymmetric:
+            raise NotImplementedError(
+                f"{type(self).__name__} does not support axisymmetric geometries",
+            )
         parameters = type(self).default_parameters()
         parameters.update(self.parameters)
         self.parameters = parameters

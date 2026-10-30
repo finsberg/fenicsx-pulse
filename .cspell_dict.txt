@@ -338,3 +338,6 @@ Vecs
 addv
 kargs
 centimetre
+axisymmetric
+pmatrix
+setdiff
