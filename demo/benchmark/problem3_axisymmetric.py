@@ -49,7 +49,9 @@ comm = MPI.COMM_WORLD
 # and 3, with the long axis along $x$ and the radial direction along $y$. The apex is at
 # $x = -17$ mm (endocardium) and $x = -20$ mm (epicardium), and the base at $x = 5$ mm. The
 # segment of the axis between the two apices is marked `APEX`: the points there must stay on
-# the axis, which {py:class}`pulse.AxisymmetricHeartGeometry` imposes with $u_R = 0$.
+# the axis, which {py:class}`pulse.AxisymmetricHeartGeometry` imposes with $u_R = 0$. The
+# [cardiac-geometriesx demo of this geometry](https://computationalphysiology.github.io/cardiac-geometriesx/demos/lv_ellipsoid_2D.html)
+# shows the mesh, the markers, the transmural coordinate and the fibers.
 #
 # As in Pezzuto's entry, the elements are of order 2, so the endocardium and the epicardium are
 # curved, and the size of the elements is 3 mm at the base and 1.5 mm at the apex, divided by
