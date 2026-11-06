@@ -4,8 +4,16 @@ import numpy as np
 import pytest
 
 from pulse.cli import TEMPLATES_DIR
-from pulse.cli.config import BoxGeometry, ConfigError, LDRBAngles, LVEllipsoidGeometry, UKBGeometry
+from pulse.cli.config import (
+    BoxGeometry,
+    ConfigError,
+    FolderGeometry,
+    LDRBAngles,
+    LVEllipsoidGeometry,
+    UKBGeometry,
+)
 from pulse.cli.geometry import (
+    _from_folder,
     _geometry_hash,
     build_geometry,
     cache_folder,
@@ -147,3 +155,35 @@ def test_ensure_generated_runs_ldrb_after_rotation_without_generator_fibers(tmp_
     assert seen["ldrb"]["fiber_space"] == "Quadrature_4"
     assert seen["ldrb"]["clipped"] is True
     assert seen["ldrb"]["angles"] == conf.ldrb
+
+
+@pytest.mark.skip_in_parallel
+def test_ukb_endocardia_are_called_lv_and_rv(tmp_path):
+    # ukb-atlas >= 1.5 names them LV_ENDO and RV_ENDO, older versions LV and RV. A BiV ellipsoid,
+    # saved under both names, stands in for the atlas mesh.
+    import dataclasses
+
+    import cardiac_geometries as cg
+
+    g = cg.mesh.biv_ellipsoid(
+        outdir=tmp_path / "raw",
+        char_length=1.5,
+        create_fibers=False,
+        comm=MPI.COMM_SELF,
+    )
+    new_names = {"LV": "LV_ENDO", "RV": "RV_ENDO"}
+    markers = {new_names.get(name, name): tag for name, tag in g.markers.items()}
+    dataclasses.replace(g, markers=markers).save_folder(folder=tmp_path / "new")
+    g.save_folder(folder=tmp_path / "old")
+
+    no_fibers = {"type": "none"}
+    for folder in ("new", "old"):
+        conf = UKBGeometry(folder=tmp_path / folder, fibers=no_fibers)
+        geo = _from_folder(tmp_path / folder, conf, MPI.COMM_SELF)
+        assert {"LV", "RV", "EPI", "BASE"} <= set(geo.markers)
+        assert not {"LV_ENDO", "RV_ENDO"} & set(geo.markers)
+        assert tuple(geo.markers["LV"]) == tuple(g.markers["LV"])
+
+    # A mesh of your own keeps the names it has
+    conf = FolderGeometry(folder=tmp_path / "new", fibers=no_fibers)
+    assert "LV_ENDO" in _from_folder(tmp_path / "new", conf, MPI.COMM_SELF).markers
