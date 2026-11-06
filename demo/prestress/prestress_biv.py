@@ -161,8 +161,8 @@ def setup_problem(geometry, f0, s0, target_pressure=2000.0):
     robin_base = pulse.RobinBC(value=alpha_base, marker=geometry.markers["BASE"][0])
 
     # Endocardial Pressures
-    neumann_lv = pulse.NeumannBC(traction=pressure_lv, marker=geometry.markers["LV"][0])
-    neumann_rv = pulse.NeumannBC(traction=pressure_rv, marker=geometry.markers["RV"][0])
+    neumann_lv = pulse.NeumannBC(traction=pressure_lv, marker=geometry.markers["LV_ENDO"][0])
+    neumann_rv = pulse.NeumannBC(traction=pressure_rv, marker=geometry.markers["RV_ENDO"][0])
 
     bcs = pulse.BoundaryConditions(
         neumann=(neumann_lv, neumann_rv), robin=(robin_epi, robin_base),

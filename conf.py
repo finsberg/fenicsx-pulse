@@ -101,6 +101,9 @@ nb_execution_cache_path = ""
 nb_execution_excludepatterns: list[str] = []
 nb_execution_in_temp = False
 nb_execution_mode = "cache"
+# A demo that raises (or times out) would otherwise only log a warning, and the
+# build would still pass with a page full of tracebacks. Fail the build instead.
+nb_execution_raise_on_error = True
 nb_execution_show_tb = True
 nb_execution_timeout = 3000
 nb_output_stderr = "show"

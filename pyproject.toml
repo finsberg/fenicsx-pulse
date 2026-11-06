@@ -57,7 +57,9 @@ demo = [
     "gotranx",
     "io4dolfinx",
     "scipy",
-    "ukb-atlas",
+    # The demos use its marker names (LV_ENDO, RV_ENDO), and cardiac-geometriesx
+    # 0.18 passes it --refine, which 2.0 does not have.
+    "ukb-atlas>=2.1.0",
     "crossbridge",
 ]
 docs = [
