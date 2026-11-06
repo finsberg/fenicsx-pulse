@@ -137,13 +137,18 @@ if not (geodir / "geometry.bp").exists():
         beta_epi_rv=20,
         fiber_space="Quadrature_6",
     )
+    # `ukb-atlas` names the endocardia `LV_ENDO` and `RV_ENDO`. We save them as
+    # `LV` and `RV`, the names of the chambers in the circulation model, which
+    # the coupling below pairs with the cavities.
+    chamber = {"LV_ENDO": "LV", "RV_ENDO": "RV"}
+    markers = {chamber.get(name, name): value for name, value in geo.markers.items()}
     if (geodir / "geometry.bp").exists():
         shutil.rmtree(geodir / "geometry.bp")
     cardiac_geometries.geometry.save_geometry(
         path=geodir / "geometry.bp",
         mesh=geo.mesh,
         ffun=geo.ffun,
-        markers=geo.markers,
+        markers=markers,
         info=geo.info,
         f0=system.f0,
         s0=system.s0,

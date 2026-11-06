@@ -174,6 +174,10 @@ fiber_space = "P_2"
 type = "from_geometry"   # from_geometry | axis | none
 ```
 
+The `biv_ellipsoid` and `ukb` geometries both call the endocardia `LV` and `RV`: pulse renames
+the `LV_ENDO` and `RV_ENDO` of `ukb-atlas` 1.5 and later when it loads a `ukb` mesh, so the same
+markers work for both, and for UKB meshes cached with an older `ukb-atlas`.
+
 ### `[material]`
 
 ```toml

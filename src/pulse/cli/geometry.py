@@ -35,6 +35,9 @@ from .config import (
 logger = logging.getLogger(__name__)
 
 META_FILE = "pulse_geometry.json"
+# ukb-atlas >= 1.5 names the endocardia LV_ENDO and RV_ENDO. The CLI calls them LV and RV, as for
+# the BiV ellipsoid, so that the same configs work for both, and with UKB meshes cached before.
+UKB_MARKER_NAMES = {"LV_ENDO": "LV", "RV_ENDO": "RV"}
 
 
 @dataclass
@@ -285,6 +288,8 @@ def _from_folder(folder: Path, conf: GeometryConfig, comm: MPI.Intracomm) -> CLI
     if not Path(folder).is_dir():
         raise ConfigError(f"Geometry folder {folder} does not exist")
     g = cg.geometry.Geometry.from_folder(comm=comm, folder=folder)
+    if conf.type == "ukb":
+        g.markers = {UKB_MARKER_NAMES.get(name, name): tag for name, tag in g.markers.items()}
     if conf.scale != 1.0:
         g.mesh.geometry.x[:] *= conf.scale
     geometry = pulse.HeartGeometry.from_cardiac_geometries(

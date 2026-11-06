@@ -163,6 +163,12 @@ if not (geodir / "geometry.bp").exists():
         "n0_DG_1": system_fibers.n0,
     }
 
+    # `ukb-atlas` names the endocardia `LV_ENDO` and `RV_ENDO`. We save them as
+    # `LV` and `RV`: the controller below finds each cavity by its marker and
+    # names its records, and so the plots, after it.
+    chamber = {"LV_ENDO": "LV", "RV_ENDO": "RV"}
+    markers = {chamber.get(name, name): value for name, value in geo.markers.items()}
+
     if (geodir / "geometry.bp").exists():
         shutil.rmtree(geodir / "geometry.bp")
 
@@ -170,7 +176,7 @@ if not (geodir / "geometry.bp").exists():
         path=geodir / "geometry.bp",
         mesh=geo.mesh,
         ffun=geo.ffun,
-        markers=geo.markers,
+        markers=markers,
         info=geo.info,
         f0=system.f0,
         s0=system.s0,

@@ -132,10 +132,10 @@ model = pulse.CardiacModel(
 # We apply pressure loads to the LV and RV endocardial surfaces.
 
 traction_lv = pulse.Variable(dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0)), "kPa")
-neumann_lv = pulse.NeumannBC(traction=traction_lv, marker=geometry.markers["LV"][0])
+neumann_lv = pulse.NeumannBC(traction=traction_lv, marker=geometry.markers["LV_ENDO"][0])
 
 traction_rv = pulse.Variable(dolfinx.fem.Constant(geometry.mesh, dolfinx.default_scalar_type(0.0)), "kPa")
-neumann_rv = pulse.NeumannBC(traction=traction_rv, marker=geometry.markers["RV"][0])
+neumann_rv = pulse.NeumannBC(traction=traction_rv, marker=geometry.markers["RV_ENDO"][0])
 
 neumann = [neumann_lv, neumann_rv]
 

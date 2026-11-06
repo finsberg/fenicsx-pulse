@@ -157,8 +157,8 @@ def render_mesh(geodir: Path, outdir: Path) -> dict:
     geo = cardiac_geometries.geometry.Geometry.from_folder(comm=MPI.COMM_WORLD, folder=geodir)
     fdim = geo.mesh.topology.dim - 1
 
-    lv = _facet_grid(geo, fdim, "LV")
-    rv = _facet_grid(geo, fdim, "RV")
+    lv = _facet_grid(geo, fdim, "LV_ENDO")
+    rv = _facet_grid(geo, fdim, "RV_ENDO")
     epi = _facet_grid(geo, fdim, "EPI")
     base = _facet_grid(geo, fdim, "BASE")
 

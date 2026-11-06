@@ -68,7 +68,7 @@ comm.barrier()
 
 geo = cardiac_geometries.geometry.Geometry.from_folder(comm=comm, folder=geodir)
 geometry = pulse.HeartGeometry.from_cardiac_geometries(geo)
-markers = {name: geometry.markers[name][0] for name in ("LV", "RV", "EPI", "BASE")}
+markers = {name: geometry.markers[name][0] for name in ("LV_ENDO", "RV_ENDO", "EPI", "BASE")}
 
 # ## The pericardium
 #
@@ -136,8 +136,8 @@ def create_bcs(epicardium: str):
     p_lv = pulse.Variable(constant(0.0), "kPa")
     p_rv = pulse.Variable(constant(0.0), "kPa")
     neumann = [
-        pulse.NeumannBC(traction=p_lv, marker=markers["LV"]),
-        pulse.NeumannBC(traction=p_rv, marker=markers["RV"]),
+        pulse.NeumannBC(traction=p_lv, marker=markers["LV_ENDO"]),
+        pulse.NeumannBC(traction=p_rv, marker=markers["RV_ENDO"]),
     ]
     robin = [
         pulse.RobinBC(value=pulse.Variable(constant(1e5), "Pa / m"), marker=markers["BASE"]),
@@ -183,7 +183,7 @@ def measurements(problem):
         found = dolfinx.fem.locate_dofs_topological(V, 2, geometry.facet_tags.find(marker))
         return found[found < n_owned]
 
-    epi, base, lv = dofs(markers["EPI"]), dofs(markers["BASE"]), dofs(markers["LV"])
+    epi, base, lv = dofs(markers["EPI"]), dofs(markers["BASE"]), dofs(markers["LV_ENDO"])
 
     def mean(values):
         total = comm.allreduce(np.sum(values, axis=0), op=MPI.SUM)
@@ -218,8 +218,8 @@ def measurements(problem):
     J.interpolate(dolfinx.fem.Expression(ufl.det(F), Q.element.interpolation_points))
     apex = lv[X[lv, 0] < bottom + 0.05 * (top - bottom)]
     return {
-        "LV [mL]": volume("LV") * 1e-3,
-        "RV [mL]": volume("RV") * 1e-3,
+        "LV [mL]": volume("LV_ENDO") * 1e-3,
+        "RV [mL]": volume("RV_ENDO") * 1e-3,
         "base [mm]": mean(U[base, 0]),
         "apex [mm]": mean(U[apex, 0]),
         "basal rotation [deg]": rotation(0.7, 0.9),
