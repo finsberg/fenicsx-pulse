@@ -31,6 +31,21 @@ def test_env_prefix_is_a_parameter():
     assert env_overrides({"PULSE_TIME__DT": '"1 s"'}) == [("time.dt", "1 s")]
 
 
+def test_env_vars_without_a_section_are_not_config_overrides(tmp_path):
+    # PULSE_MAX_STEPS, PULSE_DYNAMIC, ... drive the demos, not the config
+    env = {"PULSE_MAX_STEPS": "100", "PULSE_DYNAMIC": "1", "PULSE_SOLVER__MAX_HALVINGS": "2"}
+    assert env_overrides(env) == [("solver.max_halvings", 2)]
+    conf = load_config(write_cfg(tmp_path), environ=env)
+    assert conf.solver.max_halvings == 2
+
+
+def test_env_var_with_a_single_underscore_after_a_section_warns():
+    with pytest.warns(UserWarning, match="PULSE_SOLVER__MAX_HALVINGS"):
+        assert env_overrides({"PULSE_SOLVER_MAX_HALVINGS": "2"}) == []
+    with pytest.warns(UserWarning, match="SIM_TIME__DT"):
+        assert env_overrides({"SIM_TIME_DT": '"1 s"'}, prefix="SIM_") == []
+
+
 def test_keys_are_case_insensitive(tmp_path):
     conf = load_config(write_cfg(tmp_path), sets=["SOLVER.MAX_HALVINGS=1"], environ={})
     assert conf.solver.max_halvings == 1

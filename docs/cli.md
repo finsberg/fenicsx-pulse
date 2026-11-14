@@ -124,7 +124,10 @@ Config values can come from four places, in order of increasing precedence:
 1. The TOML file itself.
 2. Environment variables: `PULSE_<SECTION>__<KEY>`, e.g. `PULSE_TIME__DT="1 ms"`. The `PULSE_`
    prefix and `__` (double underscore) nesting delimiter are fixed, but the section/key names
-   themselves are matched **case-insensitively** against the config schema.
+   themselves are matched **case-insensitively** against the config schema. Variables without
+   `__`, such as `PULSE_MAX_STEPS` or `PULSE_DYNAMIC` (used by the demos), are not config
+   overrides; one that looks like a mistyped override (`PULSE_SOLVER_MAX_HALVINGS`) prints a
+   warning.
 3. `--set dotted.key=value` (repeatable). `value` is parsed as a TOML literal, the same way it
    would appear on the right-hand side of a `key = value` line in the file:
    - `--set 'time.dt="1 ms"'` (a quantity is still a quoted string)
