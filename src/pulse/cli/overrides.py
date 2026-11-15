@@ -70,11 +70,27 @@ def env_overrides(
     environ: Mapping[str, str],
     prefix: str = ENV_PREFIX,
 ) -> list[tuple[str, Any]]:
+    """The config overrides in ``environ``: ``<prefix><SECTION>__<KEY>`` variables only.
+
+    Variables without ``__`` (``PULSE_MAX_STEPS``, ``PULSE_DYNAMIC``, ...) configure other things
+    and are skipped; one that starts with a section name and a single ``_``
+    (``PULSE_SOLVER_MAX_HALVINGS``) is probably a typo for ``PULSE_SOLVER__MAX_HALVINGS`` and warns.
+    """
     out = []
     for key, raw in sorted(environ.items()):
         if not key.startswith(prefix) or len(key) == len(prefix):
             continue
-        dotted = ".".join(_canonical(p) for p in key[len(prefix) :].split("__"))
+        name = key[len(prefix) :]
+        if "__" not in name:
+            section, _, rest = name.partition("_")
+            if section.lower() in Config.model_fields and rest:
+                warnings.warn(
+                    f"Ignoring {key}: config overrides are {prefix}<SECTION>__<KEY>, "
+                    f"did you mean {prefix}{section}__{rest}?",
+                    stacklevel=2,
+                )
+            continue
+        dotted = ".".join(_canonical(p) for p in name.split("__"))
         out.append((dotted, parse_value(raw)))
     return out
 
