@@ -31,7 +31,7 @@ cli = [
     "pydantic-pint",
     "toml",
     "cardiac-geometriesx",
-    "io4dolfinx",
+    "io4dolfinx[h5py]",
 ]
 test = [
     "pytest",
@@ -55,7 +55,7 @@ demo = [
     "fenicsx-ldrb",
     "circulation",
     "gotranx",
-    "io4dolfinx",
+    "io4dolfinx[h5py]",
     "scipy",
     # The demos use its marker names (LV_ENDO, RV_ENDO), and cardiac-geometriesx
     # 0.18 passes it --refine, which 2.0 does not have.

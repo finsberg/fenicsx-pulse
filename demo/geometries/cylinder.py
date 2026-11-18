@@ -352,8 +352,8 @@ vtx.write(0.0)
 
 # %%
 # Prepare IO for checkpointing (useful for restarts or advanced post-processing)
-filename = Path("function_checkpoint.bp")
-io4dolfinx.write_mesh(filename, geometry.mesh)
+filename = Path("function_checkpoint.h5")
+io4dolfinx.write_mesh(filename, geometry.mesh, backend="h5py")
 
 # %% [markdown]
 # Setup for regional analysis

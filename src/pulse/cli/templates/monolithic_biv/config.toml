@@ -9,7 +9,7 @@
 #   once more after loading it, which is a no-op on an already rotated mesh.
 # - PULSE_DYNAMIC becomes [problem] type: for the dynamic arm set type = "dynamic",
 #   [viscoelasticity] type = "viscous" and damping Robins of 5e3 Pa*s/m on EPI and BASE.
-# - Output: results.bp and loads.csv rows every 10 ms; no traces.npz, frames.npz or video.
+# - Output: results.h5 and loads.csv rows every 10 ms; no traces.npz, frames.npz or video.
 # Needs: ukb-atlas, fenicsx-ldrb, gotranx, circulation, scipy.
 
 [geometry]

@@ -1,15 +1,25 @@
 import csv
 import json
+from pathlib import Path
 
 from mpi4py import MPI
 
+import io4dolfinx
 import numpy as np
 import pytest
 from cli_helpers import write_cfg
 
 from pulse.cli.config import ConfigError
 from pulse.cli.overrides import load_config
-from pulse.cli.runner import LOADS, RESTART_META, RESULTS, build_simulation, read_result_times, run
+from pulse.cli.runner import (
+    LOADS,
+    RESTART,
+    RESTART_META,
+    RESULTS,
+    build_simulation,
+    read_result_times,
+    run,
+)
 
 
 def _final_state(conf):
@@ -107,6 +117,41 @@ def test_checkpoint_every_then_restart_truncates_loads(tmp_path):
     with open(folder / LOADS) as f:
         t_rows = [float(r["t"]) for r in csv.DictReader(f)]
     np.testing.assert_allclose(t_rows, [0.0, 0.1, 0.2, 0.3])
+
+
+class _Killed(BaseException):
+    """Stands in for a job killed partway through writing a checkpoint: no handler sees it."""
+
+
+def test_restart_after_a_kill_partway_through_a_checkpoint(tmp_path, monkeypatch):
+    # The t=0.2 checkpoint was killed after its first function, so restart.json still names
+    # t=0.1. The restarted run reaches t=0.2 again and must complete that checkpoint without
+    # writing the first function a second time, which io4dolfinx's h5py backend refuses.
+    time = {"end_time": "0.3 s", "dt": "0.1 s"}
+    full = load_config(write_cfg(tmp_path / "a", time=time), environ={})
+    run(full)
+    cfg = write_cfg(tmp_path / "b", time=time, output={"checkpoint_every": "0.1 s"})
+    conf = load_config(cfg, environ={})
+    write = io4dolfinx.write_function_on_input_mesh
+    written: list[str] = []
+
+    def killed_after_the_first(filename, u, *, time, name, **kwargs):
+        if Path(filename).name == RESTART and np.isclose(time, 0.2):
+            if written:
+                raise _Killed
+            written.append(name)
+        write(filename, u, time=time, name=name, **kwargs)
+
+    monkeypatch.setattr(io4dolfinx, "write_function_on_input_mesh", killed_after_the_first)
+    with pytest.raises(_Killed):
+        run(conf)
+    monkeypatch.undo()
+    assert json.loads((conf.output.folder / RESTART_META).read_text())["mechanics"]["t"] == 0.1
+
+    run(conf, restart=True)
+    restarted, continuous = _final_state(conf), _final_state(full)
+    for name, values in continuous.items():
+        assert np.array_equal(restarted[name], values), name
 
 
 def test_unknown_marker_is_config_error_before_wipe(tmp_path):

@@ -37,7 +37,7 @@ from .model import build_compressibility, build_material
 
 logger = logging.getLogger(__name__)
 
-U_PRE = "u_pre.bp"
+U_PRE = "u_pre.h5"
 META = "meta.json"
 
 
@@ -160,12 +160,18 @@ def _install(folder: Path, u_pre: dolfinx.fem.Function, meta: dict[str, Any], co
     """Install ``u_pre`` and ``meta`` as the cache entry ``folder``, unless a valid entry for
     ``meta["hash"]`` is already there (concurrent tasks: the first valid entry wins and the
     others discard theirs). A stale or invalid entry is replaced."""
-    from .runner import _on_rank0
+    from .runner import IO_BACKEND, _on_rank0
 
     name = f".tmp-{folder.name}-{os.getpid()}-{uuid.uuid4().hex[:8]}" if comm.rank == 0 else None
     tmp = folder.with_name(comm.bcast(name, root=0))
     _on_rank0(comm, OSError, lambda: tmp.mkdir(parents=True, exist_ok=True))
-    io4dolfinx.write_function_on_input_mesh(tmp / U_PRE, u_pre, time=0.0, name="u_pre")
+    io4dolfinx.write_function_on_input_mesh(
+        tmp / U_PRE,
+        u_pre,
+        time=0.0,
+        name="u_pre",
+        backend=IO_BACKEND,
+    )
 
     def install() -> None:
         if _cache_is_valid(folder, meta["hash"]):  # another task installed it since we looked
@@ -194,6 +200,8 @@ def build_prestress(
     warn_if_missing: bool = False,
 ) -> PrestressResult:
     """The unloaded configuration of ``geo`` (still the imaged mesh): cached, or solved now."""
+    from .runner import IO_BACKEND
+
     assert conf.prestress is not None
     for name in ("f0", "s0", "n0"):
         f = getattr(geo, name)
@@ -210,7 +218,7 @@ def build_prestress(
     cached = comm.bcast(_cache_is_valid(folder, h) if comm.rank == 0 else None, root=0)
     if cached:
         logger.info(f"Reusing the unloaded reference configuration cached in {folder}")
-        io4dolfinx.read_function(folder / U_PRE, u_pre, time=0.0, name="u_pre")
+        io4dolfinx.read_function(folder / U_PRE, u_pre, time=0.0, name="u_pre", backend=IO_BACKEND)
         u_pre.x.scatter_forward()
     else:
         message = f"No cached unloaded configuration in {folder}; prestressing to {targets} Pa"

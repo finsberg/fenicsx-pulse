@@ -56,7 +56,7 @@ screenshot_dir.mkdir(exist_ok=True)
 ```
 
 ```python
-checkpoint_filename = result_folder / "function_checkpoint.bp"
+checkpoint_filename = result_folder / "function_checkpoint.h5"
 ```
 
 ## 2. Load Mesh and Timestamps
@@ -67,6 +67,7 @@ We read the mesh and the list of available time steps from the checkpoint file.
 mesh = io4dolfinx.read_mesh(
     checkpoint_filename,
     comm=comm,
+    backend="h5py",
 )
 ```
 
@@ -75,6 +76,7 @@ timestamps = io4dolfinx.read_timestamps(
     checkpoint_filename,
     comm=comm,
     function_name="displacement",
+    backend="h5py",
 )
 ```
 
@@ -214,7 +216,7 @@ Here is a short video showing how to do this:
 
 ```python
 for i, t in enumerate(timestamps[::N]):
-    io4dolfinx.read_function(checkpoint_filename, u, time=t, name="displacement")
+    io4dolfinx.read_function(checkpoint_filename, u, time=t, name="displacement", backend="h5py")
     grid["u"][:, : len(u)] = u.x.array.reshape(geometry.shape[0], len(u))
     warped_n = grid.warp_by_vector(factor=1)
     warped.points[:, :] = warped_n.points
@@ -231,7 +233,7 @@ plotter.camera_position = [
     (0.16197623979674286, 0.9367431745355433, -0.3102836165548876),
 ]
 for i, t in enumerate(timestamps[::N]):
-    io4dolfinx.read_function(checkpoint_filename, u, time=t, name="displacement")
+    io4dolfinx.read_function(checkpoint_filename, u, time=t, name="displacement", backend="h5py")
     grid["u"][:, : len(u)] = u.x.array.reshape(geometry.shape[0], len(u))
     warped_n = grid.warp_by_vector(factor=1)
     warped.points[:, :] = warped_n.points
@@ -286,7 +288,7 @@ markers = json.loads(markers_file.read_text())
 Note: We need a mesh tags object 'ffun' describing surface markers. This was saved during the simulation setup.
 
 ```python
-ffun = io4dolfinx.read_meshtags(checkpoint_filename, mesh, "ffun")
+ffun = io4dolfinx.read_meshtags(checkpoint_filename, mesh, "ffun", backend="h5py")
 ```
 
 ```python
@@ -411,7 +413,7 @@ for fname, clim, region_dict in [
 
     for i, t in enumerate(timestamps[::N]):
         print(f"  Time {t:.2f} s")
-        io4dolfinx.read_function(checkpoint_filename, f, time=t, name=fname)
+        io4dolfinx.read_function(checkpoint_filename, f, time=t, name=fname, backend="h5py")
 
         # Compute regional averages
         for region in range(num_segments):
@@ -434,7 +436,7 @@ for fname, clim, region_dict in [
         (0.16197623979674286, 0.9367431745355433, -0.3102836165548876),
     ]
     for i, t in enumerate(timestamps[::N]):
-        io4dolfinx.read_function(checkpoint_filename, f, time=t, name=fname)
+        io4dolfinx.read_function(checkpoint_filename, f, time=t, name=fname, backend="h5py")
         grid[fname][:] = f.x.array
         plotter.add_text(f"Time: {t:.2f} s", name="timer")
         plotter.screenshot(outdir / f"top_{fname}_sim_{i}.png")

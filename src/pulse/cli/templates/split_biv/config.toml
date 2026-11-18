@@ -17,7 +17,7 @@
 # - Coupling order: the mechanics is solved after the Euler step (at V_{n+1} and Ta(t_{n+1}))
 #   instead of before it (at V_n, with Land advanced to t_{n+1}); the volume sequence is the
 #   same.
-# - Output: results.bp and loads.csv rows every 5 ms; no traces.npz, frames.npz or video.
+# - Output: results.h5 and loads.csv rows every 5 ms; no traces.npz, frames.npz or video.
 # Needs: fenicsx-ldrb, gotranx, circulation, scipy.
 
 [geometry]

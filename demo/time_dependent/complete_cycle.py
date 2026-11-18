@@ -499,7 +499,7 @@ bcs_prestress = pulse.BoundaryConditions(
 
 prestress_fname = outdir / (
     f"prestress_biv_inverse_LV{lv_params.p_end_diastole:g}Pa"
-    f"_RV{rv_params.p_end_diastole:g}Pa.bp"
+    f"_RV{rv_params.p_end_diastole:g}Pa.h5"
 )
 if not prestress_fname.exists():
     logger.info(
@@ -524,10 +524,11 @@ if not prestress_fname.exists():
     u_pre = prestress_problem.unload()
     io4dolfinx.write_function_on_input_mesh(
         prestress_fname, u_pre, time=0.0, name="u_pre",
+        backend="h5py",
     )
     with dolfinx.io.VTXWriter(
         comm,
-        outdir / "prestress_biv_backward.bp",
+        outdir / "prestress_biv_backward.h5",
         [u_pre],
         engine="BP4",
     ) as vtx:
@@ -537,7 +538,7 @@ if not prestress_fname.exists():
 
 V = dolfinx.fem.functionspace(geometry.mesh, ("Lagrange", 2, (3,)))
 u_pre = dolfinx.fem.Function(V)
-io4dolfinx.read_function(prestress_fname, u_pre, time=0.0, name="u_pre")
+io4dolfinx.read_function(prestress_fname, u_pre, time=0.0, name="u_pre", backend="h5py")
 
 # We use the prestressed displacement to deform the mesh to the reference configuration.
 

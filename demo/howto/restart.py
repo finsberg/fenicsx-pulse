@@ -26,7 +26,6 @@
 import json
 import logging
 import math
-import shutil
 from pathlib import Path
 
 from mpi4py import MPI
@@ -210,14 +209,14 @@ if comm.rank == 0:
 # the two are only tied together while `dt` is fixed. A run that halves its
 # step to get through a hard phase has no fixed relation between them.
 
-checkpoint = outdir / "restart.bp"
+checkpoint = outdir / "restart.h5"
 meta_path = outdir / "restart.json"
 if comm.rank == 0:
-    # io4dolfinx appends, and a stale file's entry would be the one read back.
-    shutil.rmtree(checkpoint, ignore_errors=True)
+    # io4dolfinx refuses a function at a time a stale file already holds it at.
+    checkpoint.unlink(missing_ok=True)
 comm.barrier()
 for name, f in problem.restart_functions():
-    io4dolfinx.write_function_on_input_mesh(checkpoint, f, time=t, name=name)
+    io4dolfinx.write_function_on_input_mesh(checkpoint, f, time=t, name=name, backend="h5py")
 meta = {
     "t": t,
     "step": N // 2,
@@ -249,7 +248,7 @@ comm.barrier()
 problem, controller, Ta, monitor = build()
 meta = json.loads(meta_path.read_text())
 for name, f in problem.restart_functions():
-    io4dolfinx.read_function(checkpoint, f, time=meta["t"], name=name)
+    io4dolfinx.read_function(checkpoint, f, time=meta["t"], name=name, backend="h5py")
     f.x.scatter_forward()
 problem.load_restart_metadata(meta["problem"])
 controller.load_state_dict(meta["cycle"])
@@ -322,7 +321,7 @@ monitor.display_summary()
 # code works without the `state_dict` lines.
 #
 # **The command line.** The `pulse` CLI writes the same kind of checkpoint,
-# the `mechanics_*` Functions in `restart.bp` and the problem's restart
+# the `mechanics_*` Functions in `restart.h5` and the problem's restart
 # metadata in `restart.json`, and `pulse run --restart` continues from it.
 # See [the CLI documentation](../../docs/cli.md) for how it checks that the
 # physics has not changed since the checkpoint was written.

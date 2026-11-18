@@ -9,7 +9,7 @@
 # - Activation: bestel_activation with period = 0.8 s and peak = 100 kPa, integrated on the
 #   1 ms grid one interval at a time (the demo integrates the beat once with max_step = 1 ms);
 #   the traces agree to the integrator's tolerance.
-# - Output: results.bp and loads.csv rows every 5 ms (the demo traces every step and writes VTX
+# - Output: results.h5 and loads.csv rows every 5 ms (the demo traces every step and writes VTX
 #   every 10 ms); no traces.npz, frames.npz or video. `pulse post` draws the PV loops.
 # Needs: ukb-atlas, fenicsx-ldrb, circulation, scipy.
 
