@@ -110,7 +110,14 @@ def _on_rank0(comm, error_type: type[Exception], fn: Callable[[], Any]) -> None:
         return
     is_config, message = error
     exc: Exception = ConfigError(message) if is_config else error_type(message)
-    raise exc from original
+    try:
+        raise exc from original
+    finally:
+        # Both tracebacks hold this frame, so these locals would make reference cycles that
+        # keep the caller's locals (a simulation's PETSc objects) alive until the cyclic garbage
+        # collector runs. It runs at a different point on each rank, and their collective
+        # destroy deadlocks.
+        del exc, original
 
 
 def _write_json(path: Path, data: dict, comm) -> None:

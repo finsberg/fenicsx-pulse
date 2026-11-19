@@ -1,5 +1,7 @@
 import csv
+import gc
 import json
+import weakref
 
 from mpi4py import MPI
 
@@ -16,6 +18,7 @@ from pulse.cli.runner import (
     RESULTS,
     RUN_META,
     SolverFailure,
+    _on_rank0,
     build_simulation,
     read_result_times,
     run,
@@ -313,6 +316,36 @@ def test_performance_summary_is_saved_on_failure(tmp_path, monkeypatch):
     with pytest.raises(SolverFailure):
         run(conf)
     assert (conf.output.folder / "performance.json").is_file()
+
+
+def test_a_failure_on_rank0_leaves_no_reference_cycle():
+    """The error ``_on_rank0`` raises must not hold its own frame in a reference cycle.
+
+    Its traceback holds the frames up to the one that catches it. A cycle would keep that
+    frame's locals, such as a simulation and its PETSc objects, alive until the cyclic garbage
+    collector runs. That happens at a different point on each rank, where their collective
+    ``destroy`` deadlocks.
+    """
+
+    class Owner:
+        pass
+
+    def fail():
+        raise OSError("disk full")
+
+    def catch_it():
+        owner = Owner()
+        try:
+            _on_rank0(MPI.COMM_WORLD, OSError, fail)
+        except OSError:
+            pass
+        return weakref.ref(owner)
+
+    gc.disable()
+    try:
+        assert catch_it()() is None
+    finally:
+        gc.enable()
 
 
 def test_failed_performance_summary_write_does_not_mask_outcome(tmp_path, monkeypatch, caplog):
