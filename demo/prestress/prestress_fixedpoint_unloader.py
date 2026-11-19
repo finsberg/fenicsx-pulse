@@ -148,7 +148,7 @@ target_pressure_obj = pulse.unloading.TargetPressure(
 # * `max_iter`: Maximum number of fixed-point iterations.
 # * `tol`: Geometric convergence tolerance.
 
-prestress_fname = outdir / "prestress_lv_inverse.bp"
+prestress_fname = outdir / "prestress_lv_inverse.h5"
 
 if not prestress_fname.exists():
     prestress_problem = pulse.unloading.FixedPointUnloader(
@@ -170,11 +170,12 @@ if not prestress_fname.exists():
         u_pre,
         time=0.0,
         name="u_pre",
+        backend="h5py",
     )
 
     with dolfinx.io.VTXWriter(
         comm,
-        outdir / "prestress_lv_backward.bp",
+        outdir / "prestress_lv_backward.h5",
         [u_pre],
         engine="BP4",
     ) as vtx:
@@ -228,6 +229,7 @@ io4dolfinx.read_function(
     u_pre,
     time=0.0,
     name="u_pre",
+    backend="h5py",
 )
 
 print("\nDeforming mesh to recovered reference configuration...")

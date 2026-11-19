@@ -12,7 +12,7 @@
 #   of to the warm-up's V_LV with Ta ramped down from the calibration's value.
 # - PULSE_DYNAMIC becomes [problem] type: for the dynamic arm set type = "dynamic",
 #   [viscoelasticity] type = "viscous" and damping Robins of 5e3 Pa*s/m on EPI and BASE.
-# - Output: results.bp and loads.csv rows every 10 ms; no traces.npz, frames.npz or video.
+# - Output: results.h5 and loads.csv rows every 10 ms; no traces.npz, frames.npz or video.
 # Needs: gotranx, circulation, scipy.
 
 [geometry]

@@ -79,7 +79,7 @@ every subcommand, either before or after the subcommand name: `pulse -v run conf
 | `pulse validate-config config.toml` | Parse + validate + print the resolved config. Builds nothing (no mesh, no MPI-collective work). |
 | `pulse geometry config.toml` | Generate (or load) the geometry and stop. For a generated type the mesh is cached in `geometry.folder/<hash>/` and reused across the other commands and reruns. |
 | `pulse run config.toml [--restart] [--overwrite] [--output-folder P] [--petsc-options "..."]` | Run the simulation. |
-| `pulse post config.toml [--output-folder P]` | VTX, derived fields, plots and point traces from `results.bp`. |
+| `pulse post config.toml [--output-folder P]` | VTX, derived fields, plots and point traces from `results.h5`. |
 | `pulse version` | Versions of fenicsx-pulse, dolfinx, mpi4py, petsc4py. |
 
 `pulse --dry-run <command> ...` (e.g. `pulse --dry-run run config.toml --set 'time.dt="1 ms"'`)
@@ -312,9 +312,9 @@ output/
   config.resolved.toml   # the fully resolved configuration of the (latest) run
   run.json                # versions, n_ranks, start/end wall time, status: running/finished/failed
   output.log              # log file (output_all_cpus.log too when running on >1 rank)
-  results.bp               # io4dolfinx: u (+ p if incompressible), every output.save_every
+  results.h5               # io4dolfinx: u (+ p if incompressible), every output.save_every
   loads.csv                 # t [s], every load [Pa], volume_<marker> [m^3] for cavity markers
-  restart.bp                 # io4dolfinx: the mechanics_* state functions
+  restart.h5                 # io4dolfinx: the mechanics_* state functions
   restart.json                # the latest complete checkpoint's time/step and a physics hash
   performance.json             # timing summary (only with output.performance = true)
   post/                         # written by `pulse post`, see below
@@ -325,10 +325,11 @@ output/
 marker (`ENDO`, `LV`, `RV`) that carries a pressure load — summed over MPI ranks. With
 `[circulation]` the columns are the coupling's instead, see {ref}`cli-circulation`.
 
-`pulse run` never writes VTX itself — only the io4dolfinx files above. `pulse post config.toml`
-reads `results.bp` (which can happen later, on any number of ranks, independent of how many ranks
+`pulse run` never writes VTX itself — only the io4dolfinx files above, which are HDF5, written
+with io4dolfinx's h5py backend whatever its default (`pulse.cli.runner.IO_BACKEND`). `pulse post config.toml`
+reads `results.h5` (which can happen later, on any number of ranks, independent of how many ranks
 the run itself used) and writes into `post/`. The config given to `pulse post` must describe the
-same physics as the run that wrote `results.bp` — the same check as for `--restart` (below),
+same physics as the run that wrote `results.h5` — the same check as for `--restart` (below),
 against the hash in `restart.json`, or, if the run stopped before writing its first checkpoint,
 against `config.resolved.toml`. Only `[output]`, `[postprocess]`, `[solver]` and the run length may
 differ; anything else (e.g. an edited `geometry.nx`) is refused with a `ConfigError` naming
@@ -336,7 +337,7 @@ differ; anything else (e.g. an edited `geometry.nx`) is refused with a `ConfigEr
 
 ```text
 output/post/
-  displacement.bp   # results.bp converted to VTX (ParaView), if postprocess.vtx (default true)
+  displacement.bp   # results.h5 converted to VTX (ParaView), if postprocess.vtx (default true)
   fields.bp           # derived DG1 fields (fiber_stress, fiber_strain), if postprocess.fields
   points.csv            # u at postprocess.points / vertex_tags, every saved time
   loads.png              # loads [kPa] and cavity volumes [mL] vs t, if matplotlib is installed
@@ -357,7 +358,7 @@ by hand) is refused by default — `pulse` never silently deletes anything:
   simulation is built first), so a mistake in the config never costs the previous results.
   Anything else in that folder — notably your own `config.toml`, if the output folder happens to
   be the config's own directory — is left untouched.
-- `--restart` continues from `restart.json`/`restart.bp` instead. It refuses if the run's
+- `--restart` continues from `restart.json`/`restart.h5` instead. It refuses if the run's
   **physics** has changed since the checkpoint was written: the check is a hash of the whole
   resolved config *excluding* the run length (`time.end_time`/`num_steps` — the effective `dt` and
   `start_time` are hashed instead, so changing `num_steps` without changing `dt` is still caught)
@@ -368,9 +369,10 @@ by hand) is refused by default — `pulse` never silently deletes anything:
   Restarting on a **different number of MPI ranks** than the original run is allowed. If the run
   stopped before its first checkpoint there is no `restart.json` yet, and both `--restart` and a
   plain rerun are refused with a message saying so — use `--overwrite` to start over.
-- A restart never rewrites a `results.bp` timestamp that's already there: io4dolfinx *appends* a
-  duplicate write at an existing timestamp, and its reader returns the *first* match, so
-  re-writing the same time would be silently ignored on read anyway — the runner simply skips it.
+- A restart never rewrites a `results.h5` timestamp that's already there: io4dolfinx's h5py
+  backend refuses a second write at a stored timestamp, so the runner skips it. Likewise, a
+  checkpoint skips the functions `restart.h5` already holds at its time, which a run killed
+  partway through writing that checkpoint leaves behind.
 
 ## Newton failures
 

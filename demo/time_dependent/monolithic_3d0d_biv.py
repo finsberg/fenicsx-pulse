@@ -291,7 +291,7 @@ traction = {
     for chamber in ("LV", "RV")
 }
 
-prestress_fname = outdir / "prestress_biv.bp"
+prestress_fname = outdir / "prestress_biv.h5"
 if not prestress_fname.exists():
     logger.info("Prestressing to recover the unloaded reference configuration...")
     prestress_problem = pulse.unloading.PrestressProblem(
@@ -313,12 +313,12 @@ if not prestress_fname.exists():
         ramp_steps=20,
     )
     u_pre = prestress_problem.unload()
-    io4dolfinx.write_function_on_input_mesh(prestress_fname, u_pre, time=0.0, name="u_pre")
+    io4dolfinx.write_function_on_input_mesh(prestress_fname, u_pre, time=0.0, name="u_pre", backend="h5py")
 comm.barrier()
 
 V_disp = dolfinx.fem.functionspace(geometry.mesh, ("Lagrange", 2, (3,)))
 u_pre = dolfinx.fem.Function(V_disp)
-io4dolfinx.read_function(prestress_fname, u_pre, time=0.0, name="u_pre")
+io4dolfinx.read_function(prestress_fname, u_pre, time=0.0, name="u_pre", backend="h5py")
 
 geometry.deform(u_pre)
 f0 = pulse.utils.map_vector_field(f=geo.f0, u=u_pre, normalize=True, name="f0_unloaded")

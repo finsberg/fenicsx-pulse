@@ -2,7 +2,7 @@
 
 VTX of ``u``, derived fibre fields (DG1), point traces and plots of loads.csv. The simulation is
 rebuilt from the config (so the model, fibres and active tension are available) and filled from
-``results.bp``; ``post`` refuses results written with different physics settings.
+``results.h5``; ``post`` refuses results written with different physics settings.
 """
 
 import csv
@@ -22,6 +22,7 @@ from ..circulation import mmHg
 from .config import Config, ConfigError
 from .overrides import load_config, physics_hash
 from .runner import (
+    IO_BACKEND,
     LOADS,
     NAMESPACE,
     RESTART_META,
@@ -36,10 +37,10 @@ logger = logging.getLogger(__name__)
 
 
 def _check_matches_run(conf: Config, comm) -> None:
-    """Refuse a config whose physics differ from the run that wrote ``results.bp``.
+    """Refuse a config whose physics differ from the run that wrote ``results.h5``.
 
     ``pulse post`` rebuilds the geometry, model and loads from the config, so e.g. an edited
-    ``geometry.nx`` would otherwise crash reading ``results.bp`` or, on a same-topology mesh
+    ``geometry.nx`` would otherwise crash reading ``results.h5`` or, on a same-topology mesh
     (e.g. an edited ``material.mu``), silently produce wrong derived fields. Only what
     ``physics_hash`` excludes (``[output]``, ``[postprocess]``, ``[solver]``, the run length) may
     differ. The recorded hash is taken from ``restart.json`` or, if the run was killed before its
@@ -98,10 +99,10 @@ def _interpolation_points(V):
 
 
 def _read_step(sim: MechanicsSimulation, path: Path, t: float) -> None:
-    io4dolfinx.read_function(path, sim.problem.u, time=t, name="u")
+    io4dolfinx.read_function(path, sim.problem.u, time=t, name="u", backend=IO_BACKEND)
     sim.problem.u.x.scatter_forward()
     if sim.problem.is_incompressible:
-        io4dolfinx.read_function(path, sim.problem.p, time=t, name="p")
+        io4dolfinx.read_function(path, sim.problem.p, time=t, name="p", backend=IO_BACKEND)
         sim.problem.p.x.scatter_forward()
     sim.loads.update(float(t))
 

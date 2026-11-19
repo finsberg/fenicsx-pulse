@@ -5,16 +5,18 @@ Output folder layout (``conf.output.folder``)::
 
     config.resolved.toml   the fully resolved configuration of the (latest) run
     run.json               run metadata (versions, ranks, status: running/finished/failed)
-    results.bp             io4dolfinx: ``u`` (+ ``p`` if incompressible) every output.save_every
+    results.h5             io4dolfinx: ``u`` (+ ``p`` if incompressible) every output.save_every
     loads.csv              t [s], every load [Pa], volume_<marker> [m^3] for cavity markers
-    restart.bp             io4dolfinx: the ``mechanics_*`` state functions
+    restart.h5             io4dolfinx: the ``mechanics_*`` state functions
     restart.json           {"mechanics": {t, step, physics_hash, functions, problem}} of the
                            latest checkpoint (``problem``: the problem's restart_metadata())
     output.log             log file (``output_all_cpus.log`` too when running on >1 rank)
 
-io4dolfinx *appends* a function written at an already existing timestamp, and ``read_function``
-returns the *first* match. So a restarted run never writes a ``results.bp`` timestamp ``<=`` the
-last one already there, and readers deduplicate with ``np.unique`` (:func:`read_result_times`).
+Both files are HDF5, written and read with io4dolfinx's h5py backend (:data:`IO_BACKEND`),
+named in every call: io4dolfinx 2.0 changed its default from adios2 to h5py, and neither
+reads the other's files. The h5py backend refuses a function written at a timestamp it already
+holds. So a restarted run never writes a ``results.h5`` timestamp ``<=`` the last one already
+there, and a checkpoint skips the functions ``restart.h5`` already holds at its time.
 """
 
 import csv
@@ -58,8 +60,10 @@ from .prestress import (
 
 logger = logging.getLogger(__name__)
 
-RESULTS = "results.bp"
-RESTART = "restart.bp"
+#: The io4dolfinx backend of results.h5, restart.h5 and the prestress cache.
+IO_BACKEND = "h5py"
+RESULTS = "results.h5"
+RESTART = "restart.h5"
 RESTART_META = "restart.json"
 RUN_META = "run.json"
 LOADS = "loads.csv"
@@ -106,7 +110,14 @@ def _on_rank0(comm, error_type: type[Exception], fn: Callable[[], Any]) -> None:
         return
     is_config, message = error
     exc: Exception = ConfigError(message) if is_config else error_type(message)
-    raise exc from original
+    try:
+        raise exc from original
+    finally:
+        # Both tracebacks hold this frame, so these locals would make reference cycles that
+        # keep the caller's locals (a simulation's PETSc objects) alive until the cyclic garbage
+        # collector runs. It runs at a different point on each rank, and their collective
+        # destroy deadlocks.
+        del exc, original
 
 
 def _write_json(path: Path, data: dict, comm) -> None:
@@ -129,7 +140,25 @@ def _remove_artifacts(folder: Path) -> None:
 
 def read_result_times(path: Path, comm, name: str = "u") -> np.ndarray:
     """Sorted, unique timestamps of ``name`` in the io4dolfinx file ``path``."""
-    return np.unique(io4dolfinx.read_timestamps(filename=path, comm=comm, function_name=name))
+    return np.unique(stored_times(path, comm, name))
+
+
+def stored_times(path: Path, comm, name: str) -> np.ndarray:
+    """Every timestamp of ``name`` in the io4dolfinx file ``path``, as stored.
+
+    None if the file does not hold ``name``, for which io4dolfinx raises ``KeyError``. Any other
+    failure propagates.
+    """
+    try:
+        times = io4dolfinx.read_timestamps(
+            filename=path,
+            comm=comm,
+            function_name=name,
+            backend=IO_BACKEND,
+        )
+    except KeyError:
+        return np.zeros(0)
+    return np.asarray(times, dtype=float)
 
 
 def _output_decision(conf: Config, restart: bool, overwrite: bool) -> tuple[str, str]:
@@ -530,7 +559,7 @@ class MechanicsSimulation:
         self._advance(t + dt / 2, dt / 2, level + 1)
 
     def save(self) -> None:
-        """Write ``u`` (+ ``p``) to results.bp and a loads.csv row, each only if new."""
+        """Write ``u`` (+ ``p``) to results.h5 and a loads.csv row, each only if new."""
         with self.monitor.track_time("save"):
             self._save()
 
@@ -539,9 +568,21 @@ class MechanicsSimulation:
         tol = self._tol()
         if t > self._last_saved + tol:
             path = self.folder / RESULTS
-            io4dolfinx.write_function_on_input_mesh(path, self.problem.u, time=t, name="u")
+            io4dolfinx.write_function_on_input_mesh(
+                path,
+                self.problem.u,
+                time=t,
+                name="u",
+                backend=IO_BACKEND,
+            )
             if self.problem.is_incompressible:
-                io4dolfinx.write_function_on_input_mesh(path, self.problem.p, time=t, name="p")
+                io4dolfinx.write_function_on_input_mesh(
+                    path,
+                    self.problem.p,
+                    time=t,
+                    name="p",
+                    backend=IO_BACKEND,
+                )
             self._last_saved = t
         if t > self._last_row + tol:
             row = self.record(t)
@@ -557,11 +598,13 @@ class MechanicsSimulation:
         return out
 
     def checkpoint(self) -> None:
-        """Write the state at ``t`` to restart.bp and point restart.json at it.
+        """Write the state at ``t`` to restart.h5 and point restart.json at it.
 
-        restart.bp already holding ``t`` (a run killed between the two writes, restarted from an
-        earlier checkpoint) only updates restart.json: io4dolfinx would append a duplicate and
-        read the first one anyway, which is the same state.
+        restart.h5 already holding a complete checkpoint at ``t`` (a run killed between the two
+        writes, restarted from an earlier checkpoint) only updates restart.json. A run killed
+        partway through writing restart.h5 left some of the functions at ``t``: those are
+        skipped, since io4dolfinx's h5py backend refuses a second write at a stored timestamp.
+        Either way the stored data is the same state.
         """
         with self.monitor.track_time("checkpoint"):
             self._checkpoint()
@@ -569,14 +612,20 @@ class MechanicsSimulation:
     def _checkpoint(self) -> None:
         t = self.t
         functions = self.restart_functions()
-        exists = bool(np.any(np.abs(self._checkpoints - t) < self._tol()))
+        tol = self._tol()
+        exists = bool(np.any(np.abs(self._checkpoints - t) < tol))
         if not exists:
+            path = self.folder / RESTART
             for name, f in functions:
+                stored = self._stored_times(name) if path.exists() else np.zeros(0)
+                if np.any(np.abs(stored - t) < tol):
+                    continue
                 io4dolfinx.write_function_on_input_mesh(
-                    self.folder / RESTART,
+                    path,
                     f,
                     time=t,
                     name=name,
+                    backend=IO_BACKEND,
                 )
         meta = {
             NAMESPACE: {
@@ -598,14 +647,7 @@ class MechanicsSimulation:
         self._checkpoints = np.append(self._checkpoints, t)
 
     def _stored_times(self, name: str) -> np.ndarray:
-        return np.asarray(
-            io4dolfinx.read_timestamps(
-                filename=self.folder / RESTART,
-                comm=self.comm,
-                function_name=name,
-            ),
-            dtype=float,
-        )
+        return stored_times(self.folder / RESTART, self.comm, name)
 
     def _restore_coupling(self, meta: dict[str, Any]) -> None:
         """Load the coupling's and the hooks' state of a checkpoint, after its Functions."""
@@ -655,7 +697,13 @@ class MechanicsSimulation:
             )
         t_file = float(stored[np.argmin(np.abs(stored - t))])
         for name, f in functions:
-            io4dolfinx.read_function(folder / RESTART, f, time=t_file, name=name)
+            io4dolfinx.read_function(
+                folder / RESTART,
+                f,
+                time=t_file,
+                name=name,
+                backend=IO_BACKEND,
+            )
             f.x.scatter_forward()
         # pulse 0.11.0's restart.json has no "problem" entry; its problems had no metadata.
         self.problem.load_restart_metadata(meta.get("problem", {}))

@@ -185,7 +185,7 @@ model, bcs, pressure_lv, pressure_rv, target_pressure = setup_problem(
 # The solution `prestress_problem.u` is updated to reflect the inverse displacement required to map
 # from this fixed target back to the corresponding reference state for the *current* pressure load.
 
-prestress_fname = outdir / "prestress_biv_inverse.bp"
+prestress_fname = outdir / "prestress_biv_inverse.h5"
 if not prestress_fname.exists():
     prestress_problem = pulse.unloading.PrestressProblem(
         geometry=geometry,
@@ -212,11 +212,12 @@ if not prestress_fname.exists():
         u_pre,
         time=0.0,
         name="u_pre",
+        backend="h5py",
     )
 
     with dolfinx.io.VTXWriter(
         comm,
-        outdir / "prestress_biv_backward.bp",
+        outdir / "prestress_biv_backward.h5",
         [u_pre],
         engine="BP4",
     ) as vtx:
@@ -259,6 +260,7 @@ io4dolfinx.read_function(
     u_pre,
     time=0.0,
     name="u_pre",
+    backend="h5py",
 )
 
 # ## 5. Verification (Forward Problem)
