@@ -139,8 +139,8 @@ def read_result_times(path: Path, comm, name: str = "u") -> np.ndarray:
 def stored_times(path: Path, comm, name: str) -> np.ndarray:
     """Every timestamp of ``name`` in the io4dolfinx file ``path``, as stored.
 
-    None if the file does not hold ``name``: the h5py backend raises ``KeyError`` for a name it
-    never wrote, where adios2 returned no timestamps. Any other failure propagates.
+    None if the file does not hold ``name``, for which io4dolfinx raises ``KeyError``. Any other
+    failure propagates.
     """
     try:
         times = io4dolfinx.read_timestamps(
