@@ -9,7 +9,7 @@ requires = [
 
 [project]
 name = "fenicsx-pulse"
-version = "0.12.1"
+version = "0.13.0"
 description = "Next generation cardiac mechanics solver based on FEniCSx"
 authors = [{name = "Henrik Finsberg", email = "henriknf@simula.no"}]
 license = "MIT"
@@ -235,7 +235,7 @@ tag = true
 sign_tags = false
 tag_name = "v{new_version}"
 tag_message = "Bump version: {current_version} → {new_version}"
-current_version = "0.12.1"
+current_version = "0.13.0"
 
 
 [[tool.bumpversion.files]]
